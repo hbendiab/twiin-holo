@@ -953,6 +953,10 @@ async function createN8n(wf, verdict, el) {
           st.textContent = e.ok ? '✅ Automatisation créée et testée avec succès. Elle est en pause : choisis quand elle tourne dans « Mes automatisations ».'
                                 : (links.innerHTML ? `❌ Le test a échoué (${e.status}). Ouvre l'exécution dans n8n pour voir le nœud en erreur.`
                                                    : `❌ Automatisation non créée : ${e.status}`);
+          if (!e.ok && !/workflow\//.test(links.innerHTML)) {
+            links.innerHTML = `<a class="link-btn" href="/automatisations.html#${encodeURIComponent(e.id || '')}">Voir dans Mes automatisations</a>`
+              + (/google sheets|credential|connexion/i.test(e.status || '') ? ` · <a href="http://localhost:5678/home/credentials" target="_blank">Ajouter la connexion dans n8n</a>` : '');
+          }
         }
       }
       const last = (hs || []).at(-1);

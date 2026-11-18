@@ -67,7 +67,7 @@
 const KIND = { holo: 'Holo · logiciel sans API', sheets: 'Google Sheets', verify: 'Vérification', code: 'Mise en forme', http: 'API', other: 'Étape' };
 let items = [], current = null, poll = null, n8nUrl = '';
 
-const statusPill = (a) => a.running ? '<span class="pill run">En cours</span>'
+const statusPill = (a) => a.failed ? '<span class="pill bad">Pas créée</span>' : a.running ? '<span class="pill run">En cours</span>'
   : a.active ? '<span class="pill on">Active</span>' : '<span class="pill">En pause</span>';
 const execPill = (e) => e.status === 'success' ? '<span class="pill on">Réussie</span>'
   : ['running', 'new', 'waiting'].includes(e.status) ? '<span class="pill run">En cours</span>' : `<span class="pill bad">${escapeHtml(e.status === 'error' ? 'Échec' : e.status)}</span>`;
@@ -106,7 +106,7 @@ function renderList() {
       <span class="row">${a.blocks.map(blockIcon).join('')}</span>
       <b>${escapeHtml(a.name)}</b>
       <span class="row">${statusPill(a)}<span class="meta">${escapeHtml(a.freq_label)}</span></span>
-      <span class="meta">Dernière exécution : ${fmtAgo(a.stats.last)} · ${a.stats.total ? `${Math.round((100 * a.stats.success) / a.stats.total)} % réussies` : 'jamais lancée'}</span>
+      <span class="meta">${a.failed ? `Création échouée ${fmtAgo(a.stats.last)}` : `Dernière exécution : ${fmtAgo(a.stats.last)} · ${a.stats.total ? `${Math.round((100 * a.stats.success) / a.stats.total)} % réussies` : 'jamais lancée'}`}</span>
     </button>`).join('');
   document.querySelectorAll('.item').forEach((b) => b.addEventListener('click', () => select(b.dataset.id)));
 }
@@ -117,6 +117,29 @@ function select(id) {
   if (!a) return;
   history.replaceState(null, '', `#${id}`);
   document.querySelectorAll('.item').forEach((b) => b.classList.toggle('on', b.dataset.id === id));
+  if (a.failed) { // création échouée : la cause, de quoi la corriger, et réessayer
+    document.getElementById('dash').innerHTML = `
+      <h2>${escapeHtml(a.name)}</h2>
+      <div class="pills"><span class="pill bad">Pas créée</span></div>
+      <p class="note warn"><b>Cause :</b> ${escapeHtml(a.error || 'inconnue')}</p>
+      <p class="meta">${/google sheets|credential|connexion/i.test(a.error || '')
+        ? 'Il manque une connexion dans n8n : ajoute-la une fois (Credentials → New), elle servira ensuite à toutes les automatisations.'
+        : 'Ouvre n8n pour voir le détail, puis réessaie.'}</p>
+      <div class="flow">${a.blocks.map((b, i) => `${i ? '<span class="arrow">→</span>' : ''}<span class="blk ${b.kind}">${escapeHtml(b.name)}</span>`).join('')}</div>
+      <div class="actions">
+        <a class="btn primary" href="${a.fix_url}" target="_blank" rel="noopener">${iconsHtml('n8n', 1)}Configurer dans n8n</a>
+        <button id="retryBtn" type="button">Réessayer la création</button>
+      </div>
+      <div class="msg" id="msg"></div>`;
+    document.getElementById('retryBtn').onclick = async (ev) => {
+      ev.target.disabled = true;
+      document.getElementById('msg').textContent = 'Création dans n8n…';
+      const d = await (await fetch(`/api/automations/${encodeURIComponent(id)}/retry`, { method: 'POST' })).json().catch(() => ({}));
+      if (d.error) { document.getElementById('msg').textContent = `Toujours impossible : ${d.error}`; ev.target.disabled = false; return; }
+      load(id);
+    };
+    return;
+  }
   const holo = a.blocks.filter((b) => b.kind === 'holo').length;
   const rate = a.stats.total ? `${Math.round((100 * a.stats.success) / a.stats.total)} %` : '—';
   document.getElementById('dash').innerHTML = `

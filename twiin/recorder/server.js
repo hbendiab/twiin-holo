@@ -981,7 +981,11 @@ app.post('/api/n8n/create', async (req, res) => {
     proc.stderr.on('data', (d) => { genErr += d; process.stderr.write(`[n8n] ${d}`); });
     // Si la création échoue avant la fin (ex. connexion Google Sheets absente), la page reçoit l'erreur au lieu d'attendre.
     proc.on('close', () => {
-      if (!readJsonl(events).some((e) => e.type === 'done')) {
+      const evs0 = readJsonl(events);
+      if (evs0.some((e) => e.type === 'imported')) forgetFailed(plan.id);
+      else rememberFailed({ id: plan.id, name: plan.name || wf.name, planFile, blocks: plan.blocks,
+                            error: (genErr.trim().split(/\r?\n/).filter(Boolean).at(-1) || 'création interrompue').replace(/^\[n8n\]\s*/, '') });
+      if (!evs0.some((e) => e.type === 'done')) {
         const why = genErr.trim().split(/\r?\n/).filter(Boolean).at(-1) || 'création interrompue';
         fs.appendFileSync(events, JSON.stringify({ type: 'done', ok: false, status: why.replace(/^\[n8n\]\s*/, '').slice(0, 300) }) + String.fromCharCode(10));
       }
@@ -1592,12 +1596,33 @@ async function automationSummary(w) {
   };
 }
 
+// Automatisations dont la création a échoué (ex. connexion n8n manquante) : gardées pour « Mes automatisations ».
+const FAILED_PATH = path.join(REPO_ROOT, 'workflows', 'runs', 'automations_failed.json');
+const readFailed = () => { try { return JSON.parse(fs.readFileSync(FAILED_PATH, 'utf8')); } catch { return []; } };
+function rememberFailed(f) {
+  const list = readFailed().filter((x) => x.id !== f.id);
+  list.unshift({ ...f, at: new Date().toISOString() });
+  fs.mkdirSync(path.dirname(FAILED_PATH), { recursive: true });
+  fs.writeFileSync(FAILED_PATH, JSON.stringify(list.slice(0, 50), null, 1));
+}
+function forgetFailed(id) {
+  const list = readFailed();
+  if (list.some((x) => x.id === id)) fs.writeFileSync(FAILED_PATH, JSON.stringify(list.filter((x) => x.id !== id), null, 1));
+}
+const failedSummary = (f) => ({
+  id: f.id, name: f.name, failed: true, error: f.error, active: false, running: false, freq: 'manual', freq_label: 'Pas créée',
+  blocks: (f.blocks || []).map((b) => ({ name: b.name, kind: b.type === 'holo' ? 'holo' : b.type === 'sheets_append' ? 'sheets' : 'other' })),
+  executions: [], stats: { total: 0, success: 0, avg_s: null, last: f.at }, updated: f.at,
+  fix_url: /google sheets|credential|connexion/i.test(f.error || '') ? `${N8N_URL}/home/credentials` : `${N8N_URL}/home/workflows`,
+});
+
 app.get('/api/automations', async (req, res) => {
   if (!(await n8nUp())) return res.json({ up: false, automations: [] });
   try {
     const all = (await n8nApi('/workflows?limit=100')).data || [];
     const mine = all.filter((w) => w.id.startsWith('twiin') && !/\(outil\)/.test(w.name));
     const list = await Promise.all(mine.map(automationSummary));
+    for (const f of readFailed()) if (!list.some((a) => a.id === f.id)) list.push(failedSummary(f)); // échecs de création
     const runs = list.flatMap((a) => a.executions.map((e) => ({ n8n_id: a.id, n8n_execution_id: String(e.id), status: e.status, mode: e.mode,
                                                                   started_at: e.startedAt, stopped_at: e.stoppedAt })));
     if (runs.length) sb('automation_runs?on_conflict=user_id,n8n_execution_id', { method: 'POST', prefer: 'resolution=merge-duplicates,return=minimal', body: runs });
@@ -1645,6 +1670,24 @@ app.post('/api/automations/:id/schedule', async (req, res) => {
     console.error(e.message);
     res.status(500).json({ error: e.message });
   }
+});
+
+// Réessayer la création d'une automatisation qui avait échoué (après avoir ajouté la connexion dans n8n, par exemple).
+app.post('/api/automations/:id/retry', async (req, res) => {
+  const f = readFailed().find((x) => x.id === req.params.id);
+  if (!f) return res.status(404).json({ error: 'Rien à réessayer.' });
+  try { await ensureN8n(); } catch (e) { return res.status(500).json({ error: e.message }); }
+  const r = await new Promise((resolve) => {
+    const p = spawn(PYTHON, ['-u', N8N_GEN, f.planFile, '--no-run'], { cwd: REPO_ROOT, env: { ...process.env, PYTHONUTF8: '1' } });
+    let out = '', err = '';
+    p.stdout.on('data', (d) => (out += d)); p.stderr.on('data', (d) => (err += d));
+    p.on('close', () => resolve({ ok: /"type": "imported"/.test(out), err: err.trim().split(/\r?\n/).filter(Boolean).at(-1) || '' }));
+  });
+  if (!r.ok) { rememberFailed({ ...f, error: r.err || f.error }); return res.status(500).json({ error: r.err || 'création impossible' }); }
+  forgetFailed(f.id);
+  await sb('automations?on_conflict=user_id,n8n_id', { method: 'POST', prefer: 'resolution=merge-duplicates,return=minimal',
+    body: { n8n_id: f.id, name: f.name, blocks: f.blocks, freq: 'manual', active: false } });
+  res.json({ ok: true, id: f.id });
 });
 
 // Arrêter : l'exécution en cours (Twiin), le rejeu Holo qu'elle a lancé (souris et clavier rendus) et l'exécution dans n8n.

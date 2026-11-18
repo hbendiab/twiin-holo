@@ -58,8 +58,27 @@
     ['Choix de la meilleure solution', []],
   ];
 
+  function inlineProgress(progress) {
+    // Après le « oui » : un bandeau dans l'étape Reco (pas une fenêtre), car la recommandation est déjà affichée
+    box.hidden = true;
+    let host = document.getElementById('dcProgress');
+    if (!host) {
+      host = document.createElement('section');
+      host.id = 'dcProgress';
+      host.className = 'panel view';
+      host.dataset.view = '3';
+      host.style.cssText = 'margin:14px 0;padding:12px 16px;border-radius:12px;display:flex;gap:10px;align-items:center';
+      const results = document.getElementById('results');
+      (results?.parentNode || document.body).insertBefore(host, results || null);
+    }
+    const n = progress?.total ? ` (${progress.done}/${progress.total} essais)` : '';
+    host.innerHTML = `<span aria-hidden="true">🔬</span><span><b>Twiin vérifie cette recommandation</b> en la testant dans un
+      environnement isolé${esc(n)}. Le résultat s'affichera ici.</span>`;
+  }
+
   function loading(title, steps, phase, progress) {
-    box.classList.toggle('dc-mini', steps === AFTER); // après le « oui » : la page Reco reste utilisable
+    if (steps === AFTER) return inlineProgress(progress);
+    box.classList.remove('dc-mini');
     const idx = steps.findIndex(([, ph]) => ph.includes(phase));
     const cur = idx < 0 ? steps.length - 1 : idx;
     const pct = progress?.total ? Math.round((progress.done / progress.total) * 100) : null;
@@ -122,6 +141,7 @@
   function solution(s) {
     view = 'solution';
     box.hidden = true;
+    document.getElementById('dcProgress')?.remove();
     // Encart dans la page (en haut des résultats de l'étape Reco), pas une fenêtre par-dessus
     let host = document.getElementById('dcSolution');
     if (!host) {
