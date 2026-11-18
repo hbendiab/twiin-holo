@@ -73,15 +73,74 @@ def login(url: str):
     return prepare
 
 
+# Les champs de saisie visibles avec leur libellé (label, aria, ou en-tête de colonne) et leur ligne de tableau.
+# Exposé comme window.__twinState : run_agent le lit à chaque « fini » (done_guard) et à la fin.
+FIELDS_JS = r"""window.__twinState = () => {
+  const vis = (e) => { const r = e.getBoundingClientRect(); return r.width > 0 && r.height > 0; };
+  const txt = (e) => (e?.innerText || e?.textContent || '').trim();
+  const rows = [...document.querySelectorAll('tr')].filter((tr) => tr.querySelector('input, select, textarea'));
+  return [...document.querySelectorAll('input:not([type=hidden]):not([type=password]):not([type=checkbox]):not([type=radio]), select, textarea')]
+    .filter(vis).map((e) => {
+      let label = (e.id && txt(document.querySelector(`label[for="${e.id}"]`))) || e.getAttribute('aria-label') || '';
+      if (!label && e.getAttribute('aria-labelledby')) label = e.getAttribute('aria-labelledby').split(' ').map((i) => txt(document.getElementById(i))).join(' ');
+      const td = e.closest('td'), tr = e.closest('tr');
+      if (!label && td && tr) { const th = e.closest('table')?.querySelectorAll('tr')[0]?.children[td.cellIndex]; label = txt(th); }
+      const value = e.tagName === 'SELECT' ? txt(e.selectedOptions[0]) : e.value;
+      return { label: label.slice(0, 60), value: (value || '').slice(0, 120), row: tr && td ? rows.indexOf(tr) : -1 };
+    });
+};"""
+
+
+def same(want, got) -> bool:
+    a, b = norm(want), norm(got)
+    if not a:
+        return True
+    if not b:
+        return False
+    if a == b or (len(a) > 3 and (a in b or (len(b) > 3 and b in a))):
+        return True
+    return bool(digits(want)) and digits(want) == digits(got) and not re.search(r"[a-z]{3}", a.replace("eur", ""))
+
+
+def label_match(key, label) -> bool:
+    k, l = set(norm(key).split()), set(norm(label).split())
+    return bool(k and l) and len(k & l) / len(k) >= 0.5
+
+
+def compare(values: dict, fields: list) -> list[str]:
+    """Écarts entre les valeurs à saisir et ce que montrent les champs, ligne par ligne. [] si tout est bon."""
+    rows = sorted({f["row"] for f in fields if f["row"] >= 0})
+    bad = []
+    for k, v in values.items():
+        m = re.match(r"ligne (\d+) · (.+)", k)
+        if m:
+            i, key = int(m.group(1)) - 1, m.group(2)
+            pool = [f for f in fields if rows[i:i + 1] and f["row"] == rows[i]] if i < len(rows) else []
+        else:
+            key, pool = k, [f for f in fields if f["row"] < 0] or fields
+        named = [f for f in pool if label_match(key, f["label"])]
+        if named and not any(same(v, f["value"]) for f in named):
+            bad.append(f"{k} : attendu « {v} », affiché « {named[0]['value']} »")
+        elif not named and not any(same(v, f["value"]) for f in pool):
+            bad.append(f"{k} : « {v} » absent")
+    return bad
+
+
+def guard(values: dict):
+    def done_guard(state):
+        bad = compare(values, state or [])
+        return ("these fields are wrong or empty, fix them (then save the draft again): " + " ; ".join(bad)) if bad else None
+    return done_guard
+
+
 def checker(values: dict):
     def final_check(page):
-        shown = page.evaluate("""() => document.body.innerText + '\\n' +
-            [...document.querySelectorAll('input, textarea, select')].map((e) =>
-              e.tagName === 'SELECT' ? (e.selectedOptions[0]?.text || '') : e.value).join('\\n')""")
-        txt, nums = norm(shown), {digits(x) for x in re.findall(r"\d[\d\s.,]*", shown)}
-        missing = [k for k, v in values.items() if str(v).strip()
-                   and norm(v) not in txt and not (digits(v) and digits(v) in nums)]
-        return {"ok": not missing, "missing": missing}
+        bad = compare(values, page.evaluate("() => window.__twinState ? window.__twinState() : []") or [])
+        # messages d'erreur affichés par le logiciel (champ obligatoire, doublon…) : la saisie n'est pas enregistrée
+        errs = page.evaluate(r"""() => [...document.querySelectorAll('[role=alert], .error, .erreur, .errors, .alert, .message-erreur, [class*=error], [class*=erreur]')]
+            .filter((e) => e.offsetParent).map((e) => e.innerText.trim()).filter((t) => /erreur|error|doublon|duplicate|obligatoire|required|invalide|invalid/i.test(t))
+            .map((t) => t.slice(0, 200))""") or []
+        return {"ok": not bad and not errs, "missing": bad, "page_errors": errs}
     return final_check
 
 
@@ -90,7 +149,8 @@ def main():
     url, label = req["url"], req.get("label") or "the record"
     raw = req.get("values") or {}
     rows = [r for r in (raw.get("lignes") or []) if isinstance(r, dict)]
-    values = {k: v for k, v in raw.items() if k != "lignes" and str(v).strip()}
+    dest = str(raw.get("destinataire") or "")
+    values = {k: v for k, v in raw.items() if k not in ("lignes", "destinataire") and str(v).strip()}
     for i, r in enumerate(rows, 1):  # à vérifier aussi à l'écran
         values.update({f"ligne {i} · {k}": v for k, v in r.items() if str(v).strip()})
     if not values:
@@ -102,14 +162,17 @@ def main():
             f"- row {i}: " + "; ".join(f"{k} = {v}" for k, v in r.items()) for i, r in enumerate(rows, 1))
     mission = (f"You are in a business web application. Enter {label} with EXACTLY these values, each in the field "
                f"with this label:\n{lines}\n"
-               "If you are not on the entry form yet, open it (e.g. « Nouveau », « Créer », « + »). Fields with a suggestion "
+               + (f"The document is addressed to « {dest} »: if the application first asks to choose a company, client "
+                  f"file or folder (dossier), open the one for « {dest} » (use its search box if needed). " if dest else "")
+               + "If you are not on the entry form yet, open it (e.g. « Nouveau », « Créer », « + »). Fields with a suggestion "
                "list: type a few letters, then click the matching suggestion. Use note to track which fields are done. "
                "When every field shows its value, save it as a DRAFT (« Enregistrer », « Brouillon ») if such a button exists. "
                "Never validate, send, pay, sign or delete anything. Then call done.")
     out = Path(tempfile.mkdtemp(prefix="twiin-fill-"))
     try:
         res = run_agent(url, mission, out, MODEL, max_steps=int(req.get("max_steps") or 40),
-                        prepare=login(url), final_check=checker(values))
+                        init_script=FIELDS_JS, done_guard=guard(values), prepare=login(url),
+                        final_check=checker(values))
     except RuntimeError as e:
         print(json.dumps({"ok": False, "error": str(e)}, ensure_ascii=False))
         return

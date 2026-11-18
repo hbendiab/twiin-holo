@@ -205,7 +205,7 @@ footer { margin-top: 48px; color: var(--dim); font-size: 13px; }
 
     <section class="step">
       <div class="step-head"><span class="num">3</span><h3>Comprendre et faire valider</h3><span class="status s-ok">en place</span></div>
-      <p class="what">Twiin reformule ce qu'il a compris (problème, étapes, outils, objectif, points à confirmer) et pose une seule question : « Ai-je bien compris votre problème ? ». Les étapes et conseils restent cachés jusqu'au « oui ».</p>
+      <p class="what">Twiin reformule ce qu'il a compris (problème, étapes, outils, objectif, points à confirmer, et le <b>résultat attendu</b> : un tableau des vraies valeurs lues à l'écran pendant l'enregistrement) et pose une seule question : « Ai-je bien compris votre problème ? ». Les étapes et conseils restent cachés jusqu'au « oui ». Le résultat attendu validé est ce que les essais doivent reproduire exactement (avant, il était deviné par l'IA).</p>
       <div class="tbl"><table>
         <tr><th>Brique</th><th>Outil utilisé</th><th>Pourquoi</th><th>Où</th></tr>
         <tr><td>Fiche de cadrage</td><td>appel court à Qwen, texte seul</td><td>rapide : la question n'attend pas le jumeau</td><td><span class="where w-ext">API</span></td></tr>
@@ -261,6 +261,9 @@ footer { margin-top: 48px; color: var(--dim); font-size: 13px; }
         <tr><td>Tuto vidéo</td><td>Remotion + voix ElevenLabs</td><td>montrer la façon rapide de faire ; lancé à la main pour l'instant</td><td><span class="where w-cloud">serveur</span></td></tr>
         <tr><td>Livraison n8n</td><td>bouton « Créer cette automatisation » : plan construit depuis la solution gagnante (éléments, vraies adresses lues dans l'enregistrement, classeur), importé inactif</td><td>l'automatisation livrée est celle qui a été testée, pas un plan réécrit de zéro</td><td><span class="where w-cloud">serveur</span></td></tr>
         <tr><td>Sans gêner l'employé</td><td>Holo lit les sites dans un navigateur invisible ; Excel rempli par le fichier (openpyxl)</td><td>la souris et le clavier restent à l'employé (cas du casque : 51 s, 3 pages lues, 3 lignes écrites)</td><td><span class="where w-cloud">serveur</span></td></tr>
+        <tr><td>Saisie sans API</td><td>modèle « document → logiciel web » : le document le plus récent (PDF, lignes de tableau comprises) est lu sur le poste (pypdf), Holo saisit dans un navigateur invisible et enregistre en brouillon, le navigateur vérifie chaque valeur à l'écran</td><td>cas de la facture fournisseur ; le plan choisit seul entre « lecture web » et « saisie web »</td><td><span class="where w-cloud">serveur</span></td></tr>
+        <tr><td>Connexion</td><td>coffre local (<code>workflows/runs/.coffre.json</code>, hors git) : Twiin remplit lui-même la page de connexion</td><td>Holo ne voit jamais un mot de passe ; en version finale, coffre de secrets côté serveur</td><td><span class="where w-cloud">serveur</span></td></tr>
+        <tr><td>« Accélérer »</td><td>conseils et tuto seulement</td><td>quand les essais ne sont pas assez fiables, aucune trace d'automatisation n'est montrée</td><td><span class="where w-cloud">serveur</span></td></tr>
         <tr><td>Contrôle</td><td>planification jour / jours de la semaine / jour du mois, heure et minutes ; bouton Arrêter ; double Échap</td><td>l'employé garde la main à tout moment</td><td><span class="where w-cloud">serveur</span></td></tr>
       </table></div>
     </section>
@@ -273,7 +276,7 @@ footer { margin-top: 48px; color: var(--dim); font-size: 13px; }
       <li><b>Isolation par entreprise</b> : chaque salarié se connecte avec son compte ; Supabase ne lui montre que les données de son entreprise (RLS testée).</li>
       <li><b>Tout est mesuré</b> : chaque essai écrit sa durée, son nombre d'appels, sa réussite vérifiée et les faux « réussis » dans <code>tests</code>.</li>
       <li><b>Mac et Windows</b> : le même code détecte le système ; <code>scripts/doctor.py</code> vérifie un poste sans afficher aucun secret.</li>
-      <li><b>À trancher en équipe</b> : un seul projet Supabase, mais deux jeux de tables dans le code. Celles d'Alexis (<code>dictionnaire, taches, tests, recommendations</code>) sont en service ; celles de Hanine (<code>profiles, audits, tasks, tutos, automations, automation_runs, back_log</code>) sont préparées, pas appliquées. <code>recommendations</code> existe déjà avec d'autres colonnes, et <code>tasks</code> double <code>taches</code>.</li>
+      <li><b>Tables fusionnées</b> : un seul projet Supabase, un seul jeu de tables (celles d'Alexis et celles de Hanine), migration idempotente appliquée et vérifiée.</li>
       <li><b>Secrets</b> : jamais dans le dépôt. Aujourd'hui dans un fichier <code>.env</code> local (environnement de l'équipe) ; demain uniquement côté serveur.</li>
     </ul>
   </div>

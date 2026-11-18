@@ -75,6 +75,24 @@ SUGGESTIONS_JS = """() => {
   return opts.slice(0, 8).map((e) => (e.innerText || '').trim().split(String.fromCharCode(10))[0].slice(0, 60));
 }"""
 
+# Listes déroulantes natives (<select>) : leur menu ne s'affiche pas dans un navigateur invisible. Twiin donne donc
+# les choix à Holo, et « taper » le choix dans la liste le sélectionne (générique, tout site).
+SELECT_AT = r"""([x, y, want]) => {
+  const s = document.elementFromPoint(x, y)?.closest('select');
+  if (!s) return null;
+  const opts = [...s.options].map((o) => o.text.trim());
+  if (want == null) return { options: opts.slice(0, 30), current: s.selectedOptions[0]?.text.trim() || '' };
+  const n = (t) => t.normalize('NFKD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/\s+/g, ' ').trim();
+  const w = n(String(want));
+  let i = opts.findIndex((o) => n(o) === w);
+  if (i < 0) i = opts.findIndex((o) => n(o).includes(w) || (n(o) && w.includes(n(o))));
+  if (i < 0) return { options: opts.slice(0, 30), chosen: null };
+  s.selectedIndex = i;
+  s.dispatchEvent(new Event('input', { bubbles: true }));
+  s.dispatchEvent(new Event('change', { bubbles: true }));
+  return { options: opts.slice(0, 30), chosen: opts[i] };
+}"""
+
 ELEMENT_AT = """([x, y]) => {
   const el = document.elementFromPoint(x, y);
   if (!el) return null;
@@ -227,7 +245,15 @@ def run_agent(url: str, mission: str, out_dir: Path, model: str, max_steps: int 
                 history.append(f"{step}. BLOCKED: clicking '{info.get('text')}' is an irreversible action and is forbidden.")
                 continue
             try:
-                if name == "click":
+                sel = page.evaluate(SELECT_AT, [px, py, args.get("text") if name == "type_text" else None])                     if name in ("click", "type_text") else None
+                if sel and name == "click":
+                    history.append(f"{step}. This is a DROPDOWN LIST (now: « {sel['current']} »). Options: "
+                                   + " | ".join(sel["options"]) + ". To choose, use type_text on it with the option text.")
+                elif sel and name == "type_text":
+                    args["chosen"] = sel.get("chosen")
+                    history.append(f"{step}. Dropdown: " + (f"« {sel['chosen']} » selected." if sel.get("chosen") else
+                                   "no option matches; options are: " + " | ".join(sel["options"])))
+                elif name == "click":
                     page.mouse.click(px, py)
                 elif name == "type_text":
                     page.mouse.click(px, py)

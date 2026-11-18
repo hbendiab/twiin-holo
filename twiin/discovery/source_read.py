@@ -68,7 +68,9 @@ def main():
                    f"exactly these keys: {json.dumps(cols, ensure_ascii=False)}. Copy each value exactly as written in the "
                    "document (numbers with their decimals, no currency sign unless it is part of the field). \"\" if absent."
                    + (f" Add the key \"lignes\": one object per table row of the document, with exactly the keys "
-                      f"{json.dumps(line_cols, ensure_ascii=False)}." if line_cols else "")},
+                      f"{json.dumps(line_cols, ensure_ascii=False)}." if line_cols else "")
+                   + " Add the key \"destinataire\": the company or person the document is addressed to (billed to, "
+                     "customer, recipient), as written."},
                   {"role": "user", "content": txt}],
         extra_body={"reasoning_effort": "low"})
     raw = (r.choices[0].message.content or "").strip()
@@ -78,9 +80,12 @@ def main():
     except ValueError:
         data = {}
     lignes = [{c: str(r.get(c, "")) for c in line_cols} for r in (data.get("lignes") or []) if isinstance(r, dict)]
+    dest = str(data.get("destinataire", ""))
     data = {c: str(data.get(c, "")) for c in cols}
     if line_cols:
         data["lignes"] = lignes
+    if dest:  # contexte : dans quel dossier / quelle société saisir (pas un champ du formulaire)
+        data["destinataire"] = dest
     if req.get("mark", True) and any(data.values()):
         DONE.parent.mkdir(parents=True, exist_ok=True)
         DONE.write_text(json.dumps(sorted(done | {str(p)}), ensure_ascii=False, indent=1), encoding="utf-8")
