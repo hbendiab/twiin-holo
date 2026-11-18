@@ -169,6 +169,7 @@ footer { margin-top: 48px; color: var(--dim); font-size: 13px; }
         <tr><td>OCR</td><td>Vision (macOS) · OCR intégré de Windows (<code>ocr_win.py</code>)</td><td>texte lu en local, rien ne sort du poste, gratuit</td><td><span class="where w-local">poste</span></td></tr>
         <tr><td>Journal d'actions</td><td>Quartz + Accessibilité (macOS) · pynput + UI Automation (Windows)</td><td>sait sur quel bouton on clique : base du « chemin de l'employé »</td><td><span class="where w-local">poste</span></td></tr>
         <tr><td>Choix Mac / Windows</td><td>détection automatique dans <code>server.js</code></td><td>même code pour tout le monde</td><td><span class="where w-local">poste</span></td></tr>
+        <tr><td>Audit vocal</td><td>voix ElevenLabs, transcription Scribe, lexique des mots métier (<code>lexicon.json</code>)</td><td>l'employé décrit son poste à l'oral, sans formulaire</td><td><span class="where w-ext">API</span></td></tr>
       </table></div>
     </section>
 
@@ -189,7 +190,8 @@ footer { margin-top: 48px; color: var(--dim); font-size: 13px; }
         <tr><th>Brique</th><th>Outil utilisé</th><th>Pourquoi</th><th>Où</th></tr>
         <tr><td>Fiche de cadrage</td><td>appel court à Qwen, texte seul</td><td>rapide : la question n'attend pas le jumeau</td><td><span class="where w-ext">API</span></td></tr>
         <tr><td>Travail en arrière-plan</td><td>worker Python détaché (<code>discovery/</code>)</td><td>la page reste fluide ; un redémarrage du serveur ne l'interrompt pas</td><td><span class="where w-cloud">serveur</span></td></tr>
-        <tr><td>Stockage</td><td>Supabase : <code>taches</code>, bucket <code>task-captures</code></td><td>Postgres + Storage, isolation par entreprise (RLS), compte de chaque salarié</td><td><span class="where w-ext">API</span></td></tr>
+        <tr><td>Stockage</td><td>Supabase : <code>taches</code> (texte et chiffres) ; captures gardées sur le poste par défaut</td><td>Postgres, isolation par entreprise (RLS), compte de chaque salarié ; les images d'écran ne quittent pas le poste</td><td><span class="where w-ext">API</span></td></tr>
+        <tr><td>Où le voir</td><td>parcours employé en 3 pages (Audit → Enregistrer → Reco) ; détail interne dans la page Back</td><td>l'employé ne voit que la question et la recommandation ; l'équipe voit tout</td><td><span class="where w-cloud">serveur</span></td></tr>
       </table></div>
     </section>
 
@@ -249,6 +251,7 @@ footer { margin-top: 48px; color: var(--dim); font-size: 13px; }
       <li><b>Isolation par entreprise</b> : chaque salarié se connecte avec son compte ; Supabase ne lui montre que les données de son entreprise (RLS testée).</li>
       <li><b>Tout est mesuré</b> : chaque essai écrit sa durée, son nombre d'appels, sa réussite vérifiée et les faux « réussis » dans <code>tests</code>.</li>
       <li><b>Mac et Windows</b> : le même code détecte le système ; <code>scripts/doctor.py</code> vérifie un poste sans afficher aucun secret.</li>
+      <li><b>À trancher en équipe</b> : deux schémas Supabase coexistent dans le code (Alexis : <code>dictionnaire, taches, tests, recommendations</code>, en service ; Hanine : <code>profiles, audits, tasks, tutos, automations…</code>, préparé, pas appliqué). Ils définissent tous deux <code>recommendations</code>.</li>
       <li><b>Secrets</b> : jamais dans le dépôt. Aujourd'hui dans un fichier <code>.env</code> local (environnement de l'équipe) ; demain uniquement côté serveur.</li>
     </ul>
   </div>
