@@ -38,3 +38,6 @@ automation/n8n-cli/n8n/references/
 # Workflows n8n récupérés en TypeScript : ils contiennent aussi le jeton dès qu'il y a un bloc Holo
 # (à corriger : ranger le jeton dans une connexion n8n « Header Auth » au lieu de l'écrire dans le nœud)
 automation/n8n-cli/n8n/workflows/
+
+# Logos des outils : extraits des applications installées sur CE Mac (scripts/fetch_icons.py), régénérés sur chaque poste
+recorder/public/icons/

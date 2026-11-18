@@ -314,6 +314,11 @@ app.get('/api/actions', (req, res) => {
   res.json({ events: all.slice(since).filter((e) => !IS_RECORDER(e)), next: all.length });
 });
 
+// Avancement de l'analyse en cours, lu par la page chaque seconde (étapes cochées pendant l'attente).
+let analysisProgress = { phase: 'idle', at: Date.now() };
+const setPhase = (phase) => { analysisProgress = { phase, at: Date.now() }; };
+app.get('/api/analysis/progress', (req, res) => res.json(analysisProgress));
+
 // Analyse commune : nouvel enregistrement (images + OCR) ou relance (images gardées, ou texte OCR seul).
 async function analyze({ frames, transcript, actionLog = '', ocrLines = 0, screens = 1, textOnly = false }) {
   const used = textOnly ? [] : sampleFrames(frames);
@@ -327,6 +332,7 @@ async function analyze({ frames, transcript, actionLog = '', ocrLines = 0, scree
     { type: 'text', text: `OCR TRANSCRIPT (exact text, authoritative for values):\n${transcript || '(no text read)'}` },
   ];
 
+  setPhase('model');
   const { data: resp, response: httpResp } = await client.chat.completions.create({
     model: HF_MODEL,
     max_tokens: MAX_OUTPUT_TOKENS,
@@ -350,11 +356,12 @@ async function analyze({ frames, transcript, actionLog = '', ocrLines = 0, scree
   console.log(`Modèle ${HF_MODEL} via ${provider ?? '?'} : ${usage.prompt_tokens ?? '?'} tokens entrée, ${usage.completion_tokens ?? '?'} sortie` +
               (cost_usd != null ? `, ≈ ${cost_usd.toFixed(4)} $` : ''));
 
+  setPhase('parse');
   const choice = resp.choices?.[0];
   const raw = choice?.message?.content || '';
   if (!raw.trim() || (choice?.finish_reason === 'length' && !raw.includes('}'))) {
     throw new Error(`Réponse du modèle coupée ou vide (${usage.completion_tokens ?? '?'} tokens, dont ` +
-      `${usage.completion_tokens_details?.reasoning_tokens ?? '?'} de raisonnement). Clique sur « Relancer l'analyse ».`);
+      `${usage.completion_tokens_details?.reasoning_tokens ?? '?'} de raisonnement). Clique sur « Réanalyser le dernier enregistrement ».`);
   }
   const { result, repaired } = parseWorkflows(raw);
   meta.json_repaired = repaired;
@@ -374,6 +381,7 @@ async function analyzeSessionDir(dir) {
   if (!frames.length) throw new Error('Aucune image enregistrée pour cet enregistrement.');
   const actionLog = actionTranscript(readActions(dir), startedAt || Date.parse(frames[0]?.timestamp), shared);
   const t0 = Date.now();
+  setPhase('ocr');
   const ocr = await runOcr(frames);
   const transcript = ocrTranscript(frames, ocr);
   const ocrLines = ocr.reduce((n, o) => n + (o.lines?.length || 0), 0);
@@ -397,6 +405,8 @@ app.post('/api/generate-workflows', async (req, res) => {
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: err.message });
+  } finally {
+    setPhase('idle');
   }
 });
 
@@ -419,6 +429,8 @@ app.post('/api/reanalyze', async (req, res) => {
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: err.message });
+  } finally {
+    setPhase('idle');
   }
 });
 

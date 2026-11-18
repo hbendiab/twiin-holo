@@ -33,10 +33,164 @@ let journalNext = 0, journalTimer = null;
 let uploads = [];            // envois d'images en cours (chaque image part au serveur dès qu'elle est prise)
 let uploadErrors = 0;
 
+// --- Un seul bouton plein à l'écran : la prochaine action (cahier UX, règle « une seule couleur d'action ») ----------
+function setPrimary(btn) {
+  document.querySelectorAll('button.primary').forEach((b) => b.classList.remove('primary'));
+  btn?.classList.add('primary');
+}
+
+// --- Logos des outils (icons/icons.json, créé par scripts/fetch_icons.py) -----------------------------------------------
+// On reconnaît un outil dans un texte par ses alias (« Microsoft Excel », « Excel », « com.microsoft.Excel »).
+let ICONS = [];
+const iconsReady = fetch('icons/icons.json').then((r) => r.json())
+  .then((d) => {
+    ICONS = (d.icons || []).map((e) => ({ ...e, res: e.aliases.map((a) =>
+      new RegExp(`(^|[^\\p{L}\\p{N}])${a.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?=$|[^\\p{L}\\p{N}])`, 'u')) }));
+  })
+  .catch(() => { ICONS = []; }); // pas de logos : la page marche quand même, en texte seul
+
+// Outils cités dans un texte, dans l'ordre où ils apparaissent (au plus `max`).
+function findIcons(text, max = 3) {
+  if (!text || !ICONS.length) return [];
+  const hits = [];
+  for (const e of ICONS) {
+    let pos = -1;
+    for (const re of e.res) { const m = re.exec(text); if (m && (pos < 0 || m.index < pos)) pos = m.index; }
+    if (pos >= 0 && !hits.some((h) => h.e.key === e.key)) hits.push({ e, pos });
+  }
+  return hits.sort((a, b) => a.pos - b.pos).slice(0, max).map((h) => h.e);
+}
+const iconImg = (e, cls = 'ticon') => `<img class="${cls}" src="icons/${e.file}" alt="" title="${escapeHtml(e.label)}">`;
+const iconsHtml = (text, max) => findIcons(text, max).map((e) => iconImg(e)).join('');
+// Bandeau « outils utilisés » : logo + nom, pour une liste d'étapes
+function appsStrip(texts) {
+  const seen = new Map();
+  for (const t of texts) for (const e of findIcons(t, 5)) if (!seen.has(e.key)) seen.set(e.key, e);
+  return [...seen.values()].map((e) => `<span class="app-pill">${iconImg(e)}${escapeHtml(e.label)}</span>`).join('');
+}
+
+// --- Thème : clair par défaut, sombre au choix (mémorisé sur ce navigateur) -----------------------------------------
+const themeBtn = document.getElementById('themeBtn');
+function applyThemeLabel() {
+  themeBtn.textContent = document.documentElement.dataset.theme === 'dark' ? 'Thème clair' : 'Thème sombre';
+}
+themeBtn.addEventListener('click', () => {
+  const dark = document.documentElement.dataset.theme !== 'dark';
+  document.documentElement.dataset.theme = dark ? 'dark' : 'light';
+  try { localStorage.setItem('twiin-theme', dark ? 'dark' : 'light'); } catch { /* stockage bloqué : tant pis */ }
+  applyThemeLabel();
+});
+applyThemeLabel();
+
+// --- Les deux cellules de Twiin (une cellule qui se divise en deux, comme de vrais jumeaux) ------------------------
+// Filtre SVG « gooey » (flou puis seuil) : deux cercles proches fusionnent en une seule forme.
+const REDUCED_MOTION = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+let cellsCount = 0;
+function makeCells(container) {
+  const id = `goo${++cellsCount}`;
+  container.innerHTML = `
+    <svg viewBox="40 40 400 220" role="img" aria-label="Deux cellules Twiin">
+      <defs>
+        <filter id="${id}" x="-20%" y="-20%" width="140%" height="140%">
+          <feGaussianBlur in="SourceGraphic" stdDeviation="14" result="b"/>
+          <feColorMatrix in="b" mode="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 26 -11" result="g"/>
+          <feComposite in="SourceGraphic" in2="g" operator="atop"/>
+        </filter>
+      </defs>
+      <g filter="url(#${id})">
+        <circle data-c="a" cx="240" cy="150" r="70" style="fill:var(--cell-a)"/>
+        <circle data-c="b" cx="240" cy="150" r="70" style="fill:var(--cell-b)"/>
+        <circle data-c="m" cx="240" cy="150" r="30" style="fill:var(--cell-a)"/>
+      </g>
+      <circle data-c="na" cx="240" cy="150" r="9" style="fill:var(--nucleus)" opacity="0.7"/>
+      <circle data-c="nb" cx="240" cy="150" r="9" style="fill:var(--nucleus)" opacity="0.7"/>
+    </svg>`;
+  const q = (k) => container.querySelector(`[data-c="${k}"]`);
+  const [a, b, m, na, nb] = ['a', 'b', 'm', 'na', 'nb'].map(q);
+  const ease = (t) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
+  return (p) => { // p : 0 = une cellule, 1 = deux cellules séparées
+    const d = 110 * ease(Math.min(1, Math.max(0, p)));
+    const r = 70 - 8.4 * Math.sin(Math.PI * Math.min(p * 1.1, 1));
+    a.setAttribute('cx', 240 - d); b.setAttribute('cx', 240 + d);
+    a.setAttribute('r', r); b.setAttribute('r', r);
+    m.setAttribute('r', Math.max(0, 34 * (1 - p * 1.6)));
+    const nd = Math.min(d + 4 * p, 110);
+    na.setAttribute('cx', 240 - nd); nb.setAttribute('cx', 240 + nd);
+    nb.setAttribute('opacity', (0.7 * Math.min(1, p * 4)).toFixed(2));
+  };
+}
+const drawLogo = makeCells(document.getElementById('logoCells'));
+const drawAnalysis = makeCells(document.getElementById('analysisCells'));
+let analysisMotion = { mode: 'idle', since: 0 }; // working : la cellule s'étire ; done : elle se divise
+function animateCells(now) {
+  drawLogo(0.42 + 0.1 * Math.sin(now / 1400));   // le logo « respire » : deux lobes collés
+  const t = (now - analysisMotion.since) / 1000;
+  if (analysisMotion.mode === 'working') drawAnalysis(0.28 + 0.24 * Math.sin(t * 1.8 - Math.PI / 2));
+  else if (analysisMotion.mode === 'done') drawAnalysis(Math.min(1, 0.4 + t / 1.6));
+  else if (analysisMotion.mode === 'fail') drawAnalysis(0);
+  requestAnimationFrame(animateCells);
+}
+if (REDUCED_MOTION) { drawLogo(0.45); drawAnalysis(0.3); } else requestAnimationFrame(animateCells);
+
+// --- Attente de l'analyse : étapes réelles, cochées au fil de l'eau (le serveur dit où il en est) -------------------
+const analysisEl = document.getElementById('analysis');
+const phasesEl = document.getElementById('phases');
+const PHASES = [
+  ['upload', 'Envoi des dernières images'],
+  ['ocr', 'Lecture du texte de l\'écran, sur ton Mac'],
+  ['model', 'Découpage en étapes par le modèle'],
+  ['parse', 'Mise en forme du résultat'],
+];
+let phaseTimer = null, phaseStart = 0, phaseCurrent = null;
+function showPhase(phase) {
+  if (phase !== phaseCurrent) { phaseCurrent = phase; phaseStart = Date.now(); }
+  const k = PHASES.findIndex(([p]) => p === phase);
+  phasesEl.innerHTML = PHASES.map(([p, label], i) => {
+    const cls = i < k ? 'done' : i === k ? 'active' : '';
+    const sec = i === k ? `<span class="sec">${Math.round((Date.now() - phaseStart) / 1000)} s</span>` : '';
+    return `<li class="${cls}"><i>${i < k ? '✓' : ''}</i>${label}${sec}</li>`;
+  }).join('');
+}
+function startAnalysisPanel(firstPhase) {
+  document.getElementById('example').hidden = true;
+  analysisEl.hidden = false;
+  document.getElementById('analysisTitle').textContent = 'Twiin analyse ta tâche';
+  document.getElementById('phaseNote').textContent = 'Compte 1 à 2 minutes. Tu peux laisser la page ouverte.';
+  analysisMotion = { mode: 'working', since: performance.now() };
+  showPhase(firstPhase);
+  clearInterval(phaseTimer);
+  phaseTimer = setInterval(async () => {
+    try {
+      const { phase } = await (await fetch('/api/analysis/progress')).json();
+      const known = PHASES.findIndex(([p]) => p === phase);
+      const cur = PHASES.findIndex(([p]) => p === phaseCurrent);
+      showPhase(known > cur ? phase : phaseCurrent); // on n'avance jamais à reculons
+    } catch { showPhase(phaseCurrent); }
+  }, 1000);
+}
+function endAnalysisPanel(ok, message) {
+  clearInterval(phaseTimer);
+  if (ok) {
+    phasesEl.innerHTML = PHASES.map(([, label]) => `<li class="done"><i>✓</i>${label}</li>`).join('');
+    document.getElementById('analysisTitle').textContent = 'Ton jumeau est prêt';
+    document.getElementById('phaseNote').textContent = message || '';
+    analysisMotion = { mode: 'done', since: performance.now() };
+    if (REDUCED_MOTION) drawAnalysis(1);
+    setTimeout(() => { analysisEl.hidden = true; }, 4000);
+  } else {
+    const k = Math.max(0, PHASES.findIndex(([p]) => p === phaseCurrent));
+    phasesEl.innerHTML = PHASES.map(([, label], i) =>
+      `<li class="${i < k ? 'done' : i === k ? 'fail' : ''}"><i>${i < k ? '✓' : i === k ? '!' : ''}</i>${label}</li>`).join('');
+    document.getElementById('analysisTitle').textContent = 'L\'analyse s\'est arrêtée';
+    document.getElementById('phaseNote').textContent = message || '';
+    analysisMotion = { mode: 'fail', since: performance.now() };
+  }
+}
+
 startBtn.addEventListener('click', startRecording);
 addBtn.addEventListener('click', () => addScreen().catch((e) => (statusEl.textContent = `Écran non ajouté : ${e.message}`)));
 stopBtn.addEventListener('click', stopRecording);
-reBtn.addEventListener('click', () => analyzeRequest('/api/reanalyze', null, 'Relance de l\'analyse du dernier enregistrement…'));
+reBtn.addEventListener('click', () => analyzeRequest('/api/reanalyze', null, 'Nouvelle analyse du dernier enregistrement…'));
 
 async function addScreen() {
   statusEl.textContent = `Choisis l'écran n°${nextScreen} à partager…`;
@@ -81,6 +235,10 @@ async function startRecording() {
     return;
   }
   recording = true;
+  setStep(1);
+  document.getElementById('example').hidden = true;
+  analysisEl.hidden = true;
+  setPrimary(stopBtn);
   ticks = 0;
   startedAt = Date.now();
   uploads = []; uploadErrors = 0;
@@ -130,7 +288,8 @@ async function pollJournal() {
       else if (e.type === 'key') text = `${where} · touche ${e.keys}${e.element ? ` dans ${e.element}` : ''}`;
       if (!text) continue;
       const li = document.createElement('li');
-      li.innerHTML = `<span>${t}</span> ${escapeHtml(text)}`;
+      const ico = findIcons(`${e.app || ''} ${e.window || ''}`, 1)[0];
+      li.innerHTML = `<span>${t}</span> ${ico ? iconImg(ico) : ''}${escapeHtml(text)}`;
       ol.appendChild(li);
       ol.scrollTop = ol.scrollHeight;
     }
@@ -265,15 +424,16 @@ async function stopRecording() {
   addBtn.disabled = true;
   stopBtn.disabled = true;
 
+  setPrimary(startBtn);
   if (!frames.length) {
     statusEl.textContent = 'Aucune image gardée.';
     return;
   }
 
-  statusEl.textContent = `Arrêté. ${frames.length} image(s) gardée(s) sur ${nScreens} écran(s). Lecture du texte (OCR local) puis analyse par le modèle…`;
+  statusEl.textContent = `Enregistrement terminé : ${frames.length} image(s) gardée(s) sur ${nScreens} écran(s).`;
+  startAnalysisPanel('upload');
 
   if (sessionId) {
-    statusEl.textContent = `Arrêté. Envoi des dernières images… puis analyse.`;
     await Promise.allSettled(uploads);
     if (uploadErrors) statusEl.textContent = `⚠️ ${uploadErrors} image(s) non enregistrée(s) côté serveur. Analyse quand même…`;
     await analyzeRequest('/api/generate-workflows', { session: sessionId, startedAt, screens: sharedScreens }, null, nScreens);
@@ -285,6 +445,7 @@ async function stopRecording() {
 async function analyzeRequest(url, body, message, nScreens) {
   if (message) statusEl.textContent = message;
   reBtn.disabled = true;
+  if (analysisEl.hidden || phaseCurrent === null) startAnalysisPanel(url.includes('reanalyze') ? 'ocr' : 'upload');
   try {
     const res = await fetch(url, {
       method: 'POST',
@@ -295,64 +456,110 @@ async function analyzeRequest(url, body, message, nScreens) {
     if (data.error) throw new Error(data.error);
     renderWorkflows(data.workflows || []);
     const m = data._meta || {};
-    statusEl.textContent = `Terminé. ${data.workflows?.length ?? 0} workflow(s) trouvé(s).` +
+    const n = data.workflows?.length ?? 0;
+    endAnalysisPanel(true, `${n} tâche${n > 1 ? 's' : ''} trouvée${n > 1 ? 's' : ''}. Relis les étapes ci-dessous.`);
+    statusEl.textContent = `Terminé. ${n} workflow(s) trouvé(s).` +
       (m.model ? ` Modèle ${m.model} · ${m.screens ?? nScreens ?? '?'} écran(s) · ` +
         (m.text_only ? 'texte OCR seul' : `${m.images_sent} image(s) envoyée(s)`) + ` · ${m.ocr_lines} lignes OCR · ` +
         `${m.usage?.prompt_tokens ?? '?'} tokens en entrée, ${m.usage?.completion_tokens ?? '?'} en sortie` +
         (m.cost_usd != null ? ` · ≈ ${m.cost_usd.toFixed(4)} $` : '') : '');
   } catch (err) {
     statusEl.textContent = `Erreur : ${err.message}`;
+    endAnalysisPanel(false, `${err.message} Tu peux cliquer sur « Réanalyser le dernier enregistrement ».`);
   } finally {
     reBtn.disabled = false;
+    phaseCurrent = null;
   }
 }
 
 // --- Workflow modifiable → « ✨ Améliorer » → « ▶ Rejouer sur mon Mac » (suivi en direct) ---------------------
-function renderWorkflows(workflows) {
+// Barre du parcours : étapes faites (vert) et étape en cours (bleu)
+function setStep(n) {
+  document.querySelectorAll('#stepper li').forEach((li) => {
+    const k = Number(li.dataset.step);
+    li.classList.toggle('done', k < n);
+    li.classList.toggle('active', k === n);
+  });
+}
+setStep(1);
+
+function renderWorkflows(workflows, { example = false } = {}) {
+  if (workflows.length) setStep(2);
   resultsEl.innerHTML = '';
-  workflows.forEach((wf) => resultsEl.appendChild(workflowCard(wf)));
+  document.getElementById('example').hidden = true;
+  workflows.forEach((wf) => resultsEl.appendChild(workflowCard(wf, example)));
+  setPrimary(resultsEl.querySelector('.btn-advice')); // prochaine action : voir où gagner du temps
 }
 
-function workflowCard(wf) {
+function workflowCard(wf, example = false) {
   const card = document.createElement('div');
   card.className = 'workflow';
   let original = { name: wf.name, summary: wf.summary, steps: [...(wf.steps || [])] };
+  const nSteps = (wf.steps || []).length;
   card.innerHTML = `
+    ${example ? '<p><span class="chip-example">Exemple</span>enregistrement réel du 17/11 (veille L\'Oréal), pour la démonstration</p>' : ''}
     <input class="wf-name" value="${escapeHtml(wf.name || 'Workflow')}" title="Nom du workflow (modifiable)">
+    <div class="apps-strip"></div>
     <p class="wf-summary">${escapeHtml(wf.summary || '')}</p>
     ${wf.why_daily ? `<p><strong>Pourquoi l'automatiser :</strong> ${escapeHtml(wf.why_daily)}</p>` : ''}
+    <div class="card-step"><span class="num-inline">2</span> Relis et corrige les ${nSteps} étapes</div>
     <ol class="steps"></ol>
     <button class="icon-btn add-step">+ Ajouter une étape</button>
-    <div class="wf-actions">
-      <button class="btn-advice">💡 Améliorer mon process</button>
-      <button class="btn-verdict">🧭 Accélérer ou automatiser ?</button>
-      <button class="btn-improve" title="Rend les étapes plus précises pour Holo, sans changer la tâche">⚙️ Préparer pour Holo</button>
-      <button class="btn-ghost btn-original" hidden>↺ Revenir à l'original</button>
-      <button class="btn-replay">▶ Rejouer sur mon Mac</button>
-    </div>
+    <div class="card-step"><span class="num-inline">3</span> Vois où gagner du temps</div>
+    <div class="wf-actions"><button class="btn-advice">Voir où gagner du temps</button></div>
     <div class="advice" hidden></div>
+    <div class="card-step"><span class="num-inline">4</span> Choisis : accélérer ou automatiser</div>
+    <div class="wf-actions"><button class="btn-verdict">Obtenir la recommandation de Twiin</button></div>
     <div class="verdict" hidden></div>
-    <div class="changes" hidden></div>
-    <div class="replay" hidden></div>`;
+    <div class="optional">
+      <div class="card-step">Facultatif · vérifier que Twiin a bien compris, avec Holo</div>
+      <div class="wf-actions">
+        <button class="btn-improve" title="Rend les étapes plus précises pour Holo, sans changer la tâche">Préciser les étapes pour Holo</button>
+        <button class="btn-original" hidden>Revenir aux étapes d'origine</button>
+        <button class="btn-replay" title="Holo refait la tâche sur ton Mac pour vérifier que Twiin l'a bien comprise">Faire refaire la tâche par Holo</button>
+      </div>
+      <div class="changes" hidden></div>
+      <div class="replay" hidden></div>
+    </div>`;
   const stepsEl = card.querySelector('.steps');
+  const stripEl = card.querySelector('.apps-strip');
+  // Logo de l'outil de chaque étape. Une étape qui ne cite aucun outil reprend celui de l'étape d'avant (logo pâle).
+  const refreshIcons = () => {
+    let last = null;
+    const texts = [];
+    stepsEl.querySelectorAll('li').forEach((li) => {
+      const text = li.querySelector('textarea').value;
+      texts.push(text);
+      const found = findIcons(text, 2);
+      const slot = li.querySelector('.step-ico');
+      if (found.length) { slot.innerHTML = found.map((e) => iconImg(e)).join(''); slot.classList.remove('inherited'); last = found.at(-1); }
+      else if (last) { slot.innerHTML = iconImg(last); slot.classList.add('inherited'); }
+      else slot.innerHTML = '';
+    });
+    stripEl.innerHTML = appsStrip(texts);
+  };
   const setSteps = (steps) => {
     stepsEl.innerHTML = '';
     steps.forEach((st) => addStep(st));
+    refreshIcons();
   };
   const addStep = (text = '') => {
     const li = document.createElement('li');
+    const slot = document.createElement('span');
+    slot.className = 'step-ico';
     const ta = document.createElement('textarea');
     ta.value = text;
     const mark = () => ta.classList.toggle('todo', /à compléter/i.test(ta.value));
     ta.addEventListener('input', mark);
+    ta.addEventListener('change', refreshIcons);
     setTimeout(mark);
     ta.rows = Math.min(6, Math.max(2, Math.ceil(text.length / 95)));
     const del = document.createElement('button');
     del.className = 'icon-btn';
     del.textContent = '×';
     del.title = 'Supprimer cette étape';
-    del.onclick = () => li.remove();
-    li.append(ta, del);
+    del.onclick = () => { li.remove(); refreshIcons(); };
+    li.append(slot, ta, del);
     stepsEl.appendChild(li);
     return ta;
   };
@@ -370,7 +577,7 @@ function workflowCard(wf) {
   const changesEl = card.querySelector('.changes');
   improveBtn.onclick = async () => {
     improveBtn.disabled = true;
-    improveBtn.textContent = '⚙️ Préparation en cours…';
+    improveBtn.textContent = 'Précision des étapes…';
     try {
       const before = current();
       const r = await fetch('/api/improve', { method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -397,7 +604,7 @@ function workflowCard(wf) {
       changesEl.hidden = false;
     } finally {
       improveBtn.disabled = false;
-      improveBtn.textContent = '⚙️ Préparer pour Holo';
+      improveBtn.textContent = 'Préciser les étapes pour Holo';
     }
   };
   // 💡 Améliorer mon process : bilan chiffré + recommandations pour l'employé (les étapes ne sont pas modifiées)
@@ -405,7 +612,7 @@ function workflowCard(wf) {
   const adviceEl = card.querySelector('.advice');
   adviceBtn.onclick = async () => {
     adviceBtn.disabled = true;
-    adviceBtn.textContent = '💡 Analyse de ton process…';
+    adviceBtn.textContent = 'Analyse de ton process…';
     try {
       const r = await fetch('/api/process-advice', { method: 'POST', headers: { 'Content-Type': 'application/json' },
                                                      body: JSON.stringify({ workflow: current() }) });
@@ -417,7 +624,7 @@ function workflowCard(wf) {
         ['Durée', fmt(st.duration_s)], ['Changements d\'appli', st.app_switches], ['Clics', st.clicks],
         ['Copier / coller', `${st.copies} / ${st.pastes}`], ['Saisie au clavier', `${fmt(st.typing_s)} · ${st.keystrokes} frappes`],
       ].map(([k, v]) => `<div class="tile"><span>${k}</span><b>${v}</b></div>`).join('') : '';
-      const apps = st ? Object.entries(st.time_per_app_s).map(([a, v]) => `${escapeHtml(a)} ${fmt(v)}`).join(' · ') : '';
+      const apps = st ? Object.entries(st.time_per_app_s).map(([a, v]) => `${iconsHtml(a, 1)}${escapeHtml(a)} ${fmt(v)}`).join(' · ') : '';
       const recos = (d.recommendations || []).map((x) => `
         <li><div class="reco-head"><b>${escapeHtml(x.title || '')}</b><span class="gain">${escapeHtml(x.gain || '')}</span></div>
           <div class="kind">${escapeHtml(x.kind || '')}</div>
@@ -429,12 +636,14 @@ function workflowCard(wf) {
         <ol class="recos">${recos}</ol>
         ${d.automation_potential ? `<p class="auto">🤖 ${escapeHtml(d.automation_potential)}</p>` : ''}`;
       adviceEl.hidden = false;
+      setStep(4);
+      setPrimary(verdictBtn); // prochaine action : la recommandation
     } catch (e) {
       adviceEl.innerHTML = `<h4>Analyse impossible</h4><p>${escapeHtml(e.message)}</p>`;
       adviceEl.hidden = false;
     } finally {
       adviceBtn.disabled = false;
-      adviceBtn.textContent = '💡 Améliorer mon process';
+      adviceBtn.textContent = 'Voir où gagner du temps';
     }
   };
 
@@ -443,15 +652,15 @@ function workflowCard(wf) {
   const verdictEl = card.querySelector('.verdict');
   verdictBtn.onclick = async () => {
     verdictBtn.disabled = true;
-    verdictBtn.textContent = '🧭 Analyse…';
+    verdictBtn.textContent = 'Twiin réfléchit…';
     try {
       const r = await fetch('/api/verdict', { method: 'POST', headers: { 'Content-Type': 'application/json' },
                                               body: JSON.stringify({ workflow: current() }) });
       const d = await r.json();
       if (d.error) throw new Error(d.error);
       const auto = /automat/i.test(d.verdict || '');
-      const tools = (d.tools || []).map((t) => `<span class="chip ${t.api ? 'api' : 'noapi'}">${escapeHtml(t.name)} · ${t.api ? 'API → n8n' : 'sans API → Holo'}</span>`).join('');
-      const plan = (d.plan || []).map((p) => `<li><b>${escapeHtml(p.tool || '')}</b> <span class="how">${escapeHtml(p.how || '')}</span> — ${escapeHtml(p.what || '')}</li>`).join('');
+      const tools = (d.tools || []).map((t) => `<span class="chip ${t.api ? 'api' : 'noapi'}">${iconsHtml(t.name, 1)}${escapeHtml(t.name)} · ${t.api ? 'API → n8n' : 'sans API → Holo'}</span>`).join('');
+      const plan = (d.plan || []).map((p) => `<li>${iconsHtml(p.tool, 1)}<b>${escapeHtml(p.tool || '')}</b> <span class="how">${iconsHtml(p.how, 1)}${escapeHtml(p.how || '')}</span> — ${escapeHtml(p.what || '')}</li>`).join('');
       verdictEl.innerHTML = `
         <h4>🧭 Recommandation de Twiin : <span class="v ${auto ? 'auto' : 'acc'}">${auto ? '⚡ automatiser' : '🎬 accélérer'}</span>
           <small>confiance ${escapeHtml(d.confidence || '?')}${d.cost_usd != null ? ` · ≈ ${d.cost_usd.toFixed(4)} $` : ''}</small></h4>
@@ -459,13 +668,15 @@ function workflowCard(wf) {
         <p class="hint">Fréquence : ${escapeHtml(d.frequency_hint || '?')} · Gain : ${escapeHtml(d.time_saved || '?')}</p>
         <div class="chips">${tools}</div>
         ${plan ? `<ol class="plan">${plan}</ol>` : ''}
-        <p class="hint">C'est toi qui valides : choisis la voie.</p>
+        <div class="card-step"><span class="num-inline">5</span> Crée ce que tu as choisi (c'est toi qui valides)</div>
         <div class="wf-actions">
-          <button class="btn-tuto ${auto ? 'btn-ghost' : 'btn-replay'}">🎬 Créer le tuto vidéo${auto ? '' : ' (recommandé)'}</button>
-          <button class="btn-n8n ${auto ? 'btn-replay' : 'btn-ghost'}">⚡ Créer l'automatisation n8n${auto ? ' (recommandé)' : ''}</button>
+          <button class="btn-tuto">Créer le tuto vidéo${auto ? '' : ' (recommandé)'}</button>
+          <button class="btn-n8n">Créer l'automatisation n8n${auto ? ' (recommandé)' : ''}</button>
         </div>
         <div class="branch" hidden></div>`;
       verdictEl.hidden = false;
+      setStep(5);
+      setPrimary(verdictEl.querySelector(auto ? '.btn-n8n' : '.btn-tuto')); // l'option recommandée
       const branch = verdictEl.querySelector('.branch');
       verdictEl.querySelector('.btn-tuto').onclick = () => { branch.hidden = false; branch.textContent = '🎬 Tuto vidéo : en cours de construction (étape suivante).'; };
       verdictEl.querySelector('.btn-n8n').onclick = () => createN8n(current(), d, branch);
@@ -474,7 +685,7 @@ function workflowCard(wf) {
       verdictEl.hidden = false;
     } finally {
       verdictBtn.disabled = false;
-      verdictBtn.textContent = '🧭 Accélérer ou automatiser ?';
+      verdictBtn.textContent = 'Obtenir la recommandation de Twiin';
     }
   };
 
@@ -499,13 +710,13 @@ function workflowCard(wf) {
       `• Il prend la souris et le clavier : ne touche à rien pendant le rejeu.\n` +
       `• VS Code sera masqué ; ferme ce qui est privé.\n` +
       `• Holo écrit exactement là où les étapes l'indiquent (cellules, pages) : vérifie que ce ne sont pas tes données d'origine.\n` +
-      `• Pour l'arrêter : double Échap, ou le bouton « Arrêter » de cette page.\n\nLancer le rejeu ?`);
+      `• Pour l'arrêter : double Échap, ou le bouton « Arrêter Holo » de cette page.\n\nLancer le rejeu ?`);
     if (!ok) return;
     replayBtn.disabled = true;
     improveBtn.disabled = true;
     replayEl.hidden = false;
     replayEl.innerHTML = `<h4>Rejeu par Holo</h4><div class="rstatus">Démarrage…</div><ol></ol><div class="meta"></div>` +
-      `<div class="wf-actions"><button class="btn-stop">■ Arrêter le rejeu</button></div>`;
+      `<div class="wf-actions"><button class="btn-stop">Arrêter Holo</button></div>`;
     replayEl.querySelector('.btn-stop').onclick = () => fetch('/api/replay/stop', { method: 'POST' });
     try {
       const r = await fetch('/api/replay', { method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -542,7 +753,7 @@ function followReplay(el, done) {
           const li = document.createElement('li');
           li.className = 'running';
           li.dataset.index = e.index;
-          li.innerHTML = `<b>⏳</b> ${escapeHtml(e.step.slice(0, 160))}${e.step.length > 160 ? '…' : ''}`;
+          li.innerHTML = `<b>⏳</b> ${iconsHtml(e.step, 2)}${escapeHtml(e.step.slice(0, 160))}${e.step.length > 160 ? '…' : ''}`;
           ol.appendChild(li);
         } else if (e.type === 'step_end') {
           const li = [...ol.querySelectorAll('li')].reverse().find((x) => x.dataset.index == e.index);
@@ -582,7 +793,7 @@ async function createN8n(wf, verdict, el) {
     `(double Échap pour l'arrêter). L'automatisation restera INACTIVE : c'est toi qui l'actives dans n8n.\n\nContinuer ?`);
   if (!ok) return;
   el.hidden = false;
-  el.innerHTML = `<div class="n8n"><h4>⚡ Automatisation n8n</h4><div class="nstatus">Génération du plan…</div>
+  el.innerHTML = `<div class="n8n"><h4>${iconsHtml('n8n', 1)}Automatisation n8n</h4><div class="nstatus">Génération du plan…</div>
     <ol class="nplan"></ol><div class="nholo"></div><div class="nlinks"></div></div>`;
   const st = el.querySelector('.nstatus'), plan = el.querySelector('.nplan'), holo = el.querySelector('.nholo'), links = el.querySelector('.nlinks');
   try {
@@ -607,7 +818,8 @@ async function createN8n(wf, verdict, el) {
           plan.innerHTML = '';
           for (const b of e.plan.blocks) {
             const li = document.createElement('li');
-            li.innerHTML = `<span class="ico">⏳</span> <b>${escapeHtml(b.name)}</b> <span class="kind">${BLOCK_ICON[b.type] || b.type}</span><span class="out"></span>`;
+            const logo = { holo: 'Holo', sheets_append: 'Google Sheets' }[b.type] || `${b.name} ${b.url || ''}`;
+            li.innerHTML = `<span class="ico">⏳</span> ${iconsHtml(logo, 1)}<b>${escapeHtml(b.name)}</b> <span class="kind">${BLOCK_ICON[b.type] || b.type}</span><span class="out"></span>`;
             plan.appendChild(li);
             rows.set(b.name, li);
           }
@@ -631,6 +843,7 @@ async function createN8n(wf, verdict, el) {
             li.querySelector('.out').textContent = ` ${sec}${out ? ' · ' + out : ''}`;
           }
         } else if (e.type === 'done') {
+          if (e.ok) setStep(6);
           st.textContent = e.ok ? '✅ Automatisation créée et testée avec succès. Elle est INACTIVE : active-la dans n8n quand tu veux.'
                                 : `❌ Le test a échoué (${e.status}). Ouvre l'exécution dans n8n pour voir le nœud en erreur.`;
         }
@@ -642,12 +855,56 @@ async function createN8n(wf, verdict, el) {
   }, 1500);
 }
 
-// Au chargement : afficher le dernier workflow analysé (pour l'améliorer ou le rejouer sans réenregistrer)
+// --- Accueil : un exemple déjà rempli (filet de sécurité pour la démo) + reprise de la dernière tâche ---------------
+// Enregistrement réel du 17/11 (veille L'Oréal, LinkedIn → Excel → OneNote), copié de workflows/candidates.json.
+const EXAMPLE_WORKFLOW = {
+  "name": "Veille concurrence L'Oréal",
+  "general_intent": "Collecter les informations de la page LinkedIn de L'Oréal et les consigner dans le classeur Excel « veille_entreprises » et dans OneNote « Veille concurrence »",
+  "summary": "L'utilisateur a recherché L'Oréal sur LinkedIn, copié-collé le nom, le secteur, la taille et le nombre d'abonnés dans le classeur Excel « veille_entreprises », puis a noté des informations dans OneNote sous la page « Veille concurrence » après consultation des articles de la page Posts.",
+  "why_daily": "Cette veille concurrentielle répétée (recherche LinkedIn → saisie Excel → notes OneNote) est une tâche manuelle quotidienne qui peut être automatisée.",
+  "steps": [
+    "Dans Google Chrome, cliquer sur la barre de recherche LinkedIn et taper « l'oreal » pour trouver la page entreprise L'Oréal",
+    "Cliquer sur l'onglet « À propos » de la page L'Oréal sur LinkedIn",
+    "Sélectionner le texte « Fabrication de parfums et de produits pour la toilette » (champ Secteur) et le copier (⌘C)",
+    "Dans Microsoft Excel (classeur « veille_entreprises »), double-cliquer sur la cellule B2 et coller (⌘V) le secteur",
+    "Sur la page LinkedIn L'Oréal, sélectionner le titre « L'Oréal » et le copier (⌘C)",
+    "Dans Excel, double-cliquer sur la cellule A2 et coller (⌘V) le nom « L'Oréal »",
+    "Sur la page LinkedIn L'Oréal (À propos), sélectionner « 10 001 employés et plus » (champ Taille de l'entreprise) et le copier (⌘C)",
+    "Dans Excel, double-cliquer sur la cellule D2 et coller (⌘V) la taille",
+    "Sur la page LinkedIn L'Oréal (Présentation), sélectionner « 7 M d'abonnés » et le copier (⌘C)",
+    "Dans Excel, double-cliquer sur la cellule E2 et coller (⌘V) le nombre d'abonnés",
+    "Dans Excel, double-cliquer sur la cellule F2 et taper une date (7 caractères)",
+    "Basculer vers Microsoft OneNote, ouvrir la page « Veille concurrence » (section Groupe, mardi 17 novembre 2026)",
+    "Copier (⌘C) le texte du descriptif de L'Oréal sur la page LinkedIn et le coller (⌘V) dans la page OneNote « Veille concurrence »",
+    "Sur LinkedIn, cliquer sur l'onglet « Posts » de la page L'Oréal, puis cliquer sur le filtre « Articles »",
+    "Basculer vers OneNote et taper 43 caractères de notes dans la page « Veille concurrence »"
+  ]
+};
+let lastWorkflows = null;
+function showExample() {
+  const ex = EXAMPLE_WORKFLOW;
+  document.getElementById('exName').textContent = ex.name;
+  document.getElementById('exMeta').innerHTML = `<span class="apps-strip">${appsStrip(ex.steps)}</span><span>${ex.steps.length} étapes</span>`;
+  document.getElementById('exSteps').innerHTML = ex.steps.slice(0, 4).map((s) => `<li>${iconsHtml(s, 2)}${escapeHtml(s)}</li>`).join('') +
+    `<li style="list-style:none;margin-left:-22px">… et ${ex.steps.length - 4} autres étapes</li>`;
+  document.getElementById('example').hidden = false;
+}
+document.getElementById('exOpenBtn').addEventListener('click', () => {
+  renderWorkflows([EXAMPLE_WORKFLOW], { example: true });
+  statusEl.textContent = 'Exemple ouvert : tu peux suivre les étapes 2 à 5 comme pour une vraie tâche.';
+});
+document.getElementById('lastBtn').addEventListener('click', () => {
+  if (!lastWorkflows) return;
+  renderWorkflows(lastWorkflows);
+  statusEl.textContent = 'Dernière tâche analysée : reprends à l\'étape 2.';
+});
+iconsReady.then(() => {
+  showExample();
+  // http://localhost:3000/#exemple ouvre directement l'exemple (pratique en démo si l'enregistrement en direct coince)
+  if (location.hash === '#exemple') document.getElementById('exOpenBtn').click();
+});
 fetch('/api/candidates').then((r) => r.json()).then((d) => {
-  if (d.workflows?.length && !resultsEl.children.length) {
-    renderWorkflows(d.workflows);
-    if (!statusEl.textContent) statusEl.textContent = 'Dernier workflow analysé (tu peux l\'améliorer ou le rejouer) :';
-  }
+  if (d.workflows?.length) { lastWorkflows = d.workflows; document.getElementById('lastBtn').hidden = false; }
 }).catch(() => {});
 
 function escapeHtml(str) {

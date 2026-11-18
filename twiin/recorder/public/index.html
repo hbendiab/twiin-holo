@@ -1,205 +1,179 @@
 <!doctype html>
-<html lang="en">
+<html lang="fr" data-theme="light">
 <head>
 <meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Twiin · Enregistrement</title>
+<script>
+  // Thème clair par défaut (meilleure lecture, et rendu au projecteur) ; le sombre reste au choix de la personne.
+  try { if (localStorage.getItem('twiin-theme') === 'dark') document.documentElement.dataset.theme = 'dark'; } catch {}
+</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Google+Sans+Flex:wght@300;400;500;600;700&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist+Mono:wght@400;500&display=swap">
 <style>
+  /* Direction « Clair net » (cahier UX du 18/11) : blanc, un seul bleu d'action, coins arrondis, Google Sans Flex.
+     Règle : UN SEUL bouton plein à l'écran (classe .primary), c'est la prochaine action. Tous les autres sont en contour. */
   :root {
-    /* palette Twiin (identique à Twiin Live) */
-    --bg: #0e1014;
-    --panel: #171a21;
-    --panel-border: #272b35;
-    --text: #e8eaed;
-    --text-dim: #9aa0a6;
-    --accent: #4ea1ff;
-    --accent-dim: #2f6fb8;
-    --ok: #36d399;
-    --warn: #ffd166;
-    --bad: #ff6b5b;
+    --bg: #f8f9fb;
+    --panel: #ffffff;
+    --panel-2: #f3f5f8;
+    --panel-border: #e2e5eb;
+    --text: #1b1f27;
+    --text-dim: #5f6673;
+    --accent: #0b57d0;
+    --accent-hover: #0a4ab0;
+    --accent-soft: rgba(11, 87, 208, 0.08);
+    --accent-ink: #ffffff;
+    --ok: #137a52;
+    --ok-soft: rgba(19, 122, 82, 0.10);
+    --warn: #8a5a00;
+    --warn-soft: #fff5d6;
+    --bad: #c5221f;
+    --cell-a: #5b9dff;
+    --cell-b: #5fd4aa;
+    --nucleus: #1b1f27;
+    --glow-1: rgba(196, 184, 255, 0.35);
+    --glow-2: rgba(140, 230, 196, 0.35);
+    --font: "Google Sans Flex", "Google Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    --mono: "Geist Mono", ui-monospace, "SF Mono", Menlo, monospace;
+    color-scheme: light;
+  }
+  :root[data-theme="dark"] {
+    --bg: #0e1014; --panel: #171a21; --panel-2: #12151b; --panel-border: #272b35;
+    --text: #e8eaed; --text-dim: #9aa0a6; --accent: #7ea2ff; --accent-hover: #9bb7ff; --accent-soft: rgba(126, 162, 255, 0.12);
+    --accent-ink: #0b1020; --ok: #36d399; --ok-soft: rgba(54, 211, 153, 0.12); --warn: #ffd166; --warn-soft: #2a2410;
+    --bad: #ff6b5b; --cell-a: #6aa6ff; --cell-b: #74e0bb; --nucleus: #0e1014;
+    --glow-1: rgba(150, 130, 255, 0.16); --glow-2: rgba(80, 200, 160, 0.14);
+    color-scheme: dark;
   }
 
   * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
 
   body {
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-    background: radial-gradient(ellipse at top, #141a26 0%, var(--bg) 55%);
+    font-family: var(--font);
+    background: var(--bg);
     color: var(--text);
-    max-width: 760px;
+    max-width: 780px;
     margin: 0 auto;
-    padding: 56px 20px 80px;
+    padding: 28px 20px 96px;
     line-height: 1.5;
+    position: relative;
   }
-
-  .eyebrow {
-    text-transform: uppercase;
-    letter-spacing: 0.12em;
-    font-size: 12px;
-    font-weight: 600;
-    color: var(--accent);
-    margin: 0 0 10px;
+  body::before { /* halos pastel discrets derrière l'en-tête */
+    content: ""; position: absolute; inset: -40px -20% auto; height: 380px; z-index: -1; pointer-events: none;
+    background: radial-gradient(38% 55% at 80% 30%, var(--glow-1), transparent 70%),
+                radial-gradient(30% 45% at 95% 60%, var(--glow-2), transparent 70%);
   }
+  a { color: var(--accent); }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
-  h1 {
-    font-size: 34px;
-    font-weight: 700;
-    letter-spacing: -0.01em;
-    margin: 0 0 8px;
-  }
+  /* --- en-tête : les deux cellules + nom --- */
+  .topbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 36px; }
+  .brand { display: flex; align-items: center; gap: 10px; font-size: 22px; font-weight: 500; letter-spacing: -0.02em; }
+  .brand svg { width: 52px; height: 34px; display: block; }
+  .brand b { font-weight: 700; }
+  #themeBtn { font-size: 13px; padding: 7px 14px; color: var(--text-dim); }
 
-  .subtitle {
-    color: var(--text-dim);
-    font-size: 15px;
-    margin: 0 0 32px;
-  }
+  h1 { font-size: 40px; font-weight: 400; letter-spacing: -0.03em; line-height: 1.1; margin: 0 0 10px; text-wrap: balance; }
+  .subtitle { color: var(--text-dim); font-size: 15px; margin: 0 0 28px; max-width: 62ch; }
 
-  .controls {
-    display: flex;
-    gap: 10px;
-    margin-bottom: 20px;
-  }
-
+  /* --- boutons : contour par défaut, un seul plein (.primary) --- */
   button {
-    font-family: inherit;
-    font-size: 14px;
-    font-weight: 600;
-    padding: 11px 20px;
-    border-radius: 999px;
-    border: 1px solid transparent;
-    cursor: pointer;
-    transition: opacity 0.15s ease, transform 0.05s ease;
+    font-family: inherit; font-size: 14px; font-weight: 500;
+    padding: 10px 18px; border-radius: 999px;
+    border: 1px solid var(--panel-border); background: var(--panel); color: var(--text);
+    cursor: pointer; transition: background 0.15s ease, border-color 0.15s ease, transform 0.05s ease;
   }
-
+  button:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
   button:active { transform: scale(0.98); }
-  button:disabled { opacity: 0.35; cursor: default; }
+  button:disabled { opacity: 0.4; cursor: default; }
+  button.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); font-weight: 600;
+                   padding: 12px 22px; font-size: 15px; box-shadow: 0 1px 2px rgba(11, 87, 208, 0.25); }
+  button.primary:hover:not(:disabled) { background: var(--accent-hover); border-color: var(--accent-hover); color: var(--accent-ink); }
+  .btn-stop { color: var(--bad); border-color: var(--bad); }
+  .btn-stop:hover:not(:disabled) { color: var(--bad); border-color: var(--bad); background: rgba(197, 34, 31, 0.06); }
 
-  #startBtn {
-    background: var(--accent);
-    color: #08111f;
-  }
-  #startBtn:hover:not(:disabled) { background: var(--accent-dim); }
+  .controls { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-bottom: 18px; }
+  #reBtn { margin-left: auto; font-size: 13px; color: var(--text-dim); }
 
-  #addBtn {
-    background: transparent;
-    color: var(--accent);
-    border-color: var(--accent);
-  }
-  #addBtn:hover:not(:disabled) { background: rgba(255,255,255,0.04); }
-
-  #screens { display: flex; flex-wrap: wrap; gap: 8px; margin: -8px 0 14px; font-size: 12px; color: var(--text-dim); }
-  #screens .scr { border: 1px solid var(--panel-border); border-radius: 999px; padding: 4px 10px; }
+  #screens { display: flex; flex-wrap: wrap; gap: 8px; margin: -6px 0 14px; font-size: 12px; color: var(--text-dim); }
+  #screens .scr { border: 1px solid var(--panel-border); border-radius: 999px; padding: 4px 10px; background: var(--panel); }
   #screens .scr b { color: var(--text); }
 
+  #status { font-size: 13px; color: var(--text-dim); margin: 4px 0 20px; min-height: 18px; }
+
+  #frames { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 28px; }
+  #frames img { width: 96px; border-radius: 8px; border: 1px solid var(--panel-border); display: block; }
   .thumb { position: relative; }
   .thumb span { position: absolute; left: 4px; top: 4px; font-size: 10px; font-weight: 700; padding: 1px 5px;
-                border-radius: 6px; background: rgba(0,0,0,0.65); color: #fff; }
+                border-radius: 6px; background: rgba(0, 0, 0, 0.6); color: #fff; }
 
-  #reBtn { background: transparent; color: var(--text-dim); border-color: var(--panel-border); margin-left: auto; }
-  #reBtn:hover:not(:disabled) { color: var(--text); border-color: var(--accent); }
+  #journal h4 { margin: 0 0 8px; font-size: 13px; }
+  #journal ol { max-height: 220px; overflow-y: auto; margin: 0 0 28px; padding: 10px 12px 10px 32px; font-size: 12px;
+                color: var(--text-dim); line-height: 1.6; background: var(--panel); border: 1px solid var(--panel-border); border-radius: 12px; }
+  #journal li span { display: inline-block; min-width: 52px; color: var(--accent); font-family: var(--mono); font-size: 11px; }
 
-  #stopBtn {
-    background: transparent;
-    color: var(--text);
-    border-color: var(--panel-border);
-  }
-  #stopBtn:hover:not(:disabled) { border-color: var(--accent); }
+  /* --- attente de l'analyse : cellules + étapes cochées --- */
+  #analysis { display: grid; grid-template-columns: 150px minmax(0, 1fr); gap: 20px; align-items: center;
+              background: var(--panel); border: 1px solid var(--panel-border); border-radius: 18px; padding: 18px 22px; margin: 0 0 24px; }
+  #analysis svg { width: 150px; height: 96px; display: block; }
+  #analysis h4 { margin: 0 0 8px; font-size: 15px; font-weight: 600; }
+  .phases { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; font-size: 14px; }
+  .phases li { display: flex; align-items: center; gap: 10px; color: var(--text-dim); }
+  .phases li i { width: 20px; height: 20px; border-radius: 50%; border: 1.5px solid var(--panel-border); flex: none;
+                 display: grid; place-items: center; font-style: normal; font-size: 12px; font-weight: 700; }
+  .phases li.active { color: var(--text); font-weight: 500; }
+  .phases li.active i { border-color: var(--accent); border-top-color: transparent; animation: spin 0.9s linear infinite; }
+  .phases li.done { color: var(--text); }
+  .phases li.done i { background: var(--ok); border-color: var(--ok); color: #fff; }
+  .phases li.fail i { background: var(--bad); border-color: var(--bad); color: #fff; }
+  .phases .sec { margin-left: auto; font-family: var(--mono); font-size: 12px; color: var(--text-dim); font-weight: 400; }
+  .phase-note { font-size: 12px; color: var(--text-dim); margin: 10px 0 0; }
+  @keyframes spin { to { transform: rotate(360deg); } }
 
-  #status {
-    font-size: 13px;
-    color: var(--text-dim);
-    margin: 4px 0 24px;
-    min-height: 18px;
-  }
-
-  #frames {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 8px;
-    margin: 0 0 32px;
-  }
-
-  #frames img {
-    width: 96px;
-    border-radius: 8px;
-    border: 1px solid var(--panel-border);
-    opacity: 0.9;
-  }
-
-  #journal h4 { margin: 0 0 8px; font-size: 13px; color: var(--text); }
-  #journal ol { max-height: 220px; overflow-y: auto; margin: 0 0 28px; padding-left: 20px; font-size: 12px;
-                color: var(--text-dim); line-height: 1.6; }
-  #journal li span { display: inline-block; min-width: 52px; color: var(--accent); font-variant-numeric: tabular-nums; }
+  /* --- exemple sur l'accueil --- */
+  #example { background: var(--panel); border: 1px dashed var(--panel-border); border-radius: 18px; padding: 18px 22px; margin: 6px 0 24px; }
+  #example .ex-head { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+  #example h4 { margin: 0; font-size: 16px; font-weight: 600; }
+  #example .ex-meta { font-size: 12px; color: var(--text-dim); }
+  #example ol { margin: 12px 0 14px; padding-left: 22px; font-size: 13px; color: var(--text-dim); }
+  #example ol li { margin: 3px 0; }
+  #example .ex-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+  .chip-example { display: inline-block; font-size: 11px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase;
+                  color: var(--accent); background: var(--accent-soft); border-radius: 999px; padding: 2px 9px; margin-right: 8px; vertical-align: 2px; }
 
   #results { display: flex; flex-direction: column; gap: 14px; }
 
-  .workflow {
-    background: var(--panel);
-    border: 1px solid var(--panel-border);
-    border-radius: 14px;
-    padding: 20px 22px;
-  }
-
-  .workflow h3 {
-    margin: 0 0 6px;
-    font-size: 17px;
-    font-weight: 700;
-  }
-
-  .workflow p {
-    margin: 4px 0;
-    font-size: 14px;
-    color: var(--text-dim);
-  }
-
-  .workflow p strong {
-    color: var(--text);
-    font-weight: 600;
-  }
-
-  .workflow ol {
-    margin: 12px 0 0;
-    padding-left: 20px;
-    font-size: 14px;
-  }
-
-  .workflow ol li {
-    margin: 4px 0;
-    color: var(--text);
-  }
-
-  .workflow ol li::marker {
-    color: var(--ok);
-    font-weight: 700;
-  }
+  .workflow { background: var(--panel); border: 1px solid var(--panel-border); border-radius: 18px; padding: 22px 24px;
+              box-shadow: 0 1px 2px rgba(20, 30, 50, 0.04); }
+  .workflow h3 { margin: 0 0 6px; font-size: 17px; font-weight: 700; }
+  .workflow p { margin: 4px 0; font-size: 14px; color: var(--text-dim); }
+  .workflow p strong { color: var(--text); font-weight: 600; }
 
   /* --- workflow modifiable, amélioration, rejeu --- */
   .wf-name { width: 100%; background: transparent; border: 0; border-bottom: 1px dashed var(--panel-border);
-             color: var(--text); font-family: inherit; font-size: 17px; font-weight: 700; padding: 2px 0 6px; margin-bottom: 6px; }
+             color: var(--text); font-family: inherit; font-size: 20px; font-weight: 500; letter-spacing: -0.01em; padding: 2px 0 6px; margin-bottom: 6px; }
   .wf-name:focus { outline: none; border-bottom-color: var(--accent); }
   .steps { list-style: none; padding: 0; margin: 14px 0 8px; counter-reset: st; }
   .steps li { display: flex; gap: 8px; align-items: flex-start; margin: 6px 0; counter-increment: st; }
-  .steps li::before { content: counter(st); min-width: 22px; height: 22px; border-radius: 50%; background: #222733;
-                      color: var(--ok); font-weight: 700; font-size: 12px; display: grid; place-items: center; margin-top: 6px; }
-  .steps textarea { flex: 1; min-width: 0; resize: vertical; background: #12151b; color: var(--text);
-                    border: 1px solid var(--panel-border); border-radius: 8px; padding: 7px 9px; font: 13px/1.45 inherit;
-                    font-family: inherit; }
-  .steps textarea:focus { outline: none; border-color: var(--accent); }
-  .icon-btn { background: transparent; border: 1px solid var(--panel-border); color: var(--text-dim); padding: 4px 9px;
-              border-radius: 8px; font-size: 13px; margin-top: 4px; }
-  .icon-btn:hover:not(:disabled) { color: var(--text); border-color: var(--accent); }
-  .wf-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
-  .btn-improve { background: transparent; color: var(--accent); border-color: var(--accent); }
-  .btn-replay { background: var(--ok); color: #062a1c; }
-  .btn-ghost { background: transparent; color: var(--text-dim); border-color: var(--panel-border); }
-  .btn-stop { background: transparent; color: var(--bad); border-color: var(--bad); }
-  .changes { margin: 14px 0 0; padding: 12px 14px; border-radius: 10px; background: #12151b; border: 1px solid var(--panel-border); }
-  .changes h4, .replay h4 { margin: 0 0 8px; font-size: 13px; }
+  .steps li::before { content: counter(st); min-width: 22px; height: 22px; border-radius: 50%; background: var(--accent-soft);
+                      color: var(--accent); font-weight: 600; font-size: 12px; display: grid; place-items: center; margin-top: 6px; }
+  .steps textarea { flex: 1; min-width: 0; resize: vertical; background: var(--panel-2); color: var(--text);
+                    border: 1px solid var(--panel-border); border-radius: 10px; padding: 7px 10px; font: 13px/1.45 var(--font); }
+  .steps textarea:focus { outline: none; border-color: var(--accent); background: var(--panel); }
+  .icon-btn { padding: 4px 10px; border-radius: 8px; font-size: 13px; margin-top: 4px; color: var(--text-dim); }
+  .wf-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+  .changes, .replay, .n8n { margin: 14px 0 0; padding: 12px 14px; border-radius: 12px; background: var(--panel-2); border: 1px solid var(--panel-border); }
+  .changes h4, .replay h4, .n8n h4 { margin: 0 0 8px; font-size: 13px; }
   .changes ul { margin: 0; padding-left: 0; list-style: none; font-size: 13px; color: var(--text-dim); }
   .changes li { margin: 5px 0; }
   .tag { display: inline-block; font-size: 10px; font-weight: 700; padding: 1px 7px; border-radius: 999px; margin-right: 6px;
          text-transform: uppercase; letter-spacing: .04em; }
-  .tag.fiabilite { background: rgba(54,211,153,.15); color: var(--ok); }
-  .tag.process { background: rgba(78,161,255,.15); color: var(--accent); }
-  .replay { margin: 14px 0 0; padding: 12px 14px; border-radius: 10px; background: #12151b; border: 1px solid var(--panel-border); }
+  .tag.fiabilite { background: var(--ok-soft); color: var(--ok); }
+  .tag.process { background: var(--accent-soft); color: var(--accent); }
   .replay .rstatus { font-size: 13px; color: var(--text); margin-bottom: 8px; }
   .replay ol { margin: 0; padding-left: 20px; font-size: 13px; }
   .replay li { margin: 6px 0; color: var(--text-dim); }
@@ -208,15 +182,13 @@
   .replay li.ko b { color: var(--bad); }
   .replay .answer { display: block; margin-top: 3px; white-space: pre-wrap; color: var(--text-dim); font-size: 12px; }
   .replay .meta { font-size: 12px; color: var(--text-dim); margin-top: 8px; }
-  .replay a { color: var(--accent); }
-  .btn-advice { background: var(--accent); color: #08111f; }
-  .steps textarea.todo { border-color: var(--warn); background: #2a2410; }
+  .steps textarea.todo { border-color: var(--warn); background: var(--warn-soft); }
   .todo-msg { color: var(--warn) !important; font-size: 13px !important; }
-  .advice { margin: 14px 0 0; padding: 14px 16px; border-radius: 10px; background: #131925; border: 1px solid var(--accent-dim); }
-  .advice h4 { margin: 0 0 10px; font-size: 14px; }
-  .advice small { color: var(--text-dim); font-weight: 400; }
+  .advice, .verdict { margin: 14px 0 0; padding: 14px 16px; border-radius: 12px; background: var(--panel-2); border: 1px solid var(--panel-border); }
+  .advice h4, .verdict h4 { margin: 0 0 10px; font-size: 14px; }
+  .advice small, .verdict small { color: var(--text-dim); font-weight: 400; margin-left: 6px; }
   .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 8px; }
-  .tile { background: #0e1014; border: 1px solid var(--panel-border); border-radius: 8px; padding: 8px 10px; }
+  .tile { background: var(--panel); border: 1px solid var(--panel-border); border-radius: 10px; padding: 8px 10px; }
   .tile span { display: block; font-size: 11px; color: var(--text-dim); }
   .tile b { font-size: 15px; font-variant-numeric: tabular-nums; }
   .advice .apps { font-size: 12px; margin: 8px 0 0 !important; }
@@ -228,21 +200,15 @@
   .kind { font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color: var(--accent); margin: 2px 0 4px; }
   .lbl { color: var(--text); }
   .advice .auto { margin-top: 10px !important; color: var(--text) !important; }
-  .btn-verdict { background: transparent; color: var(--accent); border-color: var(--accent); }
-  .verdict { margin: 14px 0 0; padding: 14px 16px; border-radius: 10px; background: #131925; border: 1px solid var(--accent-dim); }
-  .verdict h4 { margin: 0 0 8px; font-size: 14px; }
-  .verdict small { color: var(--text-dim); font-weight: 400; margin-left: 6px; }
   .verdict .v.auto { color: var(--ok); } .verdict .v.acc { color: var(--warn); }
   .reasons, .plan { margin: 6px 0; padding-left: 20px; font-size: 13px; color: var(--text-dim); }
   .reasons li, .plan li { margin: 4px 0; }
   .plan b { color: var(--text); } .plan .how { font-size: 11px; color: var(--accent); }
   .hint { font-size: 12px !important; color: var(--text-dim); margin: 6px 0 !important; }
   .chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0; }
-  .chip { font-size: 11px; padding: 2px 8px; border-radius: 999px; border: 1px solid var(--panel-border); }
-  .chip.api { color: var(--ok); border-color: rgba(54,211,153,.4); } .chip.noapi { color: var(--warn); border-color: rgba(255,209,102,.4); }
+  .chip { font-size: 11px; padding: 2px 8px; border-radius: 999px; border: 1px solid var(--panel-border); background: var(--panel); }
+  .chip.api { color: var(--ok); border-color: var(--ok); } .chip.noapi { color: var(--warn); border-color: var(--warn); }
   .branch { margin-top: 10px; font-size: 13px; color: var(--text); }
-  .n8n { margin-top: 12px; padding: 12px 14px; border-radius: 10px; background: #12151b; border: 1px solid var(--panel-border); }
-  .n8n h4 { margin: 0 0 8px; font-size: 14px; }
   .nstatus { font-size: 13px; color: var(--text); margin-bottom: 8px; }
   .nplan { margin: 0; padding-left: 20px; font-size: 13px; color: var(--text-dim); }
   .nplan li { margin: 6px 0; }
@@ -251,23 +217,100 @@
   .nplan .out { display: block; font-size: 12px; margin-top: 2px; }
   .nholo { font-size: 12px; color: var(--warn); margin-top: 8px; min-height: 16px; }
   .nlinks { font-size: 12px; margin-top: 8px; }
-  .nlinks a { color: var(--accent); }
+
+  /* --- parcours numéroté --- */
+  #stepper { list-style: none; display: flex; flex-wrap: wrap; gap: 6px; padding: 0; margin: 0 0 32px; }
+  #stepper li { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text-dim);
+                padding: 5px 12px 5px 5px; border: 1px solid var(--panel-border); border-radius: 999px; background: var(--panel); }
+  #stepper li span { width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center; font-weight: 600;
+                     font-size: 12px; background: var(--panel-2); color: var(--text-dim); }
+  #stepper li.active { color: var(--text); border-color: var(--accent); font-weight: 500; }
+  #stepper li.active span { background: var(--accent); color: var(--accent-ink); }
+  #stepper li.done span { background: var(--ok-soft); color: var(--ok); }
+  #stepper li.done { color: var(--text); }
+  .step-title { font-size: 20px; font-weight: 500; letter-spacing: -0.01em; margin: 0 0 6px; display: flex; align-items: center; gap: 10px; }
+  .step-title .num, .num-inline { width: 26px; height: 26px; border-radius: 50%; display: inline-grid; place-items: center;
+                    background: var(--accent-soft); color: var(--accent); font-size: 14px; font-weight: 700; flex: none; }
+  .num-inline { width: 20px; height: 20px; font-size: 11px; margin-right: 4px; vertical-align: -4px; }
+  .step-help { font-size: 13px; color: var(--text-dim); margin: 0 0 16px; }
+  .card-step { font-size: 14px; font-weight: 600; color: var(--text); margin: 20px 0 4px; display: flex; align-items: center; gap: 8px; }
+  .optional { margin-top: 20px; padding-top: 12px; border-top: 1px dashed var(--panel-border); }
+  .optional .card-step { color: var(--text-dim); font-weight: 500; }
+
+  /* --- logos des outils --- */
+  .ticon { width: 18px; height: 18px; object-fit: contain; border-radius: 4px; vertical-align: -4px; margin-right: 6px; }
+  .apps-strip { display: flex; flex-wrap: wrap; gap: 6px; margin: 2px 0 8px; }
+  .app-pill { display: inline-flex; align-items: center; font-size: 12px; font-weight: 500; color: var(--text);
+              background: var(--panel-2); border: 1px solid var(--panel-border); border-radius: 999px; padding: 3px 10px 3px 5px; }
+  .app-pill .ticon { width: 20px; height: 20px; margin-right: 6px; vertical-align: 0; }
+  .step-ico { display: flex; flex-direction: column; gap: 4px; width: 24px; flex: none; margin-top: 6px; }
+  .step-ico .ticon { width: 22px; height: 22px; margin: 0; }
+  .step-ico.inherited { opacity: 0.35; }
+  #example .ex-meta { display: flex; align-items: center; gap: 10px; }
+  #example .ex-meta .apps-strip { margin: 0; }
+  #example ol li .ticon { width: 16px; height: 16px; }
+  #journal .ticon { width: 15px; height: 15px; vertical-align: -3px; margin-right: 5px; }
+  .chip .ticon { width: 14px; height: 14px; vertical-align: -3px; margin-right: 4px; }
+  .n8n h4 .ticon { width: 18px; height: 18px; }
+
+  @media (max-width: 560px) {
+    h1 { font-size: 30px; }
+    #analysis { grid-template-columns: minmax(0, 1fr); }
+    #reBtn { margin-left: 0; }
+  }
+  @media (prefers-reduced-motion: reduce) { .phases li.active i { animation: none; } }
 </style>
 </head>
 <body>
-  <p class="eyebrow">Twiin</p>
-  <h1>Record a session</h1>
-  <p class="subtitle">Use your computer normally. Several monitors? Click « + Ajouter un écran » once per screen. Stop when you're done — the screen text is read locally (OCR), then Qwen segments the session into daily workflows worth automating.</p>
+  <header class="topbar">
+    <div class="brand" aria-label="Twiin"><span id="logoCells"></span><span>Tw<b>ii</b>n</span></div>
+    <button id="themeBtn" type="button">Thème sombre</button>
+  </header>
 
+  <h1>Analyse tes tâches. Automatise tes process.</h1>
+  <p class="subtitle">Fais ta tâche comme d'habitude, Twiin regarde. Il la découpe en étapes, te montre où gagner du temps ou te propose une automatisation, et enfin la transforme en tuto vidéo. Le texte de l'écran est lu sur ton Mac ; seules les images et ce texte partent à l'analyse.</p>
+
+  <ol id="stepper">
+    <li data-step="1"><span>1</span>Enregistrer</li>
+    <li data-step="2"><span>2</span>Relire les étapes</li>
+    <li data-step="3"><span>3</span>Améliorer mon process</li>
+    <li data-step="4"><span>4</span>Accélérer ou automatiser</li>
+    <li data-step="5"><span>5</span>Créer</li>
+  </ol>
+
+  <h2 class="step-title"><span class="num">1</span> Enregistre ta tâche</h2>
+  <p class="step-help">Plusieurs écrans ? Clique sur « Ajouter un écran » une fois par écran. Fais ta tâche normalement, puis « Terminer et analyser ».</p>
   <div class="controls">
-    <button id="startBtn">Start recording</button>
+    <button id="startBtn" class="primary">Enregistrer ma tâche</button>
     <button id="addBtn" disabled>+ Ajouter un écran</button>
-    <button id="stopBtn" disabled>Stop</button>
-    <button id="reBtn" title="Refaire l'analyse du dernier enregistrement, sans le refaire">↻ Relancer l'analyse</button>
+    <button id="stopBtn" disabled>Terminer et analyser</button>
+    <button id="reBtn" title="Refaire l'analyse du dernier enregistrement, sans le refaire">Réanalyser le dernier enregistrement</button>
   </div>
   <div id="screens"></div>
 
   <div id="status"></div>
+
+  <section id="example" hidden>
+    <div class="ex-head">
+      <h4><span class="chip-example">Exemple</span><span id="exName"></span></h4>
+      <span class="ex-meta" id="exMeta"></span>
+    </div>
+    <ol id="exSteps"></ol>
+    <div class="ex-actions">
+      <button id="exOpenBtn" type="button">Ouvrir l'exemple</button>
+      <button id="lastBtn" type="button" hidden>Reprendre ma dernière tâche analysée</button>
+    </div>
+  </section>
+
+  <section id="analysis" hidden aria-live="polite">
+    <div id="analysisCells"></div>
+    <div>
+      <h4 id="analysisTitle">Twiin analyse ta tâche</h4>
+      <ol class="phases" id="phases"></ol>
+      <p class="phase-note" id="phaseNote">Compte 1 à 2 minutes. Tu peux laisser la page ouverte.</p>
+    </div>
+  </section>
+
   <div id="frames"></div>
   <div id="journal"></div>
   <div id="results"></div>
