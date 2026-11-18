@@ -20,6 +20,8 @@ Les workflows Twiin sont préfixés « Twiin — » et créés INACTIFS : l'acti
 """
 import argparse
 import json
+import os
+import shutil
 import re
 import secrets
 import sqlite3
@@ -33,7 +35,11 @@ from dotenv import dotenv_values
 ROOT = Path(__file__).resolve().parents[1]
 ENV = dotenv_values(ROOT / ".env")
 N8N_DB = Path.home() / ".n8n" / "database.sqlite"
-TWIIN_URL = "http://127.0.0.1:3000/api/holo/run"
+# Port de la page Twiin : celui où tourne le serveur (variable PORT héritée de server.js), 3000 par défaut.
+TWIIN_PORT = ENV.get("TWIIN_PORT") or os.environ.get("PORT") or "3000"
+TWIIN_URL = f"http://127.0.0.1:{TWIIN_PORT}/api/holo/run"
+# Programme n8n : celui du PATH, sinon celui installé dans automation/n8n-runtime (npm install).
+N8N_BIN = shutil.which("n8n") or str(ROOT / "automation" / "n8n-runtime" / "node_modules" / ".bin" / "n8n")
 SHEETS = {"veille": ENV.get("N8N_SHEET_VEILLE_ID"), "factures": ENV.get("N8N_SHEET_FACTURES_ID")}
 SHEET_TABS = {"veille": ENV.get("N8N_SHEET_VEILLE_GID") or "0", "factures": ENV.get("N8N_SHEET_FACTURES_GID") or "0"}
 PLACEHOLDER = re.compile(r"\{\{\s*([^{}]+?)\s*\}\}")
@@ -67,7 +73,9 @@ def js_template(text):
         if ref == "execution":
             return "${$execution.id}"
         node, _, key = ref.rpartition(".")
-        return "${(($('" + node.replace("'", "\\'") + "').first().json.data || {})['" + key + "'] ?? '')}"
+        # un bloc Holo range ses valeurs dans .data ; un bloc « row » (Code) les range directement dans .json
+        return ("${(() => { const j = $('" + node.replace("'", "\\'") + "').first().json || {}; "
+                "return ((j.data && typeof j.data === 'object') ? j.data : j)['" + key + "'] ?? ''; })()}")
     esc = text.replace("\\", "\\\\").replace("`", "\\`")
     return "`" + PLACEHOLDER.sub(repl, esc) + "`"
 
@@ -128,7 +136,9 @@ def compile_plan(plan):
                 "  for (const f of r.forbid || []) if (v.toLowerCase().includes(f.toLowerCase())) problems.push(`${col} : « ${f} » interdit`);\n"
                 "}\n"
                 "row['Vérification'] = problems.length ? '⚠️ ' + problems.join(' ; ') : '✅ OK';\n"
-                "return [{ json: row }];"
+                + ("if (problems.length) throw new Error('Écriture bloquée, valeurs douteuses : ' + problems.join(' ; '));\n"
+                   if b.get("on_problem", "stop") == "stop" else "")
+                + "return [{ json: row }];"
             )
             nodes.append(node(b["name"], "n8n-nodes-base.code", 2, {"jsCode": code}, x))
             nodes[-1]["notes"] = "Vérifie chaque valeur lue par Holo avant de l'écrire (règles : présente, format, mots interdits)."
@@ -249,7 +259,7 @@ def ensure_header(sheet_key, column_letter, title):
 
 
 def run_cli(args, timeout=3600):
-    r = subprocess.run(["n8n", *args], capture_output=True, text=True, timeout=timeout)
+    r = subprocess.run([N8N_BIN, *args], capture_output=True, text=True, timeout=timeout)
     return r.returncode, r.stdout, r.stderr
 
 
@@ -264,8 +274,7 @@ def import_workflow(wf):
 
 def execute(wid):
     # le serveur n8n déjà lancé occupe le port 5679 du « task broker » : l'exécution en ligne de commande en prend un autre
-    import os
-    r = subprocess.run(["n8n", "execute", f"--id={wid}", "--rawOutput"], capture_output=True, text=True, timeout=3600,
+    r = subprocess.run([N8N_BIN, "execute", f"--id={wid}", "--rawOutput"], capture_output=True, text=True, timeout=3600,
                        env={**os.environ, "N8N_RUNNERS_BROKER_PORT": "5690"})
     code, out, err = r.returncode, r.stdout, r.stderr
     text = out.strip()
