@@ -498,7 +498,7 @@ def casse(session_dir: Path) -> None:
     sb.update("taches", f"id=eq.{tid}", {"status": "confirmed"})
     url, srv = serve(session_dir / "twin")
     width = int(os.environ.get("DISCOVERY_AGENTS", "3"))
-    waves = int(os.environ.get("DISCOVERY_WAVES", "3"))
+    waves = int(os.environ.get("DISCOVERY_WAVES", "2"))
     results = list(st.data.get("iterations") or [])
     solutions: dict[str, dict] = {}  # signature du chemin -> meilleur essai
     lock = threading.Lock()
@@ -545,6 +545,9 @@ def casse(session_dir: Path) -> None:
                 list(pool.map(lambda a: one(a[1], known, base + a[0] + 1), enumerate(starts)))
             if set(solutions) == before:
                 break  # plus aucun chemin nouveau : l'exploration est finie
+            if os.environ.get("DISCOVERY_FULL_CATALOGUE") != "1" and any(
+                    r["success_rate"] >= 1 for r in results[base:]):
+                break  # un chemin parfait trouvé : on passe directement au test de trafic (rapidité d'abord)
         # test de « trafic » sur la meilleure solution (popup + lenteur, en parallèle)
         best = max(solutions.values(), key=lambda r: (r["success_rate"], -r["seconds"]), default=None)
         if best and best["success_rate"] >= 0.9:

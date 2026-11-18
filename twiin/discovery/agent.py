@@ -224,7 +224,8 @@ def run_agent(url: str, mission: str, out_dir: Path, model: str, max_steps: int 
                 where = f" on {info['tag']} '{info['text'][:40]}'" if info else ""
                 shown = {k: v for k, v in args.items() if k != "reason"}
                 history.append(f"{step}. {name} {json.dumps(shown, ensure_ascii=False)}{where} -> ok")
-                token = (f"ouvrir « {info['text'][:30]} »" if name == "click" and info and info.get("tag") in ("button", "a", "li")
+                token = (f"ouvrir « {info['text'][:30]} »" if name == "click" and info and info.get("text")
+                         and info.get("tag") not in ("input", "textarea", "td") and len(info["text"]) < 40
                          else "saisir" if name == "type_text" else None)
                 if token and (not path or path[-1] != token):
                     path.append(token)
