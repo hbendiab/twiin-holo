@@ -92,6 +92,7 @@ about the software involved. Produce TWO blocks, in this order, and nothing else
  "mission": "English instruction for a computer-use agent working INSIDE THE TWIN, as the employee would ask a colleague: the goal and where to look, ending with 'then call done'. Do NOT give the values to copy: the agent must READ them in the twin pages (that is what we test). Never ask to buy, send, pay, validate or delete.",
  "expected": {"rows": [{"<column>": "<exact expected value>"}]},
  "fidelite": "low | medium | high : how close the twin is to the real tools, given what the screenshots show",
+ "items": ["the names of the items the task processes, in order (e.g. the 3 sites)"],
  "routes": [{"nom": "short French name", "strategie": "English: a DIFFERENT way to reach the same final result (other starting point, other order, other navigation), 1-3 sentences"}]  // exactly 3, truly different
 }
 ```
@@ -321,8 +322,12 @@ def discover(session_dir: Path) -> None:
     try:
         r0 = route_zero(session_dir)
         bricks = list_bricks(url)
-        wave1 = parallel_wave(spec, url, session_dir, DEV_MODEL, 1, bricks, [], r0, sb, tid,
-                              width=int(os.environ.get("DISCOVERY_AGENTS", "3")))
+        from concurrent.futures import ThreadPoolExecutor
+        with ThreadPoolExecutor(max_workers=2) as pool:  # Holo à l'écran ET automatisation n8n, en même temps
+            f_wave = pool.submit(parallel_wave, spec, url, session_dir, DEV_MODEL, 1, bricks, [], r0, sb, tid,
+                                 int(os.environ.get("DISCOVERY_AGENTS", "3")))
+            f_auto = pool.submit(automation_iteration, spec, twin_dir, session_dir, sb, tid, 100)
+            wave1 = f_wave.result() + [r for r in [f_auto.result()] if r]
     finally:
         srv.shutdown()
     best = max(wave1, key=lambda r: (r["success_rate"], -r["seconds"]))
@@ -495,6 +500,33 @@ def run_iteration(spec, url, out, model, variant, hints="", route: dict | None =
     return res, sc, errs
 
 
+def automation_iteration(spec, twin_dir: Path, session_dir: Path, sb, tid, it: int) -> dict | None:
+    """Solution d'une autre nature : un workflow n8n (blocs Holo pour LIRE les logiciels sans API, API pour ÉCRIRE),
+    exécuté dans le n8n local contre le jumeau. None si n8n n'est pas configuré."""
+    if os.environ.get("DISCOVERY_N8N", "on") == "off":
+        return None
+    from discovery.automation import run_automation
+    n, cols = _columns(spec.get("expected"))
+    try:
+        r = run_automation(spec, twin_dir, session_dir / "runs" / "n8n", CASSE_MODEL, cols, n)
+    except Exception as e:  # noqa: BLE001
+        print("itération n8n impossible :", e, flush=True)
+        return None
+    sc, errs = score(spec.get("expected"), r["state"])
+    out = {"iteration": it, "model": CASSE_MODEL, "variant": "base", "success_rate": round(sc, 3), "false_success": False,
+           "seconds": r["seconds"], "calls": r["holo"]["calls"], "errors": errs[:3], "start": None, "kind": "n8n",
+           "label": "automatisation n8n + Holo", "path": ["n8n", f"Holo lit × {n}", "API écrit"],
+           "route": f"n8n : {n} blocs Holo (lecture) → API du tableur (écriture)", "n8n_status": r["status"]}
+    try:
+        record_test(sb, tid, "automatisation n8n + Holo",
+                    {"stats": {"model": CASSE_MODEL, "calls": out["calls"], "seconds": out["seconds"], "blocked": 0},
+                     "history": [out["route"]], "summary": f"n8n {r['status']}", "claimed_success": r["status"] == "success"},
+                    sc, errs, "automatisation")
+    except Exception as e:  # noqa: BLE001
+        print("essai n8n non enregistré :", e, flush=True)
+    return out
+
+
 def parallel_wave(spec, url, session_dir: Path, model: str, first_it: int, bricks: list, known: list[str],
                   r0: dict | None, sb, tid, width: int = 3) -> list[dict]:
     """width agents EN MÊME TEMPS, parcours différents : départs et ordres imposés différents, et registre partagé
@@ -609,7 +641,7 @@ def casse(session_dir: Path) -> None:
             known = sorted({r["route"] for r in results if r.get("path")})
             results += parallel_wave(spec, url, session_dir, CASSE_MODEL, len(results) + 1, rest, known, None, sb, tid)
         best = max(results, key=lambda r: (r["success_rate"], -r["seconds"]), default=None)
-        if best and best["success_rate"] >= 0.9:
+        if best and best["success_rate"] >= 0.9 and best.get("kind") != "n8n":  # n8n : pas de trafic écran à tester
             progress("Test du meilleur chemin avec popup et lenteur")
             base = len(results)
             route = r0 if best.get("label") == "chemin de l'employé" else None
@@ -660,6 +692,11 @@ def propose(results: list[dict]) -> dict:
         raisons.append("le meilleur chemin " + ("tient" if tient else "ne tient pas toujours") + " avec popup et lenteur : "
                        + ", ".join(f"{r['variant']} {round(r['success_rate'] * 100)} %" for r in traffic))
     if ranked and ranked[0]["success_rate"] >= 0.9:
+        if ranked[0].get("kind") == "n8n":
+            return {"kind": "automate", "confidence": "high", "modele": model, "livrable": "n8n",
+                    "texte": f"Automatiser avec n8n : des blocs Holo ({model}) lisent les logiciels sans API, l'API écrit "
+                             "le résultat. C'est la solution la plus rapide et la plus fiable trouvée.",
+                    "raisons": raisons, "catalogue": catalogue}
         return {"kind": "automate", "confidence": "high" if tient else "medium", "modele": model,
                 "texte": f"Automatiser avec Holo ({model}) en suivant le meilleur chemin découvert, avec une vérification "
                          "du résultat à chaque exécution.", "raisons": raisons, "catalogue": catalogue}
