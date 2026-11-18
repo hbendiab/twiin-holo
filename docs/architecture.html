@@ -1,0 +1,269 @@
+<title>Architecture Twiin</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&family=Space+Grotesk:wght@500;600;700&display=swap">
+<style>
+/* Mise en page : une colonne de lecture ; un schéma de flux en tête, puis une fiche par étape (outil, pourquoi, où) */
+:root {
+  --bg: #f6f7f9; --panel: #ffffff; --ink: #16191f; --dim: #5b6372; --line: #dde1e8;
+  --accent: #2753c9; --accent-soft: #e6ecfb;
+  --local: #0f7a5a; --local-soft: #e2f3ec; --cloud: #7a4bc2; --cloud-soft: #efe8fa; --ext: #b25b10; --ext-soft: #fbeedd;
+  --ok: #1b7a3d; --part: #9a6a00; --todo: #6b7280;
+  --f-display: "Space Grotesk", "Segoe UI", system-ui, sans-serif;
+  --f-body: "IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
+  --f-mono: "IBM Plex Mono", ui-monospace, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #0f1218; --panel: #171b23; --ink: #e6e9ef; --dim: #9aa3b2; --line: #2a303b;
+  --accent: #8aa8ff; --accent-soft: #1d2640;
+  --local: #5fd3a8; --local-soft: #12271f; --cloud: #c3a3f5; --cloud-soft: #241b33; --ext: #f0a65c; --ext-soft: #2c2014;
+  --ok: #5fd38a; --part: #e6b84d; --todo: #9aa3b2; color-scheme: dark } }
+:root[data-theme="dark"] {
+  --bg: #0f1218; --panel: #171b23; --ink: #e6e9ef; --dim: #9aa3b2; --line: #2a303b;
+  --accent: #8aa8ff; --accent-soft: #1d2640;
+  --local: #5fd3a8; --local-soft: #12271f; --cloud: #c3a3f5; --cloud-soft: #241b33; --ext: #f0a65c; --ext-soft: #2c2014;
+  --ok: #5fd38a; --part: #e6b84d; --todo: #9aa3b2; color-scheme: dark }
+body { background: var(--bg); color: var(--ink); font: 15px/1.6 var(--f-body); }
+.wrap { max-width: 980px; margin: 0 auto; padding-block: 40px 64px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+h1, h2, h3 { font-family: var(--f-display); text-wrap: balance; line-height: 1.2; margin: 0; }
+h1 { font-size: 2.1rem; letter-spacing: -0.01em; }
+h2 { font-size: 1.35rem; margin-top: 48px; }
+h3 { font-size: 1.05rem; }
+p { margin: 0; }
+.lede { color: var(--dim); max-width: 68ch; margin-top: 10px; }
+.meta { font: 12px var(--f-mono); color: var(--dim); margin-top: 14px; letter-spacing: .02em; }
+.legend { display: flex; flex-wrap: wrap; gap: 8px 18px; margin-top: 18px; font-size: 13px; color: var(--dim); }
+.legend span { display: inline-flex; align-items: center; gap: 6px; }
+.dot { width: 10px; height: 10px; border-radius: 3px; display: inline-block; }
+.d-local { background: var(--local); } .d-cloud { background: var(--cloud); } .d-ext { background: var(--ext); }
+.diagram { margin-top: 22px; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 16px; overflow-x: auto; }
+.diagram svg { display: block; min-width: 860px; width: 100%; height: auto; }
+.diagram text { font-family: var(--f-body); }
+.steps { display: grid; gap: 14px; margin-top: 18px; }
+.step { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 18px 20px; display: grid; gap: 10px; }
+.step-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px 14px; }
+.num { font: 600 12px var(--f-mono); color: var(--accent); background: var(--accent-soft); border-radius: 6px; padding: 2px 8px; }
+.status { font: 500 12px var(--f-mono); margin-left: auto; }
+.s-ok { color: var(--ok); } .s-part { color: var(--part); } .s-todo { color: var(--todo); }
+.what { color: var(--dim); max-width: 75ch; }
+table { width: 100%; border-collapse: collapse; font-size: 14px; }
+.tbl { overflow-x: auto; }
+th { text-align: left; font: 500 11px var(--f-mono); text-transform: uppercase; letter-spacing: .06em; color: var(--dim);
+  padding: 6px 10px 6px 0; border-bottom: 1px solid var(--line); }
+td { padding: 8px 10px 8px 0; border-bottom: 1px solid var(--line); vertical-align: top; }
+tr:last-child td { border-bottom: 0; }
+td:first-child { font-weight: 500; white-space: nowrap; }
+.where { font: 500 11px var(--f-mono); border-radius: 5px; padding: 1px 6px; white-space: nowrap; }
+.w-local { color: var(--local); background: var(--local-soft); }
+.w-cloud { color: var(--cloud); background: var(--cloud-soft); }
+.w-ext { color: var(--ext); background: var(--ext-soft); }
+code { font: 13px var(--f-mono); background: var(--accent-soft); border-radius: 4px; padding: 0 4px; }
+.facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 12px; margin-top: 16px; }
+.fact { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; }
+.fact b { display: block; font: 600 1.35rem var(--f-display); font-variant-numeric: tabular-nums; }
+.fact span { color: var(--dim); font-size: 13px; }
+.target { margin-top: 18px; border: 1px dashed var(--accent); border-radius: 12px; padding: 18px 20px; background: var(--accent-soft); display: grid; gap: 10px; }
+.target ul, .notes ul { margin: 0; padding-left: 20px; display: grid; gap: 6px; }
+.notes { margin-top: 14px; display: grid; gap: 10px; }
+footer { margin-top: 48px; color: var(--dim); font-size: 13px; }
+@media (max-width: 560px) { h1 { font-size: 1.7rem; } .status { margin-left: 0; } }
+</style>
+
+<div class="wrap">
+  <h1>Architecture Twiin</h1>
+  <p class="lede">Ce que Twiin utilise aujourd'hui à chaque étape, et pourquoi. Twiin observe une tâche faite une fois par un
+    salarié, la comprend, la fait valider, la reproduit dans un environnement de test isolé, essaie plusieurs solutions,
+    puis propose la meilleure : accélérer (conseils, tuto) ou automatiser (n8n, avec Holo seulement là où il n'y a pas d'API).</p>
+  <p class="meta">Hackathon Build The Future · Team 10 · état au 18/11/2026 · page tenue à jour au fil des changements</p>
+  <div class="legend" aria-label="Légende">
+    <span><i class="dot d-local"></i>sur le poste du salarié</span>
+    <span><i class="dot d-cloud"></i>serveur Twiin (local aujourd'hui)</span>
+    <span><i class="dot d-ext"></i>service externe (API)</span>
+  </div>
+
+  <div class="diagram" role="img" aria-label="Schéma : Observer, Analyser, Comprendre et valider en parallèle de l'environnement de test, itérations, proposition">
+    <svg viewBox="0 0 900 330" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M0,0 L10,5 L0,10 z" style="fill: var(--dim)"/>
+        </marker>
+      </defs>
+      <g style="stroke: var(--dim); stroke-width: 1.5; fill: none">
+        <path d="M150 70 H178" marker-end="url(#ar)"/>
+        <path d="M330 70 H358" marker-end="url(#ar)"/>
+        <path d="M330 70 C345 70 345 190 358 190" marker-end="url(#ar)"/>
+        <path d="M520 70 H548" marker-end="url(#ar)"/>
+        <path d="M520 190 H548" marker-end="url(#ar)"/>
+        <path d="M710 70 C725 70 725 130 738 130" marker-end="url(#ar)"/>
+        <path d="M710 190 C725 190 725 130 738 130" marker-end="url(#ar)"/>
+      </g>
+      <g>
+        <rect x="10" y="30" width="140" height="80" rx="10" style="fill: var(--local-soft); stroke: var(--local)"/>
+        <text x="80" y="62" text-anchor="middle" style="fill: var(--ink); font-weight: 600; font-size: 14px">1 · Observer</text>
+        <text x="80" y="82" text-anchor="middle" style="fill: var(--dim); font-size: 11px">écran, OCR, journal</text>
+        <text x="80" y="97" text-anchor="middle" style="fill: var(--dim); font-size: 11px">d'actions (Mac / Win)</text>
+
+        <rect x="180" y="30" width="150" height="80" rx="10" style="fill: var(--ext-soft); stroke: var(--ext)"/>
+        <text x="255" y="62" text-anchor="middle" style="fill: var(--ink); font-weight: 600; font-size: 14px">2 · Analyser</text>
+        <text x="255" y="82" text-anchor="middle" style="fill: var(--dim); font-size: 11px">Qwen vision</text>
+        <text x="255" y="97" text-anchor="middle" style="fill: var(--dim); font-size: 11px">(Hugging Face)</text>
+
+        <rect x="360" y="30" width="160" height="80" rx="10" style="fill: var(--cloud-soft); stroke: var(--cloud)"/>
+        <text x="440" y="58" text-anchor="middle" style="fill: var(--ink); font-weight: 600; font-size: 14px">3 · Comprendre</text>
+        <text x="440" y="76" text-anchor="middle" style="fill: var(--ink); font-weight: 600; font-size: 14px">et faire valider</text>
+        <text x="440" y="96" text-anchor="middle" style="fill: var(--dim); font-size: 11px">« Ai-je bien compris ? »</text>
+
+        <rect x="360" y="150" width="160" height="80" rx="10" style="fill: var(--cloud-soft); stroke: var(--cloud)"/>
+        <text x="440" y="178" text-anchor="middle" style="fill: var(--ink); font-weight: 600; font-size: 14px">4 · Environnement</text>
+        <text x="440" y="196" text-anchor="middle" style="fill: var(--ink); font-weight: 600; font-size: 14px">de test (jumeau)</text>
+        <text x="440" y="216" text-anchor="middle" style="fill: var(--dim); font-size: 11px">données fictives, isolé</text>
+
+        <rect x="550" y="30" width="160" height="80" rx="10" style="fill: var(--cloud-soft); stroke: var(--cloud)"/>
+        <text x="630" y="58" text-anchor="middle" style="fill: var(--ink); font-weight: 600; font-size: 14px">5 · 3 itérations</text>
+        <text x="630" y="76" text-anchor="middle" style="fill: var(--ink); font-weight: 600; font-size: 14px">« conseil »</text>
+        <text x="630" y="96" text-anchor="middle" style="fill: var(--dim); font-size: 11px">Holo, 3 parcours différents</text>
+
+        <rect x="550" y="150" width="160" height="80" rx="10" style="fill: var(--cloud-soft); stroke: var(--cloud)"/>
+        <text x="630" y="178" text-anchor="middle" style="fill: var(--ink); font-weight: 600; font-size: 14px">6 · 2 itérations</text>
+        <text x="630" y="196" text-anchor="middle" style="fill: var(--ink); font-weight: 600; font-size: 14px">« automatisation »</text>
+        <text x="630" y="216" text-anchor="middle" style="fill: var(--dim); font-size: 11px">n8n natif ou n8n + Holo</text>
+
+        <rect x="740" y="90" width="150" height="80" rx="10" style="fill: var(--accent-soft); stroke: var(--accent)"/>
+        <text x="815" y="122" text-anchor="middle" style="fill: var(--ink); font-weight: 600; font-size: 14px">7 · Proposer</text>
+        <text x="815" y="142" text-anchor="middle" style="fill: var(--dim); font-size: 11px">conseil, tuto ou</text>
+        <text x="815" y="157" text-anchor="middle" style="fill: var(--dim); font-size: 11px">workflow n8n</text>
+      </g>
+      <g>
+        <rect x="10" y="262" width="880" height="50" rx="10" style="fill: var(--panel); stroke: var(--line)"/>
+        <text x="30" y="284" style="fill: var(--ink); font-weight: 600; font-size: 13px">Supabase (Postgres + RLS + Storage)</text>
+        <text x="30" y="302" style="fill: var(--dim); font-size: 12px">dictionnaire (outils, docs, captures) · taches (étapes, captures, question, jumeau) · tests (chaque essai mesuré) · recommendations</text>
+      </g>
+      <g style="stroke: var(--line); stroke-width: 1.2; stroke-dasharray: 4 4; fill: none">
+        <path d="M440 230 V262"/><path d="M630 230 V262"/><path d="M815 170 V262"/><path d="M440 110 V150"/>
+      </g>
+      <text x="345" y="140" text-anchor="end" style="fill: var(--dim); font-size: 11px">en parallèle</text>
+    </svg>
+  </div>
+
+  <h2>Chiffres mesurés sur le cas 4</h2>
+  <p class="lede">Cas 4 « comparer un casque sur 3 sites et remplir un tableau », enregistré sous Windows, mesures du 18/11.</p>
+  <div class="facts">
+    <div class="fact"><b>≈ 0,02 $</b><span>analyse de l'enregistrement (Qwen : étapes, conseils, verdict)</span></div>
+    <div class="fact"><b>39 à 118 s</b><span>construction du jumeau, pour ≈ 0,02 $</span></div>
+    <div class="fact"><b>100 %</b><span>meilleur parcours Holo à l'écran, tient aussi avec popup et site lent</span></div>
+    <div class="fact"><b>2,5 s · 0 Holo</b><span>automatisation n8n native (lecture HTML), 93 % de valeurs justes</span></div>
+    <div class="fact"><b>25 à 29 s</b><span>automatisation n8n + blocs Holo de lecture, 93 %</span></div>
+    <div class="fact"><b>30 → 100 %</b><span>fiabilité de Holo avant / après guidage et mémoire de travail</span></div>
+  </div>
+
+  <h2>Étape par étape</h2>
+  <div class="steps">
+
+    <section class="step">
+      <div class="step-head"><span class="num">1</span><h3>Observer la tâche</h3><span class="status s-ok">en place · Mac et Windows</span></div>
+      <p class="what">Le salarié fait sa tâche une fois. Twiin garde des captures d'écran, le texte lu à l'écran et ce qu'il fait (clics, saisies, changements d'application), sans jamais enregistrer les touches tapées.</p>
+      <div class="tbl"><table>
+        <tr><th>Brique</th><th>Outil utilisé</th><th>Pourquoi</th><th>Où</th></tr>
+        <tr><td>Page Twiin</td><td>Node.js + Express, HTML/JS (<code>recorder/</code>)</td><td>une page web suffit, rien à installer côté navigateur</td><td><span class="where w-local">poste</span></td></tr>
+        <tr><td>Captures, multi-écrans</td><td>partage d'écran du navigateur (Chrome)</td><td>standard, fonctionne sur Mac et Windows</td><td><span class="where w-local">poste</span></td></tr>
+        <tr><td>OCR</td><td>Vision (macOS) · OCR intégré de Windows (<code>ocr_win.py</code>)</td><td>texte lu en local, rien ne sort du poste, gratuit</td><td><span class="where w-local">poste</span></td></tr>
+        <tr><td>Journal d'actions</td><td>Quartz + Accessibilité (macOS) · pynput + UI Automation (Windows)</td><td>sait sur quel bouton on clique : base du « chemin de l'employé »</td><td><span class="where w-local">poste</span></td></tr>
+        <tr><td>Choix Mac / Windows</td><td>détection automatique dans <code>server.js</code></td><td>même code pour tout le monde</td><td><span class="where w-local">poste</span></td></tr>
+      </table></div>
+    </section>
+
+    <section class="step">
+      <div class="step-head"><span class="num">2</span><h3>Analyser</h3><span class="status s-ok">en place</span></div>
+      <p class="what">Les captures, le texte et le journal sont transformés en étapes fidèles, conseils pour gagner du temps et verdict « accélérer ou automatiser ».</p>
+      <div class="tbl"><table>
+        <tr><th>Brique</th><th>Outil utilisé</th><th>Pourquoi</th><th>Où</th></tr>
+        <tr><td>Modèle de vision</td><td>Qwen3.8-27B via le routeur Hugging Face (API compatible OpenAI)</td><td>lit les images et le texte, ≈ 0,005 $ par analyse, fournisseur interchangeable</td><td><span class="where w-ext">API</span></td></tr>
+        <tr><td>Robustesse</td><td>réparation du JSON renvoyé (json-repair)</td><td>le modèle rend parfois un JSON mal formé</td><td><span class="where w-cloud">serveur</span></td></tr>
+      </table></div>
+    </section>
+
+    <section class="step">
+      <div class="step-head"><span class="num">3</span><h3>Comprendre et faire valider</h3><span class="status s-ok">en place</span></div>
+      <p class="what">Twiin reformule ce qu'il a compris (problème, étapes, outils, objectif, points à confirmer) et pose une seule question : « Ai-je bien compris votre problème ? ». Les étapes et conseils restent cachés jusqu'au « oui ».</p>
+      <div class="tbl"><table>
+        <tr><th>Brique</th><th>Outil utilisé</th><th>Pourquoi</th><th>Où</th></tr>
+        <tr><td>Fiche de cadrage</td><td>appel court à Qwen, texte seul</td><td>rapide : la question n'attend pas le jumeau</td><td><span class="where w-ext">API</span></td></tr>
+        <tr><td>Travail en arrière-plan</td><td>worker Python détaché (<code>discovery/</code>)</td><td>la page reste fluide ; un redémarrage du serveur ne l'interrompt pas</td><td><span class="where w-cloud">serveur</span></td></tr>
+        <tr><td>Stockage</td><td>Supabase : <code>taches</code>, bucket <code>task-captures</code></td><td>Postgres + Storage, isolation par entreprise (RLS), compte de chaque salarié</td><td><span class="where w-ext">API</span></td></tr>
+      </table></div>
+    </section>
+
+    <section class="step">
+      <div class="step-head"><span class="num">4</span><h3>Environnement de test (jumeau)</h3><span class="status s-ok">en place</span></div>
+      <p class="what">Pendant que le salarié lit la question, Twiin reconstruit les écrans de sa tâche dans une page web isolée, avec des données fictives. Tous les essais s'y font : jamais sur ses vrais outils, donc rien à supprimer ou divulguer par erreur. L'employé ne voit jamais ce jumeau.</p>
+      <div class="tbl"><table>
+        <tr><th>Brique</th><th>Outil utilisé</th><th>Pourquoi</th><th>Où</th></tr>
+        <tr><td>Génération</td><td>Qwen (vision) : page HTML + mission + état final attendu</td><td>un jumeau en 1 à 2 min, sans développement</td><td><span class="where w-ext">API</span></td></tr>
+        <tr><td>Connaissance des outils</td><td>table <code>dictionnaire</code> + bucket <code>tool-screens</code></td><td>docs et captures publiques (collectées avec Playwright) ; captures des outils internes par l'audit</td><td><span class="where w-ext">API</span></td></tr>
+        <tr><td>Vérification</td><td>état final lu dans le jumeau, comparé à l'attendu</td><td>on ne croit pas l'agent sur parole : les « faux réussis » sont détectés</td><td><span class="where w-cloud">serveur</span></td></tr>
+      </table></div>
+    </section>
+
+    <section class="step">
+      <div class="step-head"><span class="num">5</span><h3>3 itérations « conseil »</h3><span class="status s-ok">en place</span></div>
+      <p class="what">Trois agents partent du même point, en même temps, et cherchent chacun un parcours différent pour arriver au même résultat, comme un GPS. Le premier suit le chemin réel de l'employé, tiré de son journal d'actions.</p>
+      <div class="tbl"><table>
+        <tr><th>Brique</th><th>Outil utilisé</th><th>Pourquoi</th><th>Où</th></tr>
+        <tr><td>Agent</td><td>Holo (H Company) : holo4-35b-a3b, ou holo3-1-35b-a3b gratuit</td><td>agent « computer use » qui agit sur l'écran comme un humain</td><td><span class="where w-ext">API</span></td></tr>
+        <tr><td>Navigateur</td><td>Playwright + Chromium sans fenêtre</td><td>un navigateur par agent, rien à l'écran du salarié</td><td><span class="where w-cloud">serveur</span></td></tr>
+        <tr><td>Fiabilité</td><td>mémoire de travail (« note »), avancement du tableau, « fini » refusé si incomplet, attente d'une page stable</td><td>Holo ne voit que l'écran en cours : sans mémoire, il inventait les valeurs</td><td><span class="where w-cloud">serveur</span></td></tr>
+        <tr><td>Parcours différents</td><td>registre partagé en direct entre les 3 agents</td><td>chacun voit ce que font les autres et prend un autre chemin</td><td><span class="where w-cloud">serveur</span></td></tr>
+        <tr><td>Robustesse</td><td>meilleur parcours rejoué avec popup cookies et site lent</td><td>vérifier que la solution tient dans la vraie vie</td><td><span class="where w-cloud">serveur</span></td></tr>
+      </table></div>
+    </section>
+
+    <section class="step">
+      <div class="step-head"><span class="num">6</span><h3>2 itérations « automatisation »</h3><span class="status s-ok">en place</span></div>
+      <p class="what">Avant d'essayer, Twiin classe chaque outil : API, page web lisible, ou ni l'un ni l'autre. Si tout a une API ou une page lisible, il teste deux workflows n8n natifs. S'il reste un outil sans API, il teste deux workflows n8n avec Holo, seulement pour cet outil.</p>
+      <div class="tbl"><table>
+        <tr><th>Brique</th><th>Outil utilisé</th><th>Pourquoi</th><th>Où</th></tr>
+        <tr><td>Classement des outils</td><td>dictionnaire d'abord, Qwen en complément</td><td>choisir le bon mode avant de dépenser des essais</td><td><span class="where w-ext">API</span></td></tr>
+        <tr><td>Automatisation</td><td>n8n 2.48 : workflow créé par l'API, exécuté via son serveur MCP, puis supprimé</td><td>outil d'automatisation standard, workflows lisibles et modifiables</td><td><span class="where w-cloud">serveur</span></td></tr>
+        <tr><td>n8n natif</td><td>lecture HTTP + extraction HTML, ou bloc Code</td><td>le plus rapide et le moins cher (2,5 s, sans Holo)</td><td><span class="where w-cloud">serveur</span></td></tr>
+        <tr><td>n8n + Holo</td><td>blocs qui appellent Holo pour lire ce qui n'a pas d'API</td><td>computer use réservé aux logiciels sans API</td><td><span class="where w-ext">API</span></td></tr>
+        <tr><td>Écriture</td><td>API de l'outil cible (simulée dans le jumeau)</td><td>tester de bout en bout sans toucher aux vraies données</td><td><span class="where w-cloud">serveur</span></td></tr>
+      </table></div>
+    </section>
+
+    <section class="step">
+      <div class="step-head"><span class="num">7</span><h3>Proposer la meilleure solution</h3><span class="status s-part">partiel</span></div>
+      <p class="what">Twiin classe tout ce qu'il a essayé (réussite, temps, étapes, coût) et propose une solution : accélérer avec des conseils et un tuto, ou automatiser avec le workflow n8n retenu.</p>
+      <div class="tbl"><table>
+        <tr><th>Brique</th><th>Outil utilisé</th><th>Pourquoi</th><th>Où</th></tr>
+        <tr><td>Recommandation</td><td>table <code>recommendations</code> + encart dans la page</td><td>une décision tracée, justifiée par les essais (table <code>tests</code>)</td><td><span class="where w-ext">API</span></td></tr>
+        <tr><td>Tuto vidéo</td><td>Remotion + voix ElevenLabs</td><td>montrer la façon rapide de faire ; lancé à la main pour l'instant</td><td><span class="where w-cloud">serveur</span></td></tr>
+        <tr><td>Livraison n8n</td><td>workflow créé dans le n8n de l'entreprise, inactif</td><td>l'activation reste une décision de l'utilisateur ; branchement automatique à faire</td><td><span class="where w-cloud">serveur</span></td></tr>
+      </table></div>
+    </section>
+  </div>
+
+  <h2>Règles qui traversent toutes les étapes</h2>
+  <div class="notes">
+    <ul>
+      <li><b>Sécurité des données</b> : aucune touche tapée n'est enregistrée ; les essais se font uniquement dans le jumeau ; tout clic sur « valider », « payer », « envoyer » ou « supprimer » est bloqué.</li>
+      <li><b>Isolation par entreprise</b> : chaque salarié se connecte avec son compte ; Supabase ne lui montre que les données de son entreprise (RLS testée).</li>
+      <li><b>Tout est mesuré</b> : chaque essai écrit sa durée, son nombre d'appels, sa réussite vérifiée et les faux « réussis » dans <code>tests</code>.</li>
+      <li><b>Mac et Windows</b> : le même code détecte le système ; <code>scripts/doctor.py</code> vérifie un poste sans afficher aucun secret.</li>
+      <li><b>Secrets</b> : jamais dans le dépôt. Aujourd'hui dans un fichier <code>.env</code> local (environnement de l'équipe) ; demain uniquement côté serveur.</li>
+    </ul>
+  </div>
+
+  <h2>Cible : ce qui change pour un salarié quelconque</h2>
+  <div class="target">
+    <p>Aujourd'hui, tout tourne sur le poste de l'équipe. La cible garde les mêmes briques, réparties pour que le salarié n'ait rien à configurer.</p>
+    <ul>
+      <li><b>Un petit capteur sur le poste</b> (captures, OCR, journal d'actions), déployé par la DSI, avec son propre Python et navigateur.</li>
+      <li><b>Le reste en ligne</b> : analyse, jumeau, itérations et n8n dans des conteneurs jetables, jamais sur le poste.</li>
+      <li><b>Aucune clé côté salarié</b> : connexion avec le compte de l'entreprise (SSO) ; les clés Hugging Face, H et n8n restent sur le serveur.</li>
+      <li><b>Un n8n par entreprise</b>, hébergé, au lieu d'un n8n local.</li>
+      <li><b>Limite connue</b> : sur Mac, l'autorisation d'enregistrer l'écran doit être donnée une fois par l'utilisateur (règle d'Apple).</li>
+    </ul>
+  </div>
+
+  <footer>Code : dépôt twiin-holo, dossiers <code>twiin/recorder</code>, <code>twiin/discovery</code>, <code>supabase/</code>. Page tenue à jour au fil des tests.</footer>
+</div>
