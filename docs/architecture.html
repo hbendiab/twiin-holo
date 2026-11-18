@@ -1,337 +1,672 @@
 <title>Architecture Twiin</title>
 <meta name="claude:viewport-fit-sides" content="cover">
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&family=Space+Grotesk:wght@500;600;700&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
 <style>
-/* Mise en page : une colonne de lecture ; un schéma de flux en tête, puis une fiche par étape (outil, pourquoi, où) */
+/* Mise en page : une colonne de lecture. Schéma d'aujourd'hui, stacks étape par étape, puis version finale et graphe vivant. */
 :root {
-  --bg: #f6f7f9; --panel: #ffffff; --ink: #16191f; --dim: #5b6372; --line: #dde1e8;
-  --accent: #2753c9; --accent-soft: #e6ecfb;
-  --local: #0f7a5a; --local-soft: #e2f3ec; --cloud: #7a4bc2; --cloud-soft: #efe8fa; --ext: #b25b10; --ext-soft: #fbeedd;
-  --ok: #1b7a3d; --part: #9a6a00; --todo: #6b7280;
+  --bg: #f5f6f8; --panel: #ffffff; --ink: #151821; --dim: #586172; --line: #dce0e7;
+  --accent: #2b55c8; --accent-soft: #e7edfb;
+  --post: #0e7a58; --post-soft: #e1f3eb; --srv: #7445c0; --srv-soft: #efe7fa; --ext: #b0590e; --ext-soft: #fbeedc;
+  --db: #1f7f8c; --db-soft: #dff2f4;
+  --ok: #1b7a3d; --part: #966600;
   --f-display: "Space Grotesk", "Segoe UI", system-ui, sans-serif;
   --f-body: "IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
   --f-mono: "IBM Plex Mono", ui-monospace, Consolas, monospace;
 }
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
-  --bg: #0f1218; --panel: #171b23; --ink: #e6e9ef; --dim: #9aa3b2; --line: #2a303b;
-  --accent: #8aa8ff; --accent-soft: #1d2640;
-  --local: #5fd3a8; --local-soft: #12271f; --cloud: #c3a3f5; --cloud-soft: #241b33; --ext: #f0a65c; --ext-soft: #2c2014;
-  --ok: #5fd38a; --part: #e6b84d; --todo: #9aa3b2; color-scheme: dark } }
+  --bg: #0e1117; --panel: #161a22; --ink: #e6e9ef; --dim: #9aa3b3; --line: #2a303c;
+  --accent: #8daaff; --accent-soft: #1c2541;
+  --post: #5fd3a8; --post-soft: #11271f; --srv: #c4a4f6; --srv-soft: #241b34; --ext: #f1a75e; --ext-soft: #2c2014;
+  --db: #6fd0dc; --db-soft: #10282c; --ok: #5fd38a; --part: #e6b84d; color-scheme: dark } }
 :root[data-theme="dark"] {
-  --bg: #0f1218; --panel: #171b23; --ink: #e6e9ef; --dim: #9aa3b2; --line: #2a303b;
-  --accent: #8aa8ff; --accent-soft: #1d2640;
-  --local: #5fd3a8; --local-soft: #12271f; --cloud: #c3a3f5; --cloud-soft: #241b33; --ext: #f0a65c; --ext-soft: #2c2014;
-  --ok: #5fd38a; --part: #e6b84d; --todo: #9aa3b2; color-scheme: dark }
+  --bg: #0e1117; --panel: #161a22; --ink: #e6e9ef; --dim: #9aa3b3; --line: #2a303c;
+  --accent: #8daaff; --accent-soft: #1c2541;
+  --post: #5fd3a8; --post-soft: #11271f; --srv: #c4a4f6; --srv-soft: #241b34; --ext: #f1a75e; --ext-soft: #2c2014;
+  --db: #6fd0dc; --db-soft: #10282c; --ok: #5fd38a; --part: #e6b84d; color-scheme: dark }
 body { background: var(--bg); color: var(--ink); font: 15px/1.6 var(--f-body); }
-.wrap { max-width: 980px; margin: 0 auto; padding-block: 40px 64px;
+body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); z-index: 10; background: var(--bg); }
+.wrap { max-width: 1000px; margin: 0 auto; padding-block: 36px 64px;
   padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
 h1, h2, h3 { font-family: var(--f-display); text-wrap: balance; line-height: 1.2; margin: 0; }
-h1 { font-size: 2.1rem; letter-spacing: -0.01em; }
-h2 { font-size: 1.35rem; margin-top: 48px; }
+h1 { font-size: 2.2rem; letter-spacing: -0.015em; }
+h2 { font-size: 1.45rem; }
 h3 { font-size: 1.05rem; }
 p { margin: 0; }
-.lede { color: var(--dim); max-width: 68ch; margin-top: 10px; }
-.meta { font: 12px var(--f-mono); color: var(--dim); margin-top: 14px; letter-spacing: .02em; }
-.legend { display: flex; flex-wrap: wrap; gap: 8px 18px; margin-top: 18px; font-size: 13px; color: var(--dim); }
+.lede { color: var(--dim); max-width: 70ch; margin-top: 10px; }
+.meta { font: 12px var(--f-mono); color: var(--dim); margin-top: 12px; letter-spacing: .02em; }
+nav.toc { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 5; background: var(--bg); margin-top: 20px;
+  padding-block: 10px; border-bottom: 1px solid var(--line); display: flex; flex-wrap: wrap; gap: 6px 8px; }
+nav.toc a { font: 500 13px var(--f-body); color: var(--ink); text-decoration: none; padding: 4px 10px; border-radius: 999px; border: 1px solid var(--line); background: var(--panel); }
+nav.toc a:hover, nav.toc a:focus-visible { border-color: var(--accent); color: var(--accent); outline: none; }
+section.block { margin-top: 44px; display: grid; gap: 14px; scroll-margin-top: 70px; }
+.sub { color: var(--dim); max-width: 75ch; }
+.legend { display: flex; flex-wrap: wrap; gap: 6px 18px; font-size: 13px; color: var(--dim); }
 .legend span { display: inline-flex; align-items: center; gap: 6px; }
-.dot { width: 10px; height: 10px; border-radius: 3px; display: inline-block; }
-.d-local { background: var(--local); } .d-cloud { background: var(--cloud); } .d-ext { background: var(--ext); }
-.diagram { margin-top: 22px; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 16px; overflow-x: auto; }
-.diagram svg { display: block; min-width: 860px; width: 100%; height: auto; }
-.diagram text { font-family: var(--f-body); }
-.steps { display: grid; gap: 14px; margin-top: 18px; }
-.step { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 18px 20px; display: grid; gap: 10px; }
-.step-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px 14px; }
+.sw { width: 11px; height: 11px; border-radius: 3px; display: inline-block; }
+.frame { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 14px; overflow-x: auto; }
+.frame svg { display: block; min-width: 900px; width: 100%; height: auto; }
+.frame svg text { font-family: var(--f-body); }
+.chip { font: 500 11px var(--f-mono); border-radius: 5px; padding: 1px 6px; white-space: nowrap; }
+.c-post { color: var(--post); background: var(--post-soft); }
+.c-srv { color: var(--srv); background: var(--srv-soft); }
+.c-ext { color: var(--ext); background: var(--ext-soft); }
+.c-db { color: var(--db); background: var(--db-soft); }
+.steps { display: grid; gap: 12px; }
+details.step { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; }
+details.step > summary { list-style: none; cursor: pointer; padding: 14px 18px; display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 12px; }
+details.step > summary::-webkit-details-marker { display: none; }
+details.step > summary:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; border-radius: 12px; }
 .num { font: 600 12px var(--f-mono); color: var(--accent); background: var(--accent-soft); border-radius: 6px; padding: 2px 8px; }
-.status { font: 500 12px var(--f-mono); margin-left: auto; }
-.s-ok { color: var(--ok); } .s-part { color: var(--part); } .s-todo { color: var(--todo); }
-.what { color: var(--dim); max-width: 75ch; }
-table { width: 100%; border-collapse: collapse; font-size: 14px; }
+.what { color: var(--dim); font-size: 14px; flex-basis: 100%; }
+.state { font: 500 12px var(--f-mono); margin-left: auto; }
+.s-ok { color: var(--ok); } .s-part { color: var(--part); }
+.step-body { padding: 0 18px 16px; }
 .tbl { overflow-x: auto; }
-th { text-align: left; font: 500 11px var(--f-mono); text-transform: uppercase; letter-spacing: .06em; color: var(--dim);
-  padding: 6px 10px 6px 0; border-bottom: 1px solid var(--line); }
-td { padding: 8px 10px 8px 0; border-bottom: 1px solid var(--line); vertical-align: top; }
+table { width: 100%; border-collapse: collapse; font-size: 14px; }
+th { text-align: left; font: 500 11px var(--f-mono); text-transform: uppercase; letter-spacing: .06em; color: var(--dim); padding: 6px 12px 6px 0; border-bottom: 1px solid var(--line); }
+td { padding: 8px 12px 8px 0; border-bottom: 1px solid var(--line); vertical-align: top; }
 tr:last-child td { border-bottom: 0; }
-td:first-child { font-weight: 500; white-space: nowrap; }
-.where { font: 500 11px var(--f-mono); border-radius: 5px; padding: 1px 6px; white-space: nowrap; }
-.w-local { color: var(--local); background: var(--local-soft); }
-.w-cloud { color: var(--cloud); background: var(--cloud-soft); }
-.w-ext { color: var(--ext); background: var(--ext-soft); }
+td:first-child { font-weight: 500; }
 code { font: 13px var(--f-mono); background: var(--accent-soft); border-radius: 4px; padding: 0 4px; }
-.facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 12px; margin-top: 16px; }
+.facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; }
 .fact { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; }
-.fact b { display: block; font: 600 1.35rem var(--f-display); font-variant-numeric: tabular-nums; }
+.fact b { display: block; font: 600 1.4rem var(--f-display); font-variant-numeric: tabular-nums; }
 .fact span { color: var(--dim); font-size: 13px; }
-.target { margin-top: 18px; border: 1px dashed var(--accent); border-radius: 12px; padding: 18px 20px; background: var(--accent-soft); display: grid; gap: 10px; }
-.target ul, .notes ul { margin: 0; padding-left: 20px; display: grid; gap: 6px; }
-.notes { margin-top: 14px; display: grid; gap: 10px; }
+.final { border-top: 2px solid var(--accent); padding-top: 28px; }
+.eyebrow { font: 500 12px var(--f-mono); letter-spacing: .08em; text-transform: uppercase; color: var(--accent); }
+.cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px; }
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; display: grid; gap: 6px; align-content: start; min-width: 0; }
+.card ul { margin: 0; padding-left: 18px; display: grid; gap: 4px; font-size: 14px; }
+.graph { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; overflow: hidden; }
+.graph-top { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; padding: 12px 14px; border-bottom: 1px solid var(--line); }
+.graph-top .legend { flex: 1 1 320px; }
+button { font: 500 13px var(--f-body); color: var(--ink); background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 6px 12px; cursor: pointer; }
+button:hover, button:focus-visible { border-color: var(--accent); color: var(--accent); outline: none; }
+canvas#g { display: block; width: 100%; height: 480px; touch-action: none; }
+.caption { padding: 10px 14px 12px; border-top: 1px solid var(--line); font-size: 14px; color: var(--dim); min-height: 3.2em; }
+.caption b { color: var(--ink); }
 footer { margin-top: 48px; color: var(--dim); font-size: 13px; }
-@media (max-width: 560px) { h1 { font-size: 1.7rem; } .status { margin-left: 0; } }
+@media (max-width: 560px) { h1 { font-size: 1.75rem; } canvas#g { height: 400px; } .state { margin-left: 0; } }
 </style>
 
 <div class="wrap">
-  <h1>Architecture Twiin</h1>
-  <p class="lede">Ce que Twiin utilise aujourd'hui à chaque étape, et pourquoi. Twiin observe une tâche faite une fois par un
-    salarié, la comprend, la fait valider, la reproduit dans un environnement de test isolé, essaie plusieurs solutions,
-    puis propose la meilleure : accélérer (conseils, tuto) ou automatiser (n8n, avec Holo seulement là où il n'y a pas d'API).</p>
-  <p class="meta">Hackathon Build The Future · Team 10 · état au 18/11/2026 · page tenue à jour au fil des changements</p>
-  <div class="legend" aria-label="Légende">
-    <span><i class="dot d-local"></i>sur le poste du salarié</span>
-    <span><i class="dot d-cloud"></i>serveur Twiin (local aujourd'hui)</span>
-    <span><i class="dot d-ext"></i>service externe (API)</span>
-  </div>
+  <header>
+    <h1>Architecture Twiin</h1>
+    <p class="lede">Twiin regarde un salarié faire une tâche une fois, la comprend, la fait valider, la rejoue dans une copie
+      isolée, essaie cinq façons de la faire, puis propose la meilleure : l'accélérer avec des conseils, ou l'automatiser
+      avec n8n et Holo. Cette page liste chaque technologie utilisée, à quelle étape, et pourquoi.</p>
+    <p class="meta">Hackathon Build The Future · Team 10 · état au 19/11/2026 · branche feat/decouverte-env-test</p>
+  </header>
 
-  <h2>La stack utilisée</h2>
-  <p class="lede">Toutes les briques techniques de Twiin aujourd'hui, avec leur rôle. Le détail de leur usage suit, étape par étape.</p>
-  <div class="tbl" style="margin-top:14px"><table>
-    <tr><th>Famille</th><th>Technologie</th><th>Rôle dans Twiin</th><th>Où</th></tr>
-    <tr><td>Intelligence artificielle</td><td><b>Hugging Face</b> (routeur) · modèle <b>Qwen3.8-27B</b></td><td>analyse des enregistrements, fiche de cadrage, construction du jumeau, classement des outils</td><td><span class="where w-ext">API</span></td></tr>
-    <tr><td></td><td><b>H Company · Holo</b> (holo3-1-35b-a3b gratuit, holo4-35b-a3b)</td><td>agent « computer use » : parcours dans le jumeau, lecture des logiciels sans API</td><td><span class="where w-ext">API</span></td></tr>
-    <tr><td></td><td><b>ElevenLabs</b> (voix, transcription Scribe)</td><td>audit vocal de l'employé, voix off des tutos</td><td><span class="where w-ext">API</span></td></tr>
-    <tr><td>Automatisation</td><td><b>n8n 2.48</b> (API REST + serveur MCP) · <b>n8ncli</b></td><td>création, test et exécution des automatisations</td><td><span class="where w-cloud">serveur</span></td></tr>
-    <tr><td>Données</td><td><b>Supabase</b> (Postgres, RLS, Auth, Storage)</td><td>tâches, essais, recommandations, catalogue des outils ; connexion de chaque salarié</td><td><span class="where w-ext">API</span></td></tr>
-    <tr><td>Capture sur le poste</td><td>partage d'écran du navigateur (Chrome)</td><td>captures multi-écrans de la tâche</td><td><span class="where w-local">poste</span></td></tr>
-    <tr><td></td><td><b>OCR</b> : Vision (macOS) · Windows.Media.Ocr via winocr (Windows)</td><td>lire le texte des captures, en local</td><td><span class="where w-local">poste</span></td></tr>
-    <tr><td></td><td><b>Journal d'actions</b> : Quartz + Accessibilité (macOS) · pynput + UI Automation (Windows)</td><td>clics et éléments visés, sans jamais les touches tapées</td><td><span class="where w-local">poste</span></td></tr>
-    <tr><td>Serveur et page</td><td><b>Node.js 24 + Express</b> · HTML/JS · React + Vite (composant de la page d'audit)</td><td>la page Twiin, ses API, le lancement des workers</td><td><span class="where w-cloud">serveur</span></td></tr>
-    <tr><td>Workers</td><td><b>Python 3.12</b> (découverte, agents, n8n, OCR, journal)</td><td>tout le travail en arrière-plan</td><td><span class="where w-cloud">serveur</span></td></tr>
-    <tr><td>Navigateur de test</td><td><b>Playwright + Chromium</b> sans fenêtre</td><td>faire agir Holo dans le jumeau ; collecte des docs publiques des outils</td><td><span class="where w-cloud">serveur</span></td></tr>
-    <tr><td>Vidéo</td><td><b>Remotion</b></td><td>montage des tutos vidéo</td><td><span class="where w-cloud">serveur</span></td></tr>
-    <tr><td>Outils d'équipe</td><td>GitHub · <code>scripts/doctor.py</code></td><td>code partagé ; vérification d'un poste Mac ou Windows</td><td><span class="where w-local">poste</span></td></tr>
-  </table></div>
+  <nav class="toc" aria-label="Sommaire">
+    <a href="#schema">Schéma</a><a href="#etapes">Étape par étape</a><a href="#stack">Toute la stack</a>
+    <a href="#chiffres">Chiffres</a><a href="#final">Version finale</a><a href="#graphe">Graphe vivant</a>
+  </nav>
 
-  <h2>Le parcours</h2>
-  <div class="diagram" role="img" aria-label="Schéma : Observer, Analyser, Comprendre et valider en parallèle de l'environnement de test, itérations, proposition">
-    <svg viewBox="0 0 900 330" xmlns="http://www.w3.org/2000/svg">
-      <defs>
-        <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
-          <path d="M0,0 L10,5 L0,10 z" style="fill: var(--dim)"/>
-        </marker>
-      </defs>
-      <g style="stroke: var(--dim); stroke-width: 1.5; fill: none">
-        <path d="M150 70 H178" marker-end="url(#ar)"/>
-        <path d="M330 70 H358" marker-end="url(#ar)"/>
-        <path d="M330 70 C345 70 345 190 358 190" marker-end="url(#ar)"/>
-        <path d="M520 70 H548" marker-end="url(#ar)"/>
-        <path d="M520 190 H548" marker-end="url(#ar)"/>
-        <path d="M710 70 C725 70 725 130 738 130" marker-end="url(#ar)"/>
-        <path d="M710 190 C725 190 725 130 738 130" marker-end="url(#ar)"/>
-      </g>
-      <g>
-        <rect x="10" y="30" width="140" height="80" rx="10" style="fill: var(--local-soft); stroke: var(--local)"/>
-        <text x="80" y="62" text-anchor="middle" style="fill: var(--ink); font-weight: 600; font-size: 14px">1 · Observer</text>
-        <text x="80" y="82" text-anchor="middle" style="fill: var(--dim); font-size: 11px">écran, OCR, journal</text>
-        <text x="80" y="97" text-anchor="middle" style="fill: var(--dim); font-size: 11px">d'actions (Mac / Win)</text>
+  <section class="block" id="schema">
+    <h2>Le schéma d'aujourd'hui</h2>
+    <p class="sub">Trois zones : ce qui tourne sur le poste du salarié, le serveur Twiin (sur le poste aussi pour la démo),
+      et les services appelés par API. Les numéros renvoient aux étapes détaillées plus bas.</p>
+    <div class="legend">
+      <span><i class="sw" style="background:var(--post)"></i>poste du salarié</span>
+      <span><i class="sw" style="background:var(--srv)"></i>serveur Twiin (local pour la démo)</span>
+      <span><i class="sw" style="background:var(--ext)"></i>service externe (API)</span>
+      <span><i class="sw" style="background:var(--db)"></i>base de données</span>
+    </div>
+    <div class="frame">
+      <svg viewBox="0 0 960 560" role="img" aria-label="Schéma de l'architecture actuelle de Twiin">
+        <defs>
+          <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M0,0 L10,5 L0,10 z" fill="var(--dim)"/>
+          </marker>
+        </defs>
+        <rect x="10" y="10" width="940" height="120" rx="12" fill="var(--post-soft)" stroke="var(--post)" stroke-opacity=".5"/>
+        <text x="26" y="34" font-size="13" font-weight="600" fill="var(--post)">POSTE DU SALARIÉ · Mac ou Windows, détecté automatiquement</text>
+        <rect x="10" y="150" width="940" height="250" rx="12" fill="var(--srv-soft)" stroke="var(--srv)" stroke-opacity=".5"/>
+        <text x="26" y="174" font-size="13" font-weight="600" fill="var(--srv)">SERVEUR TWIIN · Node.js + workers Python (local pour la démo)</text>
+        <rect x="10" y="420" width="940" height="130" rx="12" fill="var(--ext-soft)" stroke="var(--ext)" stroke-opacity=".5"/>
+        <text x="26" y="444" font-size="13" font-weight="600" fill="var(--ext)">SERVICES EXTERNES (API)</text>
 
-        <rect x="180" y="30" width="150" height="80" rx="10" style="fill: var(--ext-soft); stroke: var(--ext)"/>
-        <text x="255" y="62" text-anchor="middle" style="fill: var(--ink); font-weight: 600; font-size: 14px">2 · Analyser</text>
-        <text x="255" y="82" text-anchor="middle" style="fill: var(--dim); font-size: 11px">Qwen vision</text>
-        <text x="255" y="97" text-anchor="middle" style="fill: var(--dim); font-size: 11px">(Hugging Face)</text>
+        <g font-size="12" fill="var(--ink)">
+          <rect x="26" y="48" width="200" height="66" rx="8" fill="var(--panel)" stroke="var(--line)"/>
+          <text x="38" y="68" font-weight="600">1 · Audit du poste</text>
+          <text x="38" y="86" fill="var(--dim)">logiciels installés et utilisés</text>
+          <text x="38" y="102" fill="var(--dim)">+ audit vocal</text>
+          <rect x="240" y="48" width="220" height="66" rx="8" fill="var(--panel)" stroke="var(--line)"/>
+          <text x="252" y="68" font-weight="600">2 · Enregistrement</text>
+          <text x="252" y="86" fill="var(--dim)">captures (Chrome) · OCR local</text>
+          <text x="252" y="102" fill="var(--dim)">journal de clics (sans touches)</text>
+          <rect x="474" y="48" width="220" height="66" rx="8" fill="var(--panel)" stroke="var(--line)"/>
+          <text x="486" y="68" font-weight="600">Page Twiin (navigateur)</text>
+          <text x="486" y="86" fill="var(--dim)">question · reco · automatisations</text>
+          <text x="486" y="102" fill="var(--dim)">0 · mise en service (DSI)</text>
+          <rect x="708" y="48" width="226" height="66" rx="8" fill="var(--panel)" stroke="var(--line)"/>
+          <text x="720" y="68" font-weight="600">Fichiers du poste</text>
+          <text x="720" y="86" fill="var(--dim)">Excel écrit par fichier · PDF lus</text>
+          <text x="720" y="102" fill="var(--dim)">coffre local des connexions</text>
+        </g>
 
-        <rect x="360" y="30" width="160" height="80" rx="10" style="fill: var(--cloud-soft); stroke: var(--cloud)"/>
-        <text x="440" y="58" text-anchor="middle" style="fill: var(--ink); font-weight: 600; font-size: 14px">3 · Comprendre</text>
-        <text x="440" y="76" text-anchor="middle" style="fill: var(--ink); font-weight: 600; font-size: 14px">et faire valider</text>
-        <text x="440" y="96" text-anchor="middle" style="fill: var(--dim); font-size: 11px">« Ai-je bien compris ? »</text>
+        <g font-size="12" fill="var(--ink)">
+          <rect x="26" y="190" width="170" height="70" rx="8" fill="var(--panel)" stroke="var(--line)"/>
+          <text x="38" y="210" font-weight="600">3 · Analyse</text>
+          <text x="38" y="228" fill="var(--dim)">étapes, conseils,</text>
+          <text x="38" y="244" fill="var(--dim)">premier verdict</text>
+          <rect x="210" y="190" width="170" height="70" rx="8" fill="var(--panel)" stroke="var(--line)"/>
+          <text x="222" y="210" font-weight="600">4 · Question</text>
+          <text x="222" y="228" fill="var(--dim)">« Ai-je bien compris ? »</text>
+          <text x="222" y="244" fill="var(--dim)">+ résultat attendu</text>
+          <rect x="394" y="190" width="170" height="70" rx="8" fill="var(--panel)" stroke="var(--line)"/>
+          <text x="406" y="210" font-weight="600">5 · Jumeau</text>
+          <text x="406" y="228" fill="var(--dim)">copie HTML isolée,</text>
+          <text x="406" y="244" fill="var(--dim)">données fictives</text>
+          <rect x="578" y="190" width="170" height="70" rx="8" fill="var(--panel)" stroke="var(--line)"/>
+          <text x="590" y="210" font-weight="600">6 · 3 essais conseil</text>
+          <text x="590" y="228" fill="var(--dim)">3 agents Holo</text>
+          <text x="590" y="244" fill="var(--dim)">en parallèle</text>
+          <rect x="762" y="190" width="172" height="70" rx="8" fill="var(--panel)" stroke="var(--line)"/>
+          <text x="774" y="210" font-weight="600">7 · 2 essais auto</text>
+          <text x="774" y="228" fill="var(--dim)">n8n natif ou</text>
+          <text x="774" y="244" fill="var(--dim)">n8n + Holo</text>
 
-        <rect x="360" y="150" width="160" height="80" rx="10" style="fill: var(--cloud-soft); stroke: var(--cloud)"/>
-        <text x="440" y="178" text-anchor="middle" style="fill: var(--ink); font-weight: 600; font-size: 14px">4 · Environnement</text>
-        <text x="440" y="196" text-anchor="middle" style="fill: var(--ink); font-weight: 600; font-size: 14px">de test (jumeau)</text>
-        <text x="440" y="216" text-anchor="middle" style="fill: var(--dim); font-size: 11px">données fictives, isolé</text>
+          <rect x="26" y="290" width="270" height="92" rx="8" fill="var(--panel)" stroke="var(--line)"/>
+          <text x="38" y="310" font-weight="600">8 · Proposer</text>
+          <text x="38" y="328" fill="var(--dim)">≥ 90 % : automatiser (workflow testé)</text>
+          <text x="38" y="344" fill="var(--dim)">sinon : accélérer (conseils, tuto,</text>
+          <text x="38" y="360" fill="var(--dim)">aucune trace d'automatisation)</text>
+          <rect x="310" y="290" width="300" height="92" rx="8" fill="var(--panel)" stroke="var(--line)"/>
+          <text x="322" y="310" font-weight="600">9 · Livrer et exécuter (n8n local)</text>
+          <text x="322" y="328" fill="var(--dim)">lecture web → Excel</text>
+          <text x="322" y="344" fill="var(--dim)">document → saisie web sans API</text>
+          <text x="322" y="360" fill="var(--dim)">Arrêter · planifier · double Échap</text>
+          <rect x="624" y="290" width="310" height="92" rx="8" fill="var(--db-soft)" stroke="var(--db)"/>
+          <text x="636" y="310" font-weight="600" fill="var(--db)">Supabase (Postgres + RLS + Auth)</text>
+          <text x="636" y="328" fill="var(--dim)">dictionnaire · taches · tests · recommendations</text>
+          <text x="636" y="344" fill="var(--dim)">profiles · audits · tutos · automations</text>
+          <text x="636" y="360" fill="var(--dim)">automation_runs · back_log</text>
+        </g>
 
-        <rect x="550" y="30" width="160" height="80" rx="10" style="fill: var(--cloud-soft); stroke: var(--cloud)"/>
-        <text x="630" y="58" text-anchor="middle" style="fill: var(--ink); font-weight: 600; font-size: 14px">5 · 3 itérations</text>
-        <text x="630" y="76" text-anchor="middle" style="fill: var(--ink); font-weight: 600; font-size: 14px">« conseil »</text>
-        <text x="630" y="96" text-anchor="middle" style="fill: var(--dim); font-size: 11px">Holo, 3 parcours différents</text>
+        <g font-size="12" fill="var(--ink)">
+          <rect x="26" y="458" width="210" height="78" rx="8" fill="var(--panel)" stroke="var(--line)"/>
+          <text x="38" y="478" font-weight="600">Hugging Face · Qwen3.8-27B</text>
+          <text x="38" y="496" fill="var(--dim)">analyse, question, jumeau,</text>
+          <text x="38" y="512" fill="var(--dim)">lecture des PDF</text>
+          <rect x="250" y="458" width="230" height="78" rx="8" fill="var(--panel)" stroke="var(--line)"/>
+          <text x="262" y="478" font-weight="600">H Company · Holo</text>
+          <text x="262" y="496" fill="var(--dim)">holo4-35b-a3b (holo3 gratuit)</text>
+          <text x="262" y="512" fill="var(--dim)">agit sur l'écran, sans API</text>
+          <rect x="494" y="458" width="200" height="78" rx="8" fill="var(--panel)" stroke="var(--line)"/>
+          <text x="506" y="478" font-weight="600">ElevenLabs</text>
+          <text x="506" y="496" fill="var(--dim)">audit vocal (Scribe),</text>
+          <text x="506" y="512" fill="var(--dim)">voix des tutos</text>
+          <rect x="708" y="458" width="226" height="78" rx="8" fill="var(--panel)" stroke="var(--line)"/>
+          <text x="720" y="478" font-weight="600">Logiciels de l'entreprise</text>
+          <text x="720" y="496" fill="var(--dim)">avec API (M365, Google) ou</text>
+          <text x="720" y="512" fill="var(--dim)">web sans API (ex. QONTA)</text>
+        </g>
 
-        <rect x="550" y="150" width="160" height="80" rx="10" style="fill: var(--cloud-soft); stroke: var(--cloud)"/>
-        <text x="630" y="178" text-anchor="middle" style="fill: var(--ink); font-weight: 600; font-size: 14px">6 · 2 itérations</text>
-        <text x="630" y="196" text-anchor="middle" style="fill: var(--ink); font-weight: 600; font-size: 14px">« automatisation »</text>
-        <text x="630" y="216" text-anchor="middle" style="fill: var(--dim); font-size: 11px">n8n natif ou n8n + Holo</text>
+        <g stroke="var(--dim)" stroke-width="1.4" fill="none" marker-end="url(#ar)">
+          <path d="M330 114 L120 188"/>
+          <path d="M196 225 L208 225"/>
+          <path d="M380 225 L392 225"/>
+          <path d="M564 225 L576 225"/>
+          <path d="M748 225 L760 225"/>
+          <path d="M848 260 C848 282 420 270 160 288"/>
+          <path d="M296 336 L308 336"/>
+          <path d="M300 200 L560 116"/>
+          <path d="M440 382 L380 456" stroke-dasharray="4 3"/>
+          <path d="M590 382 L780 456" stroke-dasharray="4 3"/>
+          <path d="M600 290 L780 116" stroke-dasharray="4 3"/>
+        </g>
+        <text x="40" y="146" font-size="11" fill="var(--dim)">texte, OCR, journal →</text>
+        <text x="440" y="146" font-size="11" fill="var(--dim)">la question s'affiche</text>
+      </svg>
+    </div>
+  </section>
 
-        <rect x="740" y="90" width="150" height="80" rx="10" style="fill: var(--accent-soft); stroke: var(--accent)"/>
-        <text x="815" y="122" text-anchor="middle" style="fill: var(--ink); font-weight: 600; font-size: 14px">7 · Proposer</text>
-        <text x="815" y="142" text-anchor="middle" style="fill: var(--dim); font-size: 11px">conseil, tuto ou</text>
-        <text x="815" y="157" text-anchor="middle" style="fill: var(--dim); font-size: 11px">workflow n8n</text>
-      </g>
-      <g>
-        <rect x="10" y="262" width="880" height="50" rx="10" style="fill: var(--panel); stroke: var(--line)"/>
-        <text x="30" y="284" style="fill: var(--ink); font-weight: 600; font-size: 13px">Supabase (Postgres + RLS + Storage)</text>
-        <text x="30" y="302" style="fill: var(--dim); font-size: 12px">dictionnaire (outils, docs, captures) · taches (étapes, captures, question, jumeau) · tests (chaque essai mesuré) · recommendations</text>
-      </g>
-      <g style="stroke: var(--line); stroke-width: 1.2; stroke-dasharray: 4 4; fill: none">
-        <path d="M440 230 V262"/><path d="M630 230 V262"/><path d="M815 170 V262"/><path d="M440 110 V150"/>
-      </g>
-      <text x="345" y="140" text-anchor="end" style="fill: var(--dim); font-size: 11px">en parallèle</text>
-    </svg>
-  </div>
+  <section class="block" id="etapes">
+    <h2>Les stacks, étape par étape</h2>
+    <p class="sub">Chaque étape dit ce qu'elle fait, avec quoi, pourquoi ce choix, et où ça tourne. Cliquer une étape pour ouvrir ou fermer le détail.</p>
+    <div class="steps">
 
-  <h2>Chiffres mesurés sur le cas 4</h2>
-  <p class="lede">Cas 4 « comparer un casque sur 3 sites et remplir un tableau », enregistré sous Windows, mesures du 18/11.</p>
-  <div class="facts">
-    <div class="fact"><b>≈ 0,02 $</b><span>analyse de l'enregistrement (Qwen : étapes, conseils, verdict)</span></div>
-    <div class="fact"><b>39 à 118 s</b><span>construction du jumeau, pour ≈ 0,02 $</span></div>
-    <div class="fact"><b>100 %</b><span>meilleur parcours Holo à l'écran, tient aussi avec popup et site lent</span></div>
-    <div class="fact"><b>2,5 s · 0 Holo</b><span>automatisation n8n native (lecture HTML), 93 % de valeurs justes</span></div>
-    <div class="fact"><b>25 à 29 s</b><span>automatisation n8n + blocs Holo de lecture, 93 %</span></div>
-    <div class="fact"><b>30 → 100 %</b><span>fiabilité de Holo avant / après guidage et mémoire de travail</span></div>
-  </div>
+      <details class="step" open>
+        <summary><span class="num">0</span><h3>Mise en service par la DSI</h3><span class="state s-part">première version</span>
+          <span class="what">Une fois pour toute l'entreprise : quelles autorisations donner, par éditeur, pour que les salariés ne configurent rien.</span></summary>
+        <div class="step-body tbl"><table>
+          <tr><th>Brique</th><th>Technologie</th><th>Pourquoi</th><th>Où</th></tr>
+          <tr><td>Page « Mise en service »</td><td>HTML/JS + route <code>/api/setup</code></td><td>couverture déduite des audits des postes (ex. Microsoft 365 couvre 50 % des outils du poste testé)</td><td><span class="chip c-srv">serveur</span></td></tr>
+          <tr><td>Autorisations</td><td>Microsoft Entra ID (consentement admin), Google Workspace (compte de service), installations « espace de travail »</td><td>un consentement par éditeur au lieu d'une connexion par salarié</td><td><span class="chip c-ext">API</span></td></tr>
+        </table></div>
+      </details>
 
-  <h2>Étape par étape</h2>
-  <div class="steps">
+      <details class="step" open>
+        <summary><span class="num">1</span><h3>Auditer le poste</h3><span class="state s-ok">en place</span>
+          <span class="what">Les logiciels installés et vraiment utilisés, et ce que le salarié dit de son travail.</span></summary>
+        <div class="step-body tbl"><table>
+          <tr><th>Brique</th><th>Technologie</th><th>Pourquoi</th><th>Où</th></tr>
+          <tr><td>Logiciels du poste</td><td>macOS : applications et usage · Windows : registre (Uninstall + UserAssist)</td><td>savoir quels outils existent avant de proposer quoi que ce soit</td><td><span class="chip c-post">poste</span></td></tr>
+          <tr><td>Logos</td><td><code>fetch_icons.py</code> (macOS : bundles · Windows : System.Drawing)</td><td>une page lisible au premier coup d'œil</td><td><span class="chip c-post">poste</span></td></tr>
+          <tr><td>Audit vocal</td><td>ElevenLabs Scribe (transcription) + lexique métier</td><td>le salarié décrit son poste à l'oral, sans formulaire</td><td><span class="chip c-ext">API</span></td></tr>
+          <tr><td>Stockage</td><td>Supabase : <code>audits</code>, <code>profiles</code></td><td>chaque salarié ne voit que son entreprise (RLS)</td><td><span class="chip c-db">base</span></td></tr>
+        </table></div>
+      </details>
 
-    <section class="step">
-      <div class="step-head"><span class="num">1</span><h3>Observer la tâche</h3><span class="status s-ok">en place · Mac et Windows</span></div>
-      <p class="what">Le salarié fait sa tâche une fois. Twiin garde des captures d'écran, le texte lu à l'écran et ce qu'il fait (clics, saisies, changements d'application), sans jamais enregistrer les touches tapées.</p>
-      <div class="tbl"><table>
-        <tr><th>Brique</th><th>Outil utilisé</th><th>Pourquoi</th><th>Où</th></tr>
-        <tr><td>Page Twiin</td><td>Node.js + Express, HTML/JS (<code>recorder/</code>)</td><td>une page web suffit, rien à installer côté navigateur</td><td><span class="where w-local">poste</span></td></tr>
-        <tr><td>Captures, multi-écrans</td><td>partage d'écran du navigateur (Chrome)</td><td>standard, fonctionne sur Mac et Windows</td><td><span class="where w-local">poste</span></td></tr>
-        <tr><td>OCR</td><td>Vision (macOS) · OCR intégré de Windows (<code>ocr_win.py</code>)</td><td>texte lu en local, rien ne sort du poste, gratuit</td><td><span class="where w-local">poste</span></td></tr>
-        <tr><td>Journal d'actions</td><td>Quartz + Accessibilité (macOS) · pynput + UI Automation (Windows)</td><td>sait sur quel bouton on clique : base du « chemin de l'employé »</td><td><span class="where w-local">poste</span></td></tr>
-        <tr><td>Choix Mac / Windows</td><td>détection automatique dans <code>server.js</code></td><td>même code pour tout le monde</td><td><span class="where w-local">poste</span></td></tr>
-        <tr><td>Audit vocal</td><td>voix ElevenLabs, transcription Scribe, lexique des mots métier (<code>lexicon.json</code>)</td><td>l'employé décrit son poste à l'oral, sans formulaire</td><td><span class="where w-ext">API</span></td></tr>
-      </table></div>
-    </section>
+      <details class="step" open>
+        <summary><span class="num">2</span><h3>Observer la tâche</h3><span class="state s-ok">en place</span>
+          <span class="what">Le salarié fait sa tâche une fois. Twiin garde des captures, le texte à l'écran et les clics, jamais les touches tapées.</span></summary>
+        <div class="step-body tbl"><table>
+          <tr><th>Brique</th><th>Technologie</th><th>Pourquoi</th><th>Où</th></tr>
+          <tr><td>Page et API</td><td>Node.js 24 + Express, HTML/JS ; React + Vite pour la sphère de logos</td><td>une page web suffit, rien à installer dans le navigateur</td><td><span class="chip c-srv">serveur</span></td></tr>
+          <tr><td>Captures multi-écrans</td><td>partage d'écran de Chrome ; écrans détectés par Quartz (Mac) ou Win32 (Windows)</td><td>standard, identique sur Mac et Windows</td><td><span class="chip c-post">poste</span></td></tr>
+          <tr><td>OCR</td><td>Vision (macOS) · Windows.Media.Ocr via <code>winocr</code></td><td>texte lu en local, gratuit, rien ne sort du poste</td><td><span class="chip c-post">poste</span></td></tr>
+          <tr><td>Journal d'actions</td><td>Quartz + Accessibilité (macOS) · pynput + UI Automation (Windows)</td><td>sait sur quel bouton on clique : c'est le « chemin n°0 » des essais</td><td><span class="chip c-post">poste</span></td></tr>
+        </table></div>
+      </details>
 
-    <section class="step">
-      <div class="step-head"><span class="num">2</span><h3>Analyser</h3><span class="status s-ok">en place</span></div>
-      <p class="what">Les captures, le texte et le journal sont transformés en étapes fidèles, conseils pour gagner du temps et verdict « accélérer ou automatiser ».</p>
-      <div class="tbl"><table>
-        <tr><th>Brique</th><th>Outil utilisé</th><th>Pourquoi</th><th>Où</th></tr>
-        <tr><td>Modèle de vision</td><td>Qwen3.8-27B via le routeur Hugging Face (API compatible OpenAI)</td><td>lit les images et le texte, ≈ 0,005 $ par analyse, fournisseur interchangeable</td><td><span class="where w-ext">API</span></td></tr>
-        <tr><td>Robustesse</td><td>réparation du JSON renvoyé (json-repair)</td><td>le modèle rend parfois un JSON mal formé</td><td><span class="where w-cloud">serveur</span></td></tr>
-      </table></div>
-    </section>
+      <details class="step" open>
+        <summary><span class="num">3</span><h3>Analyser</h3><span class="state s-ok">en place</span>
+          <span class="what">Captures, texte et journal deviennent des étapes fidèles, des conseils et un premier verdict.</span></summary>
+        <div class="step-body tbl"><table>
+          <tr><th>Brique</th><th>Technologie</th><th>Pourquoi</th><th>Où</th></tr>
+          <tr><td>Modèle de vision</td><td>Qwen3.8-27B via le routeur Hugging Face (API compatible OpenAI)</td><td>lit images et texte, environ 0,005 $ par analyse, fournisseur interchangeable</td><td><span class="chip c-ext">API</span></td></tr>
+          <tr><td>Robustesse</td><td><code>json-repair</code></td><td>le modèle rend parfois un JSON mal formé</td><td><span class="chip c-srv">serveur</span></td></tr>
+          <tr><td>Travail de fond</td><td>workers Python 3.12 lancés par le serveur, sans fenêtre</td><td>la page reste fluide ; aucune console ne s'ouvre chez le salarié</td><td><span class="chip c-srv">serveur</span></td></tr>
+        </table></div>
+      </details>
 
-    <section class="step">
-      <div class="step-head"><span class="num">3</span><h3>Comprendre et faire valider</h3><span class="status s-ok">en place</span></div>
-      <p class="what">Twiin reformule ce qu'il a compris (problème, étapes, outils, objectif, points à confirmer, et le <b>résultat attendu</b> : un tableau des vraies valeurs lues à l'écran pendant l'enregistrement) et pose une seule question : « Ai-je bien compris votre problème ? ». Les étapes et conseils restent cachés jusqu'au « oui ». Le résultat attendu validé est ce que les essais doivent reproduire exactement (avant, il était deviné par l'IA).</p>
-      <div class="tbl"><table>
-        <tr><th>Brique</th><th>Outil utilisé</th><th>Pourquoi</th><th>Où</th></tr>
-        <tr><td>Fiche de cadrage</td><td>appel court à Qwen, texte seul</td><td>rapide : la question n'attend pas le jumeau</td><td><span class="where w-ext">API</span></td></tr>
-        <tr><td>Travail en arrière-plan</td><td>worker Python détaché (<code>discovery/</code>)</td><td>la page reste fluide ; un redémarrage du serveur ne l'interrompt pas</td><td><span class="where w-cloud">serveur</span></td></tr>
-        <tr><td>Stockage</td><td>Supabase : <code>taches</code> (texte et chiffres) ; captures gardées sur le poste par défaut</td><td>Postgres, isolation par entreprise (RLS), compte de chaque salarié ; les images d'écran ne quittent pas le poste</td><td><span class="where w-ext">API</span></td></tr>
-        <tr><td>Où le voir</td><td>parcours employé en 3 pages (Audit → Enregistrer → Reco) ; détail interne dans la page Back</td><td>l'employé ne voit que la question et la recommandation ; l'équipe voit tout</td><td><span class="where w-cloud">serveur</span></td></tr>
-      </table></div>
-    </section>
+      <details class="step" open>
+        <summary><span class="num">4</span><h3>Comprendre et faire valider</h3><span class="state s-ok">en place</span>
+          <span class="what">Une seule question : « Ai-je bien compris votre problème ? », avec le résultat attendu sous forme de tableau.</span></summary>
+        <div class="step-body tbl"><table>
+          <tr><th>Brique</th><th>Technologie</th><th>Pourquoi</th><th>Où</th></tr>
+          <tr><td>Fiche de cadrage</td><td>appel court à Qwen (texte + OCR), 4 à 30 s</td><td>la question n'attend pas le jumeau</td><td><span class="chip c-ext">API</span></td></tr>
+          <tr><td>Résultat attendu</td><td>valeurs réellement lues à l'écran pendant l'enregistrement</td><td>les essais sont notés contre ce que le salarié a validé, pas contre une invention de l'IA</td><td><span class="chip c-srv">serveur</span></td></tr>
+          <tr><td>Stockage</td><td>Supabase <code>taches</code> (texte et chiffres) ; captures gardées sur le poste</td><td>les images d'écran ne quittent pas le poste par défaut</td><td><span class="chip c-db">base</span></td></tr>
+        </table></div>
+      </details>
 
-    <section class="step">
-      <div class="step-head"><span class="num">4</span><h3>Environnement de test (jumeau)</h3><span class="status s-ok">en place</span></div>
-      <p class="what">Pendant que le salarié lit la question, Twiin reconstruit les écrans de sa tâche dans une page web isolée, avec des données fictives. Tous les essais s'y font : jamais sur ses vrais outils, donc rien à supprimer ou divulguer par erreur. L'employé ne voit jamais ce jumeau.</p>
-      <div class="tbl"><table>
-        <tr><th>Brique</th><th>Outil utilisé</th><th>Pourquoi</th><th>Où</th></tr>
-        <tr><td>Génération</td><td>Qwen (vision) : page HTML + mission + état final attendu</td><td>un jumeau en 1 à 2 min, sans développement</td><td><span class="where w-ext">API</span></td></tr>
-        <tr><td>Connaissance des outils</td><td>table <code>dictionnaire</code> + bucket <code>tool-screens</code></td><td>docs et captures publiques (collectées avec Playwright) ; captures des outils internes par l'audit</td><td><span class="where w-ext">API</span></td></tr>
-        <tr><td>Vérification</td><td>état final lu dans le jumeau, comparé à l'attendu</td><td>on ne croit pas l'agent sur parole : les « faux réussis » sont détectés</td><td><span class="where w-cloud">serveur</span></td></tr>
-      </table></div>
-    </section>
+      <details class="step" open>
+        <summary><span class="num">5</span><h3>Construire le jumeau</h3><span class="state s-ok">en place</span>
+          <span class="what">Pendant que le salarié lit la question, Twiin reconstruit les écrans de sa tâche dans une page isolée, avec des données fictives.</span></summary>
+        <div class="step-body tbl"><table>
+          <tr><th>Brique</th><th>Technologie</th><th>Pourquoi</th><th>Où</th></tr>
+          <tr><td>Génération</td><td>Qwen (vision) : page HTML + mission + fausse API</td><td>un jumeau en 1 à 2 min, sans développement</td><td><span class="chip c-ext">API</span></td></tr>
+          <tr><td>Connaissance des outils</td><td>table <code>dictionnaire</code> + captures publiques collectées avec Playwright</td><td>le jumeau ressemble au vrai logiciel</td><td><span class="chip c-db">base</span></td></tr>
+          <tr><td>Classement des outils</td><td>dictionnaire puis Qwen : API, page lisible, ou écran seulement</td><td>choisir d'avance le bon mode d'automatisation</td><td><span class="chip c-srv">serveur</span></td></tr>
+        </table></div>
+      </details>
 
-    <section class="step">
-      <div class="step-head"><span class="num">5</span><h3>3 itérations « conseil »</h3><span class="status s-ok">en place</span></div>
-      <p class="what">Trois agents partent du même point, en même temps, et cherchent chacun un parcours différent pour arriver au même résultat, comme un GPS. Le premier suit le chemin réel de l'employé, tiré de son journal d'actions.</p>
-      <div class="tbl"><table>
-        <tr><th>Brique</th><th>Outil utilisé</th><th>Pourquoi</th><th>Où</th></tr>
-        <tr><td>Agent</td><td>Holo (H Company) : holo4-35b-a3b, ou holo3-1-35b-a3b gratuit</td><td>agent « computer use » qui agit sur l'écran comme un humain</td><td><span class="where w-ext">API</span></td></tr>
-        <tr><td>Navigateur</td><td>Playwright + Chromium sans fenêtre</td><td>un navigateur par agent, rien à l'écran du salarié</td><td><span class="where w-cloud">serveur</span></td></tr>
-        <tr><td>Fiabilité</td><td>mémoire de travail (« note »), avancement du tableau, « fini » refusé si incomplet, attente d'une page stable</td><td>Holo ne voit que l'écran en cours : sans mémoire, il inventait les valeurs</td><td><span class="where w-cloud">serveur</span></td></tr>
-        <tr><td>Parcours différents</td><td>registre partagé en direct entre les 3 agents</td><td>chacun voit ce que font les autres et prend un autre chemin</td><td><span class="where w-cloud">serveur</span></td></tr>
-        <tr><td>Robustesse</td><td>meilleur parcours rejoué avec popup cookies et site lent</td><td>vérifier que la solution tient dans la vraie vie</td><td><span class="where w-cloud">serveur</span></td></tr>
-      </table></div>
-    </section>
+      <details class="step" open>
+        <summary><span class="num">6</span><h3>3 essais « conseil »</h3><span class="state s-ok">en place</span>
+          <span class="what">Trois agents partent du même point, en même temps, et prennent chacun un chemin différent, comme un GPS.</span></summary>
+        <div class="step-body tbl"><table>
+          <tr><th>Brique</th><th>Technologie</th><th>Pourquoi</th><th>Où</th></tr>
+          <tr><td>Agent</td><td>Holo (H Company) : holo4-35b-a3b, ou holo3-1-35b-a3b gratuit</td><td>« computer use » : agit sur l'écran comme un humain</td><td><span class="chip c-ext">API</span></td></tr>
+          <tr><td>Navigateur</td><td>Playwright + Chromium invisible</td><td>un navigateur par agent, rien sur l'écran du salarié</td><td><span class="chip c-srv">serveur</span></td></tr>
+          <tr><td>Fiabilité</td><td>outil <code>note</code> (mémoire), avancement montré, « fini » refusé si incomplet, listes de suggestions et listes déroulantes gérées</td><td>sans mémoire, Holo inventait des valeurs (30 % → 100 %)</td><td><span class="chip c-srv">serveur</span></td></tr>
+          <tr><td>Chemins différents</td><td>registre partagé en direct ; chemin n°0 tiré du journal d'actions</td><td>trois solutions distinctes à comparer</td><td><span class="chip c-srv">serveur</span></td></tr>
+          <tr><td>Sécurité</td><td>clics « valider, payer, envoyer, supprimer » bloqués</td><td>aucune action irréversible, même dans le jumeau</td><td><span class="chip c-srv">serveur</span></td></tr>
+        </table></div>
+      </details>
 
-    <section class="step">
-      <div class="step-head"><span class="num">6</span><h3>2 itérations « automatisation »</h3><span class="status s-ok">en place</span></div>
-      <p class="what">Avant d'essayer, Twiin classe chaque outil : API, page web lisible, ou ni l'un ni l'autre. Si tout a une API ou une page lisible, il teste deux workflows n8n natifs. S'il reste un outil sans API, il teste deux workflows n8n avec Holo, seulement pour cet outil.</p>
-      <div class="tbl"><table>
-        <tr><th>Brique</th><th>Outil utilisé</th><th>Pourquoi</th><th>Où</th></tr>
-        <tr><td>Classement des outils</td><td>dictionnaire d'abord, Qwen en complément</td><td>choisir le bon mode avant de dépenser des essais</td><td><span class="where w-ext">API</span></td></tr>
-        <tr><td>Automatisation</td><td>n8n 2.48 : workflow créé par l'API, exécuté via son serveur MCP, puis supprimé</td><td>outil d'automatisation standard, workflows lisibles et modifiables</td><td><span class="where w-cloud">serveur</span></td></tr>
-        <tr><td>n8n natif</td><td>lecture HTTP + extraction HTML, ou bloc Code</td><td>le plus rapide et le moins cher (2,5 s, sans Holo)</td><td><span class="where w-cloud">serveur</span></td></tr>
-        <tr><td>n8n + Holo</td><td>blocs qui appellent Holo pour lire ce qui n'a pas d'API</td><td>computer use réservé aux logiciels sans API</td><td><span class="where w-ext">API</span></td></tr>
-        <tr><td>Écriture</td><td>API de l'outil cible (simulée dans le jumeau)</td><td>tester de bout en bout sans toucher aux vraies données</td><td><span class="where w-cloud">serveur</span></td></tr>
-      </table></div>
-    </section>
+      <details class="step" open>
+        <summary><span class="num">7</span><h3>2 essais « automatisation »</h3><span class="state s-ok">en place</span>
+          <span class="what">Le mode est décidé d'avance : si tout a une API ou une page lisible, n8n natif ; sinon n8n avec Holo pour l'outil sans API.</span></summary>
+        <div class="step-body tbl"><table>
+          <tr><th>Brique</th><th>Technologie</th><th>Pourquoi</th><th>Où</th></tr>
+          <tr><td>Orchestrateur</td><td>n8n 2.48 : workflow créé par l'API REST, exécuté par son serveur MCP, puis supprimé</td><td>standard, workflows lisibles et modifiables par l'entreprise</td><td><span class="chip c-srv">serveur</span></td></tr>
+          <tr><td>n8n natif</td><td>lecture HTTP + extraction HTML, ou bloc Code</td><td>le plus rapide et le moins cher (2,5 s, sans Holo)</td><td><span class="chip c-srv">serveur</span></td></tr>
+          <tr><td>n8n + Holo</td><td>blocs qui appellent Holo seulement pour l'outil sans API</td><td>computer use réservé à ce qui n'a pas d'autre accès</td><td><span class="chip c-ext">API</span></td></tr>
+          <tr><td>Notation</td><td>comparaison avec le résultat attendu : texte tolérant, nombres stricts</td><td>on ne croit pas l'agent sur parole : les « faux réussis » sont détectés</td><td><span class="chip c-srv">serveur</span></td></tr>
+        </table></div>
+      </details>
 
-    <section class="step">
-      <div class="step-head"><span class="num">7</span><h3>Proposer la meilleure solution</h3><span class="status s-part">partiel</span></div>
-      <p class="what">Twiin classe tout ce qu'il a essayé (réussite, temps, étapes, coût) et propose une solution : accélérer avec des conseils et un tuto, ou automatiser avec le workflow n8n retenu.</p>
-      <div class="tbl"><table>
-        <tr><th>Brique</th><th>Outil utilisé</th><th>Pourquoi</th><th>Où</th></tr>
-        <tr><td>Recommandation</td><td>table <code>recommendations</code> + encart dans la page</td><td>une décision tracée, justifiée par les essais (table <code>tests</code>)</td><td><span class="where w-ext">API</span></td></tr>
-        <tr><td>Tuto vidéo</td><td>Remotion + voix ElevenLabs</td><td>montrer la façon rapide de faire ; lancé à la main pour l'instant</td><td><span class="where w-cloud">serveur</span></td></tr>
-        <tr><td>Livraison n8n</td><td>bouton « Créer cette automatisation » : plan construit depuis la solution gagnante (éléments, vraies adresses lues dans l'enregistrement, classeur), importé inactif</td><td>l'automatisation livrée est celle qui a été testée, pas un plan réécrit de zéro</td><td><span class="where w-cloud">serveur</span></td></tr>
-        <tr><td>Sans gêner l'employé</td><td>Holo lit les sites dans un navigateur invisible ; Excel rempli par le fichier (openpyxl)</td><td>la souris et le clavier restent à l'employé (cas du casque : 51 s, 3 pages lues, 3 lignes écrites)</td><td><span class="where w-cloud">serveur</span></td></tr>
-        <tr><td>Saisie sans API</td><td>modèle « document → logiciel web » : le document le plus récent (PDF, lignes de tableau comprises) est lu sur le poste (pypdf), Holo saisit dans un navigateur invisible et enregistre en brouillon, le navigateur vérifie chaque valeur à l'écran</td><td>cas de la facture fournisseur ; le plan choisit seul entre « lecture web » et « saisie web »</td><td><span class="where w-cloud">serveur</span></td></tr>
-        <tr><td>Connexion</td><td>coffre local (<code>workflows/runs/.coffre.json</code>, hors git) : Twiin remplit lui-même la page de connexion</td><td>Holo ne voit jamais un mot de passe ; en version finale, coffre de secrets côté serveur</td><td><span class="where w-cloud">serveur</span></td></tr>
-        <tr><td>« Accélérer »</td><td>conseils et tuto seulement</td><td>quand les essais ne sont pas assez fiables, aucune trace d'automatisation n'est montrée</td><td><span class="where w-cloud">serveur</span></td></tr>
-        <tr><td>Contrôle</td><td>planification jour / jours de la semaine / jour du mois, heure et minutes ; bouton Arrêter ; double Échap</td><td>l'employé garde la main à tout moment</td><td><span class="where w-cloud">serveur</span></td></tr>
-      </table></div>
-    </section>
-  </div>
+      <details class="step" open>
+        <summary><span class="num">8</span><h3>Proposer</h3><span class="state s-ok">en place</span>
+          <span class="what">90 % ou plus : automatiser avec le workflow testé. Sinon : accélérer, avec des conseils seulement.</span></summary>
+        <div class="step-body tbl"><table>
+          <tr><th>Brique</th><th>Technologie</th><th>Pourquoi</th><th>Où</th></tr>
+          <tr><td>Décision tracée</td><td>Supabase <code>recommendations</code> + <code>tests</code></td><td>chaque recommandation est justifiée par des essais mesurés</td><td><span class="chip c-db">base</span></td></tr>
+          <tr><td>Affichage</td><td>encart dans l'étape Reco, pas de fenêtre surgissante</td><td>« Accélérer » ne montre aucune trace d'automatisation</td><td><span class="chip c-srv">serveur</span></td></tr>
+          <tr><td>Tuto vidéo</td><td>Remotion + voix ElevenLabs</td><td>montrer la façon rapide de faire</td><td><span class="chip c-srv">serveur</span></td></tr>
+        </table></div>
+      </details>
 
-  <h2>Règles qui traversent toutes les étapes</h2>
-  <div class="notes">
-    <ul>
-      <li><b>Sécurité des données</b> : aucune touche tapée n'est enregistrée ; les essais se font uniquement dans le jumeau ; tout clic sur « valider », « payer », « envoyer » ou « supprimer » est bloqué.</li>
-      <li><b>Isolation par entreprise</b> : chaque salarié se connecte avec son compte ; Supabase ne lui montre que les données de son entreprise (RLS testée).</li>
-      <li><b>Tout est mesuré</b> : chaque essai écrit sa durée, son nombre d'appels, sa réussite vérifiée et les faux « réussis » dans <code>tests</code>.</li>
-      <li><b>Mac et Windows</b> : le même code détecte le système ; <code>scripts/doctor.py</code> vérifie un poste sans afficher aucun secret.</li>
-      <li><b>Tables fusionnées</b> : un seul projet Supabase, un seul jeu de tables (celles d'Alexis et celles de Hanine), migration idempotente appliquée et vérifiée.</li>
-      <li><b>Secrets</b> : jamais dans le dépôt. Aujourd'hui dans un fichier <code>.env</code> local (environnement de l'équipe) ; demain uniquement côté serveur.</li>
-    </ul>
-  </div>
+      <details class="step" open>
+        <summary><span class="num">9</span><h3>Livrer et exécuter l'automatisation</h3><span class="state s-ok">en place</span>
+          <span class="what">« Créer cette automatisation » construit le workflow à partir de la solution testée, sans jamais prendre l'écran du salarié.</span></summary>
+        <div class="step-body tbl"><table>
+          <tr><th>Brique</th><th>Technologie</th><th>Pourquoi</th><th>Où</th></tr>
+          <tr><td>Choix du modèle</td><td><code>build_automation.py</code> : « lecture web → Excel » ou « document → saisie web »</td><td>la livraison suit la tâche réelle, avec les vraies adresses lues à l'écran</td><td><span class="chip c-srv">serveur</span></td></tr>
+          <tr><td>Lire le web</td><td>Holo dans un navigateur invisible (<code>web_read.py</code>)</td><td>la souris et le clavier restent au salarié</td><td><span class="chip c-srv">serveur</span></td></tr>
+          <tr><td>Lire un document</td><td>pypdf + Qwen (<code>source_read.py</code>), lignes de tableau et destinataire</td><td>une facture PDF devient des champs à saisir ; un document déjà saisi n'est pas repris</td><td><span class="chip c-post">poste</span></td></tr>
+          <tr><td>Saisir sans API</td><td>Holo invisible (<code>web_fill.py</code>), enregistrement en brouillon</td><td>logiciels métier sans API (ex. QONTA : facture saisie en 79 s, valeurs exactes)</td><td><span class="chip c-srv">serveur</span></td></tr>
+          <tr><td>Connexion</td><td>coffre local, rempli par Twiin lui-même</td><td>Holo ne voit jamais un mot de passe</td><td><span class="chip c-post">poste</span></td></tr>
+          <tr><td>Contrôle</td><td>vérification champ par champ + messages d'erreur du logiciel</td><td>une saisie refusée ou fausse n'est jamais comptée comme réussie</td><td><span class="chip c-srv">serveur</span></td></tr>
+          <tr><td>Écrire dans Excel</td><td>openpyxl, par le fichier (<code>excel_write.py</code>)</td><td>pas besoin d'ouvrir Excel</td><td><span class="chip c-post">poste</span></td></tr>
+          <tr><td>Garder la main</td><td>bouton Arrêter, double Échap, planification jour / heure / minute</td><td>le salarié peut tout arrêter à tout moment</td><td><span class="chip c-srv">serveur</span></td></tr>
+        </table></div>
+      </details>
+    </div>
+  </section>
 
-  <h2>Version finale visée</h2>
-  <div class="target">
-    <p>En version finale, le salarié n'installe et ne configure rien : il se connecte avec le compte de son entreprise
-      et utilise Twiin. Tout le calcul tourne dans le cloud, dans des environnements jetables.</p>
-    <ul>
-      <li><b>Sur le poste, seulement un petit capteur</b> (captures, OCR, journal d'actions), déployé par la DSI, avec son propre
-        Python et navigateur. Il ne contient aucune clé.</li>
-      <li><b>Une application web Twiin hébergée</b> (UE) : parcours employé, page Back pour l'équipe.</li>
-      <li><b>Des workers dans le cloud</b>, un conteneur jetable par tâche : jumeau, 3 itérations « conseil », 2 itérations
-        « automatisation », réseau fermé sauf les API utiles.</li>
-      <li><b>Un n8n par entreprise</b>, hébergé (n8n Cloud ou auto-hébergé en Docker, région UE), où Twiin livre le workflow retenu.</li>
-      <li><b>Les clés uniquement côté serveur</b> (coffre de secrets) ; connexion des salariés par SSO (Microsoft, Google) via Supabase Auth.</li>
-      <li><b>Mise en service par la DSI, une fois</b> : une autorisation par éditeur (Microsoft 365 : application Entra ID + consentement
-        administrateur ; Google Workspace : compte de service avec délégation de domaine ; autres : installation « espace de travail »),
-        déduite des audits des postes. Twiin crée ensuite les connexions dans le n8n de l'entreprise ; les salariés ne configurent rien.
-        Une première version existe (page « Mise en service » : couverture, autorisations à donner, logiciels sans API).</li>
-      <li><b>Holo hébergé</b> pour les logiciels web sans API ; agent local seulement pour les logiciels de bureau sans API.</li>
-      <li><b>Limite connue</b> : sur Mac, l'autorisation d'enregistrer l'écran doit être donnée une fois par l'utilisateur (règle d'Apple).</li>
-    </ul>
-  </div>
+  <section class="block" id="stack">
+    <h2>Toute la stack, d'un coup d'œil</h2>
+    <p class="sub">Chaque technologie, son rôle, et les étapes où elle sert.</p>
+    <div class="frame tbl"><table>
+      <tr><th>Technologie</th><th>Rôle</th><th>Étapes</th><th>Où</th></tr>
+      <tr><td>Qwen3.8-27B (Hugging Face)</td><td>analyse, question, jumeau, classement des outils, lecture des documents</td><td>3 · 4 · 5 · 9</td><td><span class="chip c-ext">API</span></td></tr>
+      <tr><td>Holo (H Company)</td><td>agent « computer use » : essais, lecture et saisie sans API</td><td>6 · 7 · 9</td><td><span class="chip c-ext">API</span></td></tr>
+      <tr><td>ElevenLabs</td><td>transcription de l'audit vocal, voix des tutos</td><td>1 · 8</td><td><span class="chip c-ext">API</span></td></tr>
+      <tr><td>n8n 2.48 (REST + MCP) · n8ncli</td><td>tester, livrer, exécuter et planifier les automatisations</td><td>7 · 9</td><td><span class="chip c-srv">serveur</span></td></tr>
+      <tr><td>Supabase (Postgres, RLS, Auth, Storage)</td><td>tables fusionnées de l'équipe, isolation par entreprise, comptes</td><td>1 · 4 · 5 · 8</td><td><span class="chip c-db">base</span></td></tr>
+      <tr><td>Node.js 24 + Express</td><td>la page Twiin, ses API, les ponts locaux n8n → poste</td><td>toutes</td><td><span class="chip c-srv">serveur</span></td></tr>
+      <tr><td>Python 3.12</td><td>workers : découverte, agents, OCR, journal, documents, Excel</td><td>2 à 9</td><td><span class="chip c-srv">serveur</span></td></tr>
+      <tr><td>Playwright + Chromium</td><td>navigateur invisible pour Holo ; collecte des docs publiques</td><td>5 · 6 · 9</td><td><span class="chip c-srv">serveur</span></td></tr>
+      <tr><td>Vision / Windows.Media.Ocr</td><td>OCR local</td><td>2</td><td><span class="chip c-post">poste</span></td></tr>
+      <tr><td>Quartz + Accessibilité / pynput + UI Automation</td><td>journal de clics, sans les touches</td><td>2</td><td><span class="chip c-post">poste</span></td></tr>
+      <tr><td>pypdf · openpyxl</td><td>lire les PDF, écrire dans Excel</td><td>9</td><td><span class="chip c-post">poste</span></td></tr>
+      <tr><td>React + Vite</td><td>composant de la page d'audit</td><td>1</td><td><span class="chip c-srv">serveur</span></td></tr>
+      <tr><td>Remotion</td><td>montage des tutos vidéo</td><td>8</td><td><span class="chip c-srv">serveur</span></td></tr>
+      <tr><td>GitHub · <code>doctor.py</code></td><td>code partagé ; vérification d'un poste sans afficher de secret</td><td>—</td><td><span class="chip c-post">poste</span></td></tr>
+    </table></div>
+  </section>
 
-  <h2>Aujourd'hui (démo du 20/11) et version finale : les différences</h2>
-  <p class="lede">Ce qui tourne aujourd'hui en local pour tester vite, ce qui changera, et pourquoi on ne l'a pas encore fait.</p>
-  <div class="tbl" style="margin-top:14px"><table>
-    <tr><th>Brique</th><th>Aujourd'hui</th><th>Version finale</th><th>Pourquoi la différence</th></tr>
-    <tr><td>n8n</td><td>n8n 2.48 en local sur le PC de test ; workflows de test créés, exécutés une fois puis supprimés ; démarré par Twiin</td>
-      <td>un n8n hébergé par entreprise ; workflows livrés inactifs, activés par l'utilisateur</td>
-      <td>en local, on itère sans compte ni coût ; l'instance en ligne existante était trop ancienne pour le pilotage par MCP</td></tr>
-    <tr><td>Workers (découverte, itérations)</td><td>processus Python lancés par le serveur local, détachés</td>
-      <td>conteneurs jetables (Cloud Run, Kubernetes) ; un par tâche</td>
-      <td>mêmes scripts : seul l'endroit où ils tournent change ; l'isolation réseau devient obligatoire avec de vrais clients</td></tr>
-    <tr><td>Jumeau</td><td>page web servie en local, ouverte par un Chromium sans fenêtre</td>
-      <td>servi dans le conteneur de la tâche, détruit à la fin</td><td>pas besoin d'infrastructure pour le tester</td></tr>
-    <tr><td>Page Twiin</td><td>serveur Node sur <code>localhost:3000</code>, sur le poste qui enregistre</td>
-      <td>application web hébergée + capteur local</td><td>le serveur et la capture sont encore au même endroit</td></tr>
-    <tr><td>Capture (écran, OCR, journal)</td><td>partage d'écran Chrome + scripts Python Mac / Windows lancés par le serveur</td>
-      <td>capteur installé par la DSI, mêmes scripts embarqués</td><td>l'empaquetage (installeur signé) prend du temps, pas utile pour la démo</td></tr>
-    <tr><td>Clés (HF, H, n8n, Supabase)</td><td>fichier <code>.env</code> local, non versionné</td>
-      <td>coffre de secrets côté serveur ; rien sur le poste</td><td>en local, l'équipe garde la main sur ses propres clés</td></tr>
-    <tr><td>Comptes</td><td>comptes Supabase créés à la main par l'admin, rattachés à une entreprise</td>
-      <td>SSO de l'entreprise, rattachement automatique</td><td>pas de SSO à configurer pour une démo</td></tr>
-    <tr><td>Holo</td><td>API H, holo3 gratuit ou holo4 ; blocs Holo de n8n via un pont local</td>
-      <td>Holo hébergé (navigateur dans le cloud) pour le web ; agent local seulement pour le bureau</td>
-      <td>le pont local suffit pour montrer le principe</td></tr>
-    <tr><td>Captures d'écran</td><td>restent sur le poste (texte et chiffres seulement dans Supabase)</td>
-      <td>idem, ou stockage chiffré avec durée de conservation (RGPD)</td><td>choix prudent tant que la politique de conservation n'est pas écrite</td></tr>
-    <tr><td>Tuto vidéo</td><td>Remotion en local</td><td>rendu dans le cloud</td><td>rendu long, à déporter quand il y aura du volume</td></tr>
-    <tr><td>Catalogue des outils</td><td>7 outils publics collectés par script ; audit des outils internes en cours (Camil)</td>
-      <td>catalogue enrichi automatiquement par l'audit (agent qui explore chaque outil interne)</td><td>l'audit est encore un prototype</td></tr>
-    <tr><td>Suivi</td><td>page Back + table <code>tests</code></td><td>+ alertes, coûts par entreprise, tableaux de bord</td><td>pas nécessaire pour une démo</td></tr>
-  </table></div>
+  <section class="block" id="chiffres">
+    <h2>Chiffres mesurés</h2>
+    <div class="facts">
+      <div class="fact"><b>4 à 30 s</b><span>pour poser la question au salarié</span></div>
+      <div class="fact"><b>30 → 100 %</b><span>fiabilité de Holo avant / après mémoire et guidage</span></div>
+      <div class="fact"><b>2,5 s</b><span>automatisation n8n native du comparatif, sans Holo (93 %)</span></div>
+      <div class="fact"><b>57 → 100 %</b><span>facture QONTA dans le jumeau, après la gestion des suggestions</span></div>
+      <div class="fact"><b>79 s</b><span>facture PDF saisie en brouillon dans QONTA par Holo invisible, valeurs exactes</span></div>
+      <div class="fact"><b>51 s</b><span>comparatif de bout en bout : 3 sites lus, 3 lignes écrites dans Excel</span></div>
+    </div>
+  </section>
 
-  <footer>Code : dépôt twiin-holo, dossiers <code>twiin/recorder</code>, <code>twiin/discovery</code>, <code>supabase/</code>. Page tenue à jour au fil des tests.</footer>
+  <section class="block final" id="final">
+    <p class="eyebrow">Version finale visée</p>
+    <h2>Ce qu'on veut livrer</h2>
+    <p class="sub">Le salarié n'installe et ne configure rien. Il se connecte avec le compte de son entreprise. Tout le calcul
+      tourne dans le cloud, en Europe, dans des environnements jetables. Sur le poste, il ne reste qu'un petit capteur.</p>
+    <div class="frame">
+      <svg viewBox="0 0 960 330" role="img" aria-label="Architecture cible de Twiin dans le cloud">
+        <defs>
+          <marker id="ar2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M0,0 L10,5 L0,10 z" fill="var(--dim)"/>
+          </marker>
+        </defs>
+        <rect x="10" y="10" width="200" height="310" rx="12" fill="var(--post-soft)" stroke="var(--post)" stroke-opacity=".5"/>
+        <text x="24" y="34" font-size="13" font-weight="600" fill="var(--post)">POSTE</text>
+        <rect x="230" y="10" width="500" height="310" rx="12" fill="var(--srv-soft)" stroke="var(--srv)" stroke-opacity=".5"/>
+        <text x="244" y="34" font-size="13" font-weight="600" fill="var(--srv)">CLOUD TWIIN (UE)</text>
+        <rect x="750" y="10" width="200" height="310" rx="12" fill="var(--ext-soft)" stroke="var(--ext)" stroke-opacity=".5"/>
+        <text x="764" y="34" font-size="13" font-weight="600" fill="var(--ext)">SERVICES</text>
+        <g font-size="12" fill="var(--ink)">
+          <rect x="24" y="52" width="172" height="84" rx="8" fill="var(--panel)" stroke="var(--line)"/>
+          <text x="36" y="72" font-weight="600">Capteur léger</text>
+          <text x="36" y="90" fill="var(--dim)">captures, OCR, journal</text>
+          <text x="36" y="106" fill="var(--dim)">déployé par la DSI</text>
+          <text x="36" y="122" fill="var(--dim)">aucune clé dedans</text>
+          <rect x="24" y="152" width="172" height="70" rx="8" fill="var(--panel)" stroke="var(--line)"/>
+          <text x="36" y="172" font-weight="600">Navigateur</text>
+          <text x="36" y="190" fill="var(--dim)">app Twiin, connexion SSO</text>
+          <text x="36" y="206" fill="var(--dim)">(Microsoft, Google)</text>
+          <rect x="24" y="238" width="172" height="66" rx="8" fill="var(--panel)" stroke="var(--line)"/>
+          <text x="36" y="258" font-weight="600">Agent local</text>
+          <text x="36" y="276" fill="var(--dim)">seulement pour un logiciel</text>
+          <text x="36" y="292" fill="var(--dim)">de bureau sans API</text>
+
+          <rect x="244" y="52" width="150" height="84" rx="8" fill="var(--panel)" stroke="var(--line)"/>
+          <text x="256" y="72" font-weight="600">App web Twiin</text>
+          <text x="256" y="90" fill="var(--dim)">parcours salarié,</text>
+          <text x="256" y="106" fill="var(--dim)">Back, DSI</text>
+          <rect x="406" y="52" width="150" height="84" rx="8" fill="var(--panel)" stroke="var(--line)"/>
+          <text x="418" y="72" font-weight="600">Workers jetables</text>
+          <text x="418" y="90" fill="var(--dim)">un conteneur par tâche :</text>
+          <text x="418" y="106" fill="var(--dim)">jumeau + 5 essais</text>
+          <rect x="568" y="52" width="150" height="84" rx="8" fill="var(--panel)" stroke="var(--line)"/>
+          <text x="580" y="72" font-weight="600">n8n par entreprise</text>
+          <text x="580" y="90" fill="var(--dim)">n8n Cloud ou Docker,</text>
+          <text x="580" y="106" fill="var(--dim)">région UE</text>
+          <rect x="244" y="152" width="312" height="84" rx="8" fill="var(--db-soft)" stroke="var(--db)"/>
+          <text x="256" y="172" font-weight="600" fill="var(--db)">Supabase : le graphe de l'entreprise</text>
+          <text x="256" y="190" fill="var(--dim)">salariés, tâches, logiciels, essais, automatisations</text>
+          <text x="256" y="206" fill="var(--dim)">reliés entre eux (clés étrangères + pgvector pour</text>
+          <text x="256" y="222" fill="var(--dim)">« tâches qui se ressemblent »)</text>
+          <rect x="568" y="152" width="150" height="84" rx="8" fill="var(--panel)" stroke="var(--line)"/>
+          <text x="580" y="172" font-weight="600">Coffre de secrets</text>
+          <text x="580" y="190" fill="var(--dim)">clés API et connexions</text>
+          <text x="580" y="206" fill="var(--dim)">côté serveur seulement</text>
+          <rect x="244" y="252" width="474" height="52" rx="8" fill="var(--panel)" stroke="var(--line)"/>
+          <text x="256" y="272" font-weight="600">Mise en service DSI, une fois</text>
+          <text x="256" y="290" fill="var(--dim)">un consentement par éditeur, déduit des audits ; Twiin crée ensuite les connexions dans n8n</text>
+
+          <rect x="764" y="52" width="172" height="70" rx="8" fill="var(--panel)" stroke="var(--line)"/>
+          <text x="776" y="72" font-weight="600">Holo hébergé</text>
+          <text x="776" y="90" fill="var(--dim)">logiciels web</text>
+          <text x="776" y="106" fill="var(--dim)">sans API</text>
+          <rect x="764" y="134" width="172" height="70" rx="8" fill="var(--panel)" stroke="var(--line)"/>
+          <text x="776" y="154" font-weight="600">Modèles d'IA</text>
+          <text x="776" y="172" fill="var(--dim)">Qwen (analyse),</text>
+          <text x="776" y="188" fill="var(--dim)">ElevenLabs (voix)</text>
+          <rect x="764" y="216" width="172" height="88" rx="8" fill="var(--panel)" stroke="var(--line)"/>
+          <text x="776" y="236" font-weight="600">Outils de l'entreprise</text>
+          <text x="776" y="254" fill="var(--dim)">Microsoft 365, Google,</text>
+          <text x="776" y="270" fill="var(--dim)">logiciels métier</text>
+        </g>
+        <g stroke="var(--dim)" stroke-width="1.4" fill="none" marker-end="url(#ar2)">
+          <path d="M196 94 L242 94"/>
+          <path d="M196 187 L242 116"/>
+          <path d="M394 94 L404 94"/>
+          <path d="M556 94 L566 94"/>
+          <path d="M470 136 L430 150"/>
+          <path d="M718 88 L762 88"/>
+          <path d="M718 120 L762 250"/>
+          <path d="M556 124 L762 168"/>
+        </g>
+      </svg>
+    </div>
+    <div class="cols">
+      <div class="card"><h3>Ce qui change par rapport à aujourd'hui</h3>
+        <ul>
+          <li>Le serveur Twiin quitte le poste pour le cloud (UE).</li>
+          <li>Un conteneur jetable par tâche, réseau fermé sauf les API utiles.</li>
+          <li>n8n hébergé, un par entreprise.</li>
+          <li>Clés et mots de passe dans un coffre côté serveur, plus de fichier local.</li>
+          <li>Connexion des salariés par SSO via Supabase Auth.</li>
+        </ul></div>
+      <div class="card"><h3>Ce qui reste identique</h3>
+        <ul>
+          <li>Le parcours : audit, enregistrement, question, reco.</li>
+          <li>Les 5 essais : 3 « conseil », 2 « automatisation ».</li>
+          <li>Holo seulement là où il n'y a ni API ni page lisible.</li>
+          <li>Aucune automatisation ne prend l'écran du salarié.</li>
+          <li>Les captures restent sur le poste par défaut.</li>
+        </ul></div>
+      <div class="card"><h3>Limites connues</h3>
+        <ul>
+          <li>Sur Mac, l'autorisation d'enregistrer l'écran se donne une fois par utilisateur (règle d'Apple).</li>
+          <li>Un logiciel de bureau sans API garde un agent local.</li>
+          <li>L'interrupteur DISCOVERY est retiré au rendu final.</li>
+        </ul></div>
+    </div>
+  </section>
+
+  <section class="block" id="graphe">
+    <p class="eyebrow">Version finale · données</p>
+    <h2>Le graphe de l'entreprise</h2>
+    <p class="sub">Dans Supabase, tout est relié : un salarié fait des tâches, une tâche utilise des logiciels, chaque tâche
+      a ses essais, une automatisation sert une ou plusieurs tâches. En version finale, Twiin montre ces liens comme un
+      graphe vivant, dans la page Back et pour la DSI. Quand deux salariés font la même tâche, Twiin le voit, et une seule
+      automatisation sert les deux. Exemple ci-dessous avec des données fictives.</p>
+    <div class="graph">
+      <div class="graph-top">
+        <div class="legend" id="glegend"></div>
+        <button type="button" id="gplay">Voir le graphe se construire</button>
+        <button type="button" id="gpause" aria-pressed="false">Pause</button>
+      </div>
+      <canvas id="g" aria-label="Graphe animé : salariés, tâches, logiciels, essais et automatisations d'une entreprise fictive"></canvas>
+      <p class="caption" id="gcap"><b>Survolez un point</b> pour voir ses liens. Les points lumineux qui circulent sont les échanges : les essais qui remontent, les automatisations qui écrivent.</p>
+    </div>
+    <div class="frame tbl"><table>
+      <tr><th>Dans le graphe</th><th>Table Supabase</th><th>Lien</th></tr>
+      <tr><td>Entreprise</td><td><code>profiles.company_id</code></td><td>isole tout le reste (RLS)</td></tr>
+      <tr><td>Salarié</td><td><code>profiles</code>, <code>audits</code></td><td>« fait » une tâche</td></tr>
+      <tr><td>Tâche</td><td><code>taches</code></td><td>« utilise » un logiciel ; « ressemble à » une autre tâche (pgvector, à venir)</td></tr>
+      <tr><td>Logiciel</td><td><code>dictionnaire</code></td><td>API, page lisible ou écran seulement</td></tr>
+      <tr><td>Essai</td><td><code>tests</code></td><td>« teste » une tâche, avec sa réussite mesurée</td></tr>
+      <tr><td>Automatisation</td><td><code>automations</code>, <code>automation_runs</code></td><td>« automatise » une ou plusieurs tâches</td></tr>
+    </table></div>
+  </section>
+
+  <footer>Page tenue à jour au fil des changements. Code : <code>hbendiab/twiin-holo</code>, branche <code>feat/decouverte-env-test</code>, détails dans <code>docs/README-decouverte.md</code>.</footer>
 </div>
+
+<script>
+(() => {
+  const cv = document.getElementById('g');
+  const ctx = cv.getContext('2d');
+  const cap = document.getElementById('gcap');
+  const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const css = (v) => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+  const KINDS = {
+    co:   { label: 'Entreprise', color: '--accent', r: 15 },
+    emp:  { label: 'Salarié', color: '--post', r: 10 },
+    task: { label: 'Tâche', color: '--srv', r: 11 },
+    sw:   { label: 'Logiciel', color: '--ext', r: 8 },
+    test: { label: 'Essai', color: '--dim', r: 4 },
+    auto: { label: 'Automatisation', color: '--db', r: 12 },
+  };
+  // Données fictives : une entreprise, trois salariés, trois tâches dont deux identiques
+  const N = [
+    ['co', 'Exemple SAS', 0], ['emp', 'Comptable', 1], ['emp', 'Acheteur', 1], ['emp', 'Assistante', 1],
+    ['sw', 'QONTA', 1], ['sw', 'Excel', 1], ['sw', 'Outlook', 1], ['sw', 'Sites marchands', 1],
+    ['task', 'Saisir une facture', 2], ['task', 'Comparer 3 sites', 2], ['task', 'Saisir une facture', 5],
+    ['auto', 'Saisie facture (Holo invisible)', 4], ['auto', 'Comparatif → Excel (n8n)', 4],
+  ];
+  const nodes = N.map(([k, name, ph], i) => ({ id: i, k, name, ph, x: 0, y: 0, vx: 0, vy: 0 }));
+  const E = [[0,1,'emploie',0],[0,2,'emploie',0],[0,3,'emploie',0],[1,8,'fait',0],[2,9,'fait',0],[3,10,'fait',0],
+    [8,4,'utilise',0],[8,6,'utilise',0],[9,7,'utilise',0],[9,5,'utilise',0],[10,4,'utilise',0],
+    [11,8,'automatise',0],[12,9,'automatise',0],[10,8,'ressemble à',5],[11,10,'automatise',5]];
+  [8, 9].forEach((t) => { for (let j = 0; j < 5; j++) {
+    const id = nodes.length;
+    nodes.push({ id, k: 'test', name: j < 3 ? `Essai conseil ${j + 1}` : `Essai automatisation ${j - 2}`, ph: 3, x: 0, y: 0, vx: 0, vy: 0 });
+    E.push([id, t, 'teste', 0]); } });
+  const edges = E.map(([a, b, rel, p]) => ({ a: nodes[a], b: nodes[b], rel, ph: Math.max(nodes[a].ph, nodes[b].ph, p) }));
+  const PHASES = [
+    'Une entreprise rejoint Twiin.',
+    '<b>Audit des postes</b> : les salariés et leurs logiciels apparaissent.',
+    '<b>Enregistrement</b> : chaque tâche est reliée à son salarié et aux logiciels qu\'elle utilise.',
+    '<b>5 essais par tâche</b> : 3 « conseil » et 2 « automatisation », chacun mesuré.',
+    '<b>Automatisation livrée</b> : la meilleure solution testée devient un workflow n8n.',
+    '<b>Tâche identique repérée</b> : l\'assistante saisit aussi des factures, la même automatisation la sert.',
+  ];
+  const LAST = PHASES.length - 1;
+  let W = 0, H = 0, phase = LAST, phaseT = 0, building = false, paused = false, hover = null;
+  const t0 = performance.now();
+  document.getElementById('glegend').innerHTML = Object.values(KINDS)
+    .map((k) => `<span><i class="sw" style="background:var(${k.color})"></i>${k.label}</span>`).join('');
+
+  function size() {
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    W = cv.clientWidth; H = cv.clientHeight;
+    cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr); ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  }
+  function seed() {
+    nodes.forEach((n, i) => { const a = i * 2.399, r = 30 + 16 * Math.sqrt(i);
+      n.x = W / 2 + Math.cos(a) * r; n.y = H / 2 + Math.sin(a) * r * 0.7; n.vx = n.vy = 0; });
+  }
+  const visible = (n) => n.ph <= phase;
+  const live = (e) => e.ph <= phase;
+  function step() {
+    const vis = nodes.filter(visible);
+    const k = Math.min(1, W / 700);
+    for (const a of vis) {
+      for (const b of vis) { if (a === b) continue;
+        const dx = a.x - b.x, dy = a.y - b.y, d2 = dx * dx + dy * dy + 1, f = 46 * k / d2;
+        a.vx += dx * f; a.vy += dy * f; }
+      a.vx += (W / 2 - a.x) * 0.002; a.vy += (H / 2 - a.y) * 0.003;
+    }
+    for (const e of edges) { if (!live(e)) continue;
+      const L = (e.rel === 'teste' ? 34 : e.rel === 'ressemble à' ? 110 : 80) * (0.6 + 0.4 * k);
+      const dx = e.b.x - e.a.x, dy = e.b.y - e.a.y, d = Math.hypot(dx, dy) || 1, f = (d - L) * 0.015;
+      e.a.vx += dx / d * f; e.a.vy += dy / d * f; e.b.vx -= dx / d * f; e.b.vy -= dy / d * f; }
+    for (const n of vis) { n.vx *= 0.8; n.vy *= 0.8; n.x += n.vx; n.y += n.vy;
+      const r = KINDS[n.k].r + 8; n.x = Math.max(r + 40, Math.min(W - r - 40, n.x)); n.y = Math.max(r + 18, Math.min(H - r, n.y)); }
+  }
+  function linked(n) { const s = new Set([n]); edges.forEach((e) => { if (!live(e)) return; if (e.a === n) s.add(e.b); if (e.b === n) s.add(e.a); }); return s; }
+  function draw(now) {
+    ctx.clearRect(0, 0, W, H);
+    const ink = css('--ink'), dim = css('--dim'), line = css('--line'), panel = css('--panel'), srv = css('--srv');
+    const hl = hover ? linked(hover) : null;
+    for (const e of edges) { if (!live(e)) continue;
+      const on = !hl || (hl.has(e.a) && hl.has(e.b)), sim = e.rel === 'ressemble à';
+      ctx.strokeStyle = sim ? srv : on ? dim : line;
+      ctx.globalAlpha = on ? (e.rel === 'teste' ? 0.35 : 0.55) : 0.12;
+      ctx.lineWidth = sim ? 1.6 : 1;
+      ctx.setLineDash(sim ? [5, 4] : []);
+      ctx.beginPath(); ctx.moveTo(e.a.x, e.a.y); ctx.lineTo(e.b.x, e.b.y); ctx.stroke();
+      ctx.setLineDash([]);
+      if (!reduce && on && e.rel !== 'emploie' && !sim) { // échanges qui circulent sur les liens
+        const speed = e.rel === 'teste' ? 0.0007 : 0.00042, p = ((now - t0) * speed + e.a.id * 0.137) % 1;
+        const from = e.rel === 'teste' || e.rel === 'automatise' ? e.a : e.b, to = from === e.a ? e.b : e.a;
+        ctx.globalAlpha = 0.95; ctx.fillStyle = css(KINDS[from.k].color);
+        ctx.beginPath(); ctx.arc(from.x + (to.x - from.x) * p, from.y + (to.y - from.y) * p, 2.4, 0, Math.PI * 2); ctx.fill(); }
+    }
+    for (const n of nodes) { if (!visible(n)) continue;
+      const K = KINDS[n.k], on = !hl || hl.has(n);
+      const born = building && n.ph === phase ? Math.min(1, (now - phaseT) / 500) : 1;
+      const r = Math.max(0.1, K.r * born * (n.k === 'auto' && !reduce ? 1 + 0.07 * Math.sin(now / 380) : 1));
+      ctx.globalAlpha = on ? 1 : 0.25;
+      if (n.k === 'auto' || n.k === 'co') { ctx.fillStyle = css(K.color); ctx.globalAlpha *= 0.18;
+        ctx.beginPath(); ctx.arc(n.x, n.y, r + 7, 0, Math.PI * 2); ctx.fill(); ctx.globalAlpha = on ? 1 : 0.25; }
+      ctx.fillStyle = css(K.color); ctx.strokeStyle = panel; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(n.x, n.y, r, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+      if (n.k !== 'test' || hover === n) {
+        ctx.font = (n.k === 'co' ? '600 13px ' : '500 12px ') + '"IBM Plex Sans", "Segoe UI", sans-serif';
+        ctx.fillStyle = on ? ink : dim; ctx.textAlign = 'center';
+        const half = ctx.measureText(n.name).width / 2 + 4;
+        ctx.fillText(n.name, Math.max(half, Math.min(W - half, n.x)), n.y - r - 7);
+      }
+    }
+    ctx.globalAlpha = 1;
+  }
+  function loop(now) {
+    if (!paused) {
+      if (building && now - phaseT > 2600) {
+        if (phase < LAST) { phase++; phaseT = now; cap.innerHTML = PHASES[phase]; } else building = false;
+      }
+      step(); draw(now);
+    }
+    requestAnimationFrame(loop);
+  }
+  function settle() { for (let i = 0; i < 500; i++) step(); }
+  size(); seed(); settle(); draw(performance.now());
+  window.addEventListener('resize', () => { size(); settle(); draw(performance.now()); });
+  if (!reduce) requestAnimationFrame(loop);
+
+  const pb = document.getElementById('gpause');
+  document.getElementById('gplay').onclick = () => {
+    paused = false; pb.textContent = 'Pause'; pb.setAttribute('aria-pressed', 'false');
+    if (reduce) { cap.innerHTML = PHASES.join(' '); return; }
+    phase = 0; phaseT = performance.now(); building = true; seed(); cap.innerHTML = PHASES[0];
+  };
+  pb.onclick = () => { paused = !paused; pb.textContent = paused ? 'Reprendre' : 'Pause'; pb.setAttribute('aria-pressed', String(paused)); };
+  function pick(ev) {
+    const r = cv.getBoundingClientRect(), x = ev.clientX - r.left, y = ev.clientY - r.top;
+    let best = null, bd = 22;
+    for (const n of nodes) { if (!visible(n)) continue; const d = Math.hypot(n.x - x, n.y - y); if (d < bd) { bd = d; best = n; } }
+    return best;
+  }
+  cv.addEventListener('pointermove', (ev) => {
+    hover = pick(ev);
+    if (hover && !building) {
+      const rels = edges.filter((e) => live(e) && (e.a === hover || e.b === hover))
+        .map((e) => `${e.rel} ${(e.a === hover ? e.b : e.a).name}`);
+      cap.innerHTML = `<b>${KINDS[hover.k].label} · ${hover.name}</b> : ${[...new Set(rels)].slice(0, 6).join(' · ')}`;
+    }
+    if (reduce || paused) draw(performance.now());
+  });
+  cv.addEventListener('pointerleave', () => { hover = null; if (reduce || paused) draw(performance.now()); });
+})();
+</script>
