@@ -55,7 +55,7 @@
 
 <script>
 // Détail interne de la découverte (jamais montré à l'employé) : /api/discovery/internal
-(async function discovery() {
+window.addEventListener("load", async function discovery() {
   const out = document.getElementById('dOut');
   const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   try {
@@ -77,7 +77,7 @@
       ${sol ? `<h3>Solution proposée : ${esc(sol.kind === 'automate' ? 'automatiser' : 'accélérer')} (confiance ${esc(sol.confidence)})</h3>
         <p>${esc(sol.texte)}</p><ul>${(sol.raisons || []).map((x) => `<li>${esc(x)}</li>`).join('')}</ul>` : ''}`;
   } catch (e) { out.innerHTML = `<p class="meta">Découverte indisponible : ${esc(e.message)}</p>`; }
-})();
+});
 </script>
 
   <details class="panel" id="tester" style="margin-top:14px">
