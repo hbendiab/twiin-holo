@@ -26,3 +26,8 @@ comptarex/data/*.db-shm
 archives/premier-test-holo/screenshots/
 
 # ── twiin/ (cœur de Twiin) : ses exclusions (secrets, données personnelles, dépendances, n8n) sont dans twiin/.gitignore ──
+
+# ── comptarex : faux logiciel de compta de la démo « facture » (repris de Show Me Once).
+# Retiré du dépôt le 18/11 : son Dockerfile/railway.json faisaient ouvrir comptarex au lieu de Twiin.
+# Il reste sur le Mac de Hanine pour la démo ; Twiin n'en a pas besoin pour fonctionner.
+comptarex/

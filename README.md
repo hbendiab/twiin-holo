@@ -10,14 +10,49 @@
   OCR, journal)        automatiser)                  🙋 « Fais-le à ma place » (à venir)
 ```
 
+## Démarrage rapide (équipe) : lancer Twiin sur ton Mac
+
+Twiin tourne **sur ton Mac**, pas en ligne : il filme ton écran, lit le texte avec l'OCR de macOS et note tes clics.
+Il ne se déploie donc pas sur Railway, Vercel ou un serveur. Il faut un Mac, **Chrome** (Safari ne partage qu'un écran),
+Node 20 ou plus et Python 3.10 ou plus.
+
+```bash
+git clone https://github.com/hbendiab/twiin-holo.git
+cd twiin-holo/twiin
+
+# 1. Python (OCR local, journal des clics, Holo)
+python3 -m venv .venv
+.venv/bin/pip install -e .
+
+# 2. Clés : copie le modèle, puis mets TA clé Hugging Face dans HF_TOKEN (https://huggingface.co/settings/tokens)
+cp .env.example .env
+
+# 3. Logos des outils (facultatif, extraits des applications de ton Mac)
+.venv/bin/python scripts/fetch_icons.py
+
+# 4. La page Twiin
+cd recorder
+npm install
+PORT=3000 node server.js
+```
+
+Puis ouvre **http://localhost:3000** dans Chrome. Pour voir le parcours sans rien enregistrer : http://localhost:3000/#exemple.
+
+**Autorisations macOS** (Réglages Système → Confidentialité et sécurité) : *Enregistrement de l'écran* pour Chrome ;
+*Accessibilité* et *Surveillance de l'entrée* pour le Terminal (ou VS Code) qui lance le serveur, sinon le journal des
+clics reste vide. Relance le serveur après les avoir accordées.
+
+Seul `HF_TOKEN` est obligatoire. `HAI_API_KEY` (Holo, ton propre compte H) sert au test facultatif « Faire refaire la
+tâche par Holo » ; `ELEVENLABS_API_KEY` sert aux tutos vidéo ; n8n n'est utile que pour « Créer l'automatisation ».
+
 ## Les briques (dossier par dossier)
 
 | Dossier | Rôle | État |
 |---|---|---|
 | [`twiin/`](twiin/) | **Le cœur actuel de Twiin** : page d'enregistrement multi-écrans (OCR local + journal d'actions), analyse fidèle, 💡 conseils, 🧭 verdict, ⚙️ préparation et ▶ rejeu par Holo sur le Mac, ⚡ automatisation n8n, 🎬 tuto vidéo. Basé sur le dépôt [ImproveMe](https://github.com/zach2940/improveme) de zach2940, très modifié | ✅ actif |
 | [`capture/`](capture/) | **Observer v1** (Chrome seulement) : extension + serveur, `session.json`/`skill.md`, **audit des outils** (`audit.json`) et son registre `known_tools.json` (utilisé aussi par le verdict), audit du poste, vérification comptarex. Repris de Show Me Once | 🟡 première version, en partie remplacée par `improveme/` |
-| [`live/`](live/) | **Twiin Live** : Holo 3.1 (gratuit, API Modèles) saisit une facture dans comptarex sous tes yeux, avec page de suivi et vérification | 🟡 fonctionne, pas encore relié à la page Twiin |
-| [`comptarex/`](comptarex/) | **Faux logiciel de comptabilité** (sans API pour saisir) : terrain de démo, données fictives, vérité terrain. Repris de Show Me Once | ✅ démo « facture » |
+| [`live/`](live/) | **Twiin Live** : Holo 3.1 (gratuit, API Modèles) saisit une facture dans comptarex sous tes yeux, avec page de suivi et vérification | 🟡 a besoin de comptarex (hors dépôt) |
+| `comptarex/` | **Faux logiciel de comptabilité** (sans API pour saisir) : terrain de la démo « facture ». Repris de [Show Me Once](https://github.com/Jean-Christophe972/show-me-once-hackathon-h). **Pas dans ce dépôt** (retiré le 18/11) : il reste sur le Mac de démo, Twiin n'en a pas besoin | 📦 hors dépôt |
 | [`docs/`](docs/) | Brief de la brique Observer | — |
 | [`archives/`](archives/) | Premier test de Holo (16/11), plus utilisé | 📦 archivé |
 
@@ -26,7 +61,7 @@
 | Service | Commande (depuis la racine) | Adresse |
 |---|---|---|
 | **Page Twiin** (enregistrer, analyser, rejouer, automatiser) | `cd twiin/recorder && PORT=3000 node server.js` | http://localhost:3000 |
-| comptarex (démo facture) | `cd comptarex && uv run comptarex-web` | http://127.0.0.1:8042 |
+| comptarex (démo facture, Mac de démo seulement) | `cd comptarex && uv run comptarex-web` | http://127.0.0.1:8042 |
 | n8n 2.48 (automatisations) | `twiin/automation/n8n-runtime/start.sh` | http://localhost:5678 |
 | Studio Remotion (aperçu des tutos) | `cd twiin/tuto/video && npx remotion studio --port 3010` | http://localhost:3010 |
 | Observer v1 (Chrome) | `cd capture/backend && ../../.venv/bin/uvicorn app.main:app --port 8000` | http://localhost:8000 |
@@ -45,7 +80,7 @@ cd twiin
 
 ## Secrets et données personnelles
 
-- **Secrets** : uniquement dans les fichiers `.env` (racine, `capture/backend/`, `comptarex/`, `twiin/`), **jamais publiés**.
+- **Secrets** : uniquement dans les fichiers `.env` (racine, `capture/backend/`, `twiin/`), **jamais publiés**.
   Chaque dossier a un `.env.example` qui liste les variables sans valeur.
 - **Données personnelles** (captures de l'écran, journaux d'actions, enregistrements, voix, rejeux) : restent sur le Mac,
   exclues de git — `twiin/workflows/sessions|runs/`, `twiin/tuto/video/public/tutos/`, `live/runs/`, `capture/backend/data/`.
@@ -62,5 +97,5 @@ cd twiin
 
 ## Crédits
 
-Show Me Once (Jean-Christophe Dorn et équipe) pour `capture/` et `comptarex/` ; ImproveMe (zach2940) pour la base de
+Show Me Once (Jean-Christophe Dorn et équipe) pour `capture/` et comptarex (hors dépôt) ; ImproveMe (zach2940) pour la base de
 `twiin/` ; H Company (Holo), Hugging Face, ElevenLabs, n8n, Remotion.
