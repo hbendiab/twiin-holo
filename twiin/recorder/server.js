@@ -29,7 +29,7 @@ app.use('/vendor/supabase', express.static(path.join(path.dirname(fileURLToPath(
 // Sans SUPABASE_URL / SUPABASE_ANON_KEY dans .env, Twiin marche comme avant, en local, sans comptes.
 // ════════════════════════════════════════════════════════════════════════════════════════════════════════════════
 const SB_URL = (process.env.SUPABASE_URL || '').replace(/\/+$/, '');
-const SB_ANON = process.env.SUPABASE_ANON_KEY || '';
+const SB_ANON = process.env.SUPABASE_PUBLISHABLE_KEY || process.env.SUPABASE_ANON_KEY || ''; // même clé publique, deux noms (équipe / Twiin)
 const SB_ON = !!(SB_URL && SB_ANON);
 const als = new AsyncLocalStorage(); // l'employé de la requête en cours, disponible partout (même dans les tâches longues)
 const tokenCache = new Map();
