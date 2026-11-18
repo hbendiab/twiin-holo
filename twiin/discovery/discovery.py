@@ -237,18 +237,19 @@ def discover(session_dir: Path) -> None:
     dico = sb.select("dictionnaire", "select=id,name,has_api,connector,docs,screens")
     text = " ".join(steps + [cand.get("summary", ""), cand.get("name", "")]).lower()
     used = [d for d in dico if d["name"].lower() in text]
-    old = sb.select("taches", f"select=id&source_session_id=eq.{session_dir.name}")
-    if old:  # nouvelle découverte du même enregistrement : on repart de zéro sur la même tâche
-        sb._req("DELETE", f"/rest/v1/taches?id=eq.{old[0]['id']}")
     started, ended = (frames[0].get("timestamp"), frames[-1].get("timestamp")) if frames else (None, None)
-    task = sb.insert("taches", {
-        "company_id": sb.company_id, "title": cand.get("name") or "Tâche enregistrée", "summary": cand.get("summary"),
-        "context": cand.get("general_intent"), "status": "processing", "software_ids": [d["id"] for d in used],
-        "steps": [{"position": i + 1, "instruction": s} for i, s in enumerate(steps)],
-        "source_session_id": session_dir.name, "started_at": started, "ended_at": ended,
-        "expires_at": (datetime.now(timezone.utc) + timedelta(days=30)).isoformat(),
-        "stats": {"frames": len(frames)},
-    })
+    old = sb.select("taches", f"select=id&source_session_id=eq.{session_dir.name}")
+    fields = {"status": "processing", "software_ids": [d["id"] for d in used],
+              "started_at": started, "ended_at": ended,
+              "expires_at": (datetime.now(timezone.utc) + timedelta(days=30)).isoformat(), "stats": {"frames": len(frames)}}
+    if old:  # la page a déjà créé la tâche (même enregistrement) : on la complète au lieu d'en créer une autre
+        sb.update("taches", f"id=eq.{old[0]['id']}", fields)
+        task = {"id": old[0]["id"]}
+    else:
+        task = sb.insert("taches", {
+            "company_id": sb.company_id, "title": cand.get("name") or "Tâche enregistrée", "summary": cand.get("summary"),
+            "context": cand.get("general_intent"), "steps": [{"position": i + 1, "instruction": s} for i, s in enumerate(steps)],
+            "source_session_id": session_dir.name, **fields})
     tid = task["id"]
     st.set(task_id=tid, message=f"Tâche {tid} créée")
 

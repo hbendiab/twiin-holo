@@ -40,7 +40,7 @@ async function sbUserFromToken(token) {
   const r = await fetch(`${SB_URL}/auth/v1/user`, { headers: { apikey: SB_ANON, Authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(8000) });
   if (!r.ok) return null;
   const u = await r.json();
-  const user = { id: u.id, email: u.email, token };
+  const user = { id: u.id, email: u.email, token, company_id: u.app_metadata?.company_id || null };
   tokenCache.set(token, { user, until: Date.now() + 5 * 60 * 1000 });
   return user;
 }
@@ -449,10 +449,16 @@ async function analyze({ frames, transcript, actionLog = '', ocrLines = 0, scree
   meta.session = session;
   for (const w of result.workflows || []) w.session = session; // la tâche garde le lien vers SON enregistrement
   if (sbUser()) {
-    const rows = await sb('tasks', { method: 'POST', prefer: 'return=representation', body: (result.workflows || []).map((w) => ({
-      name: w.name || 'Tâche', summary: w.summary || null, why: w.why_daily || null, steps: w.steps || [], session, source: 'analyse',
-      meta: { model: HF_MODEL, provider, tokens_in: usage.prompt_tokens, tokens_out: usage.completion_tokens, cost_usd,
-              images_sent: used.length, ocr_lines: ocrLines, screens } })) });
+    // Table d'équipe « taches » (fusion validée par Hanine) : une ligne par tâche, rattachée à l'entreprise de l'employé.
+    // Plusieurs tâches dans un même enregistrement : source_session_id suffixé (#2, #3…) car il est unique par entreprise.
+    const company = sbUser()?.company_id;
+    const rows = company ? await sb('taches?on_conflict=company_id,source_session_id', {
+      method: 'POST', prefer: 'resolution=merge-duplicates,return=representation',
+      body: (result.workflows || []).map((w, i) => ({
+        company_id: company, title: w.name || 'Tâche', summary: w.summary || null, why: w.why_daily || null,
+        steps: w.steps || [], source_session_id: i ? `${session}#${i + 1}` : session, source: 'analyse', status: 'analysed',
+        meta: { model: HF_MODEL, provider, tokens_in: usage.prompt_tokens, tokens_out: usage.completion_tokens, cost_usd,
+                images_sent: used.length, ocr_lines: ocrLines, screens } })) }) : null;
     (rows || []).forEach((row, i) => { if (result.workflows[i]) result.workflows[i].task_id = row.id; });
   }
   if (!Array.isArray(result.workflows) || !result.workflows.length) {
@@ -619,8 +625,11 @@ Write the steps in English (the agent works best in English) and the "changes" i
 // Dernier workflow analysé (affiché au chargement de la page, pour l'améliorer ou le rejouer sans réenregistrer)
 app.get('/api/candidates', async (req, res) => {
   if (sbUser()) { // connecté : SES dernières tâches analysées
-    const rows = await sb('tasks?select=*&source=eq.analyse&order=created_at.desc&limit=5');
-    return res.json({ workflows: (rows || []).map((t) => ({ task_id: t.id, name: t.name, summary: t.summary, why_daily: t.why, steps: t.steps, session: t.session })) });
+    const me = sbUser()?.id;
+    const rows = await sb(`taches?select=*&source=eq.analyse&recorded_by=eq.${me}&order=created_at.desc&limit=5`);
+    return res.json({ workflows: (rows || []).map((t) => ({ task_id: t.id, name: t.title, summary: t.summary, why_daily: t.why,
+      steps: (t.steps || []).map((x) => (typeof x === 'string' ? x : x.instruction || '')),
+      session: String(t.source_session_id || '').split('#')[0] })) });
   }
   res.json(fs.existsSync(CANDIDATES_PATH) ? JSON.parse(fs.readFileSync(CANDIDATES_PATH, 'utf8')) : { workflows: [] });
 });
@@ -758,9 +767,13 @@ app.post('/api/process-advice', async (req, res) => {
 
 app.post('/api/recommendations', async (req, res) => {
   const { task_id, verdict: v = {}, advice: a = {} } = req.body || {};
+  if (!task_id) return res.json({ ok: false, id: null }); // la table d'équipe rattache toujours une recommandation à une tâche
+  const kind = /automat/i.test(v.verdict || '') ? 'automate' : 'accelerate';
+  const conf = ({ haute: 'high', high: 'high', moyenne: 'medium', medium: 'medium', faible: 'low', basse: 'low', low: 'low' })[
+    String(v.confidence || '').toLowerCase()] || null;
   const row = await sb('recommendations', { method: 'POST', prefer: 'return=representation', body: {
-    task_id: task_id || null, verdict: v.verdict || null, confidence: v.confidence || null, reasons: v.reasons || null,
-    frequency_hint: v.frequency_hint || null, time_saved: v.time_saved || null, plan: v.plan || null,
+    task_id, kind, verdict: v.verdict || null, confidence: conf, reasons: Array.isArray(v.reasons) ? v.reasons.map(String) : [],
+    frequency_hint: v.frequency_hint || null, time_saved: v.time_saved || null, plan: v.plan || [],
     advice: { headline: a.headline, recommendations: a.recommendations }, stats: a.stats || null } });
   res.json({ ok: !!row, id: row?.[0]?.id || null });
 });
