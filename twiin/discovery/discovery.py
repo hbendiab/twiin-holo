@@ -43,9 +43,9 @@ from discovery.agent import run_agent  # noqa: E402
 from discovery.supa import Supa  # noqa: E402
 
 HF_MODEL = os.environ.get("HF_MODEL", "Qwen/Qwen3.8-27B")
-DEV_MODEL = os.environ.get("DISCOVERY_DEV_MODEL", "holo3-1-35b-a3b")
+DEV_MODEL = os.environ.get("DISCOVERY_DEV_MODEL", "holo4-35b-a3b")  # pas de limite de débit : test dev rapide
 CASSE_MODELS = [m.strip() for m in os.environ.get("DISCOVERY_CASSE_MODELS", "holo3-1-35b-a3b,holo4-35b-a3b").split(",") if m.strip()]
-MAX_IMAGES = 6
+MAX_IMAGES = 4
 
 # Perturbations injectées dans le jumeau pour la casse (scripts exécutés à chaque chargement de page).
 VARIANTS = {
@@ -69,6 +69,17 @@ VARIANTS = {
     "zoom": "window.addEventListener('DOMContentLoaded', () => { document.body.style.zoom = '1.35'; });",
 }
 
+CADRAGE_PROMPT = """An employee recorded a task on their computer; a previous analysis found the steps below. Reformulate what you
+understood, so the employee can confirm it. IGNORE the recording tool itself (the "Twiin"/"Twin" page on localhost:3000,
+"Enregistrer ma tâche", "Terminer et analyser"): it is not part of their task.
+Return ONLY this JSON, in French, no fences:
+{"probleme": "one sentence from the employee's point of view: what they do and why it costs time",
+ "etapes": ["3 to 5 short steps as the employee would describe them"],
+ "outils": ["software / websites used"],
+ "objectif": "accélérer | automatiser, with a few words",
+ "doutes": ["0 to 3 things to confirm with the employee"]}
+"""
+
 TWIN_PROMPT = """You prepare an INTERNAL test environment (a "twin") for a task an employee recorded on their computer.
 The employee will NEVER see the twin. It is used to replay and stress-test automations safely, without touching
 their real software or data.
@@ -78,13 +89,6 @@ about the software involved. Produce TWO blocks, in this order, and nothing else
 
 ```json
 {
- "cadrage": {
-   "probleme": "one sentence, in French, from the employee's point of view: what they do and why it costs time",
-   "etapes": ["3 to 5 short steps in French, as the employee would describe them"],
-   "outils": ["software / websites used"],
-   "objectif": "accélérer | automatiser, with a few words",
-   "doutes": ["0 to 3 things to confirm with the employee, in French"]
- },
  "mission": "English instruction for a computer-use agent working INSIDE THE TWIN, as the employee would ask a colleague: the goal and where to look, ending with 'then call done'. Do NOT give the values to copy: the agent must READ them in the twin pages (that is what we test). Never ask to buy, send, pay, validate or delete.",
  "expected": {"rows": [{"<column>": "<exact expected value>"}]},
  "fidelite": "low | medium | high : how close the twin is to the real tools, given what the screenshots show"
@@ -120,7 +124,15 @@ class State:
         self.path = session_dir / "discovery.json"
         self.data = json.loads(self.path.read_text(encoding="utf-8")) if self.path.exists() else {}
 
+    def reload(self) -> dict:
+        try:
+            self.data = json.loads(self.path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            pass
+        return self.data
+
     def set(self, **kw):
+        self.reload()  # le serveur peut avoir écrit la réponse de l'employé entre-temps
         self.data.update(kw, updated_at=datetime.now(timezone.utc).isoformat(timespec="seconds"))
         tmp = self.path.with_suffix(".tmp")
         tmp.write_text(json.dumps(self.data, ensure_ascii=False, indent=1), encoding="utf-8")
@@ -209,23 +221,22 @@ def record_test(sb: Supa, task_id: str, variant: str, res: dict, sc: float, errs
 # ---------------------------------------------------------------- phase 1 : découverte
 
 def discover(session_dir: Path) -> None:
+    """Question à l'employé en ~30 s ; jumeau, test dev et envoi des captures continuent en parallèle."""
     st = State(session_dir)
-    st.set(phase="upload", message="Envoi de la tâche dans la base", started_at=time.time())
+    st.set(phase="upload", message="Envoi de la tâche dans la base", started_at=time.time(), answer=None)
     frames = load_frames(session_dir)
     cand = json.loads((ROOT / "workflows" / "candidates.json").read_text(encoding="utf-8")).get("workflows", [{}])[0]
     steps = cand.get("steps", [])
     sb = Supa()
 
-    # 1. logiciels reconnus dans la tâche (nom du dictionnaire présent dans les étapes)
+    # 1. logiciels reconnus (nom du dictionnaire présent dans les étapes) + la tâche dans Supabase
     dico = sb.select("dictionnaire", "select=id,name,has_api,connector,docs,screens")
     text = " ".join(steps + [cand.get("summary", ""), cand.get("name", "")]).lower()
     used = [d for d in dico if d["name"].lower() in text]
-
-    # 2. la tâche + ses captures dans Supabase
-    started, ended = (frames[0].get("timestamp"), frames[-1].get("timestamp")) if frames else (None, None)
     old = sb.select("taches", f"select=id&source_session_id=eq.{session_dir.name}")
     if old:  # nouvelle découverte du même enregistrement : on repart de zéro sur la même tâche
         sb._req("DELETE", f"/rest/v1/taches?id=eq.{old[0]['id']}")
+    started, ended = (frames[0].get("timestamp"), frames[-1].get("timestamp")) if frames else (None, None)
     task = sb.insert("taches", {
         "company_id": sb.company_id, "title": cand.get("name") or "Tâche enregistrée", "summary": cand.get("summary"),
         "context": cand.get("general_intent"), "status": "processing", "software_ids": [d["id"] for d in used],
@@ -235,67 +246,93 @@ def discover(session_dir: Path) -> None:
         "stats": {"frames": len(frames)},
     })
     tid = task["id"]
-    st.set(task_id=tid, message=f"Tâche {tid} créée, envoi de {len(frames)} captures")
-    shots = []
-    for f in frames:
-        b = base64.b64decode(f["dataUrl"].split(",", 1)[1])
-        p = f"{sb.company_id}/{tid}/frame-{int(f.get('index', 0)):04d}.jpg"
-        try:
-            sb.upload("task-captures", p, b, "image/jpeg")
-            shots.append({"storage_path": p, "screen_index": int(f.get("screen", 1)) - 1, "at_ms": int(f.get("seconds", 0)) * 1000})
-        except Exception as e:  # noqa: BLE001
-            print("capture non envoyée :", e, flush=True)
-    sb.update("taches", f"id=eq.{tid}", {"screenshots": shots})
+    st.set(task_id=tid, message=f"Tâche {tid} créée")
 
-    # 3. fiche de cadrage + mission + jumeau (modèle de vision)
-    st.set(phase="twin", message="Construction de l'environnement de test (jumeau)")
+    # 2. captures envoyées en arrière-plan
+    def upload_all():
+        shots = []
+        for f in frames:
+            b = base64.b64decode(f["dataUrl"].split(",", 1)[1])
+            p = f"{sb.company_id}/{tid}/frame-{int(f.get('index', 0)):04d}.jpg"
+            try:
+                sb.upload("task-captures", p, b, "image/jpeg")
+                shots.append({"storage_path": p, "screen_index": int(f.get("screen", 1)) - 1,
+                              "at_ms": int(f.get("seconds", 0)) * 1000})
+            except Exception as e:  # noqa: BLE001
+                print("capture non envoyée :", e, flush=True)
+        sb.update("taches", f"id=eq.{tid}", {"screenshots": shots})
+    uploader = threading.Thread(target=upload_all, daemon=True)
+    uploader.start()
+
+    # 3. fiche de cadrage (appel court, texte seul) -> question posée tout de suite
+    st.set(phase="cadrage", message="Reformulation de la tâche")
+    t0 = time.time()
+    steps_txt = (f"TASK: {cand.get('name', '')}\nSUMMARY: {cand.get('summary', '')}\nSTEPS:\n"
+                 + "\n".join(f"{i + 1}. {s}" for i, s in enumerate(steps))
+                 + f"\nKNOWN SOFTWARE: {', '.join(d['name'] for d in used) or '-'}")
+    r = hf_client().chat.completions.create(
+        model=HF_MODEL, max_tokens=1500, temperature=0.2,
+        messages=[{"role": "system", "content": CADRAGE_PROMPT}, {"role": "user", "content": steps_txt}],
+        extra_body={"reasoning_effort": "low"})
+    raw = (r.choices[0].message.content or "").strip()
+    raw = fenced(raw, "json") or raw[raw.find("{"): raw.rfind("}") + 1]
+    cadrage = json.loads(raw)
+    question = {"titre": "Ai-je bien compris votre problème ?", **cadrage}
+    sb.update("taches", f"id=eq.{tid}", {"status": "analysed",
+                                          "confirmation": {"question": question,
+                                                           "asked_at": datetime.now(timezone.utc).isoformat()}})
+    st.set(phase="awaiting_confirmation", question=question, work="twin",
+           message=f"Question posée en {time.time() - t0:.0f} s ; jumeau en construction en parallèle")
+
+    # 4. jumeau (modèle de vision), pendant que l'employé lit la question
     pick = frames[:: max(1, len(frames) // MAX_IMAGES)][:MAX_IMAGES]
     docs = "\n".join(f"- {d['name']} ({'API ' + (d['connector'] or '') if d['has_api'] else 'pas d API'}) : "
                      + " | ".join((x.get("title", "") + " : " + x.get("excerpt", "")[:300]) for x in (d.get("docs") or [])[:2])
                      for d in used) or "(aucun logiciel du dictionnaire reconnu)"
-    content = [{"type": "text", "text": f"TASK: {cand.get('name', '')}\nSUMMARY: {cand.get('summary', '')}\nSTEPS:\n"
-                + "\n".join(f"{i + 1}. {s}" for i, s in enumerate(steps)) + f"\n\nSOFTWARE (dictionnaire):\n{docs}"}]
+    content = [{"type": "text", "text": steps_txt + f"\n\nSOFTWARE (dictionnaire):\n{docs}"}]
     for f in pick:
         content += [{"type": "text", "text": f"Screenshot t+{f.get('seconds', '?')}s"},
                     {"type": "image_url", "image_url": {"url": f["dataUrl"]}}]
     t0 = time.time()
     resp = hf_client().chat.completions.create(
-        model=HF_MODEL, max_tokens=16000, temperature=0.2,
+        model=HF_MODEL, max_tokens=14000, temperature=0.2,
         messages=[{"role": "system", "content": TWIN_PROMPT}, {"role": "user", "content": content}],
-        extra_body={"reasoning_effort": os.environ.get("HF_REASONING_EFFORT", "low")})
+        extra_body={"reasoning_effort": "low"})
     raw = resp.choices[0].message.content or ""
     spec_txt, html = fenced(raw, "json"), fenced(raw, "html")
     if not spec_txt or not html:
         (session_dir / "twin_raw.txt").write_text(raw, encoding="utf-8")
-        raise RuntimeError("le modèle n'a pas rendu la fiche et le jumeau attendus (voir twin_raw.txt)")
+        raise RuntimeError("le modèle n'a pas rendu le jumeau attendu (voir twin_raw.txt)")
     spec = json.loads(spec_txt)
+    spec["cadrage"] = cadrage
     twin_dir = session_dir / "twin"
     twin_dir.mkdir(exist_ok=True)
     (twin_dir / "index.html").write_text(html, encoding="utf-8")
     (twin_dir / "spec.json").write_text(json.dumps(spec, ensure_ascii=False, indent=1), encoding="utf-8")
     hf_cost = getattr(resp.usage, "cost", None) if resp.usage else None
-    st.set(message=f"Jumeau construit en {time.time() - t0:.0f} s", twin_cost_usd=hf_cost)
+    st.set(work="dev_test", twin_seconds=round(time.time() - t0), twin_cost_usd=hf_cost,
+           message=f"Jumeau construit en {time.time() - t0:.0f} s ; test dev avec {DEV_MODEL}")
 
-    # 4. test « dev » : le jumeau est-il rejouable ?
-    st.set(phase="dev_test", message=f"Test de l'environnement par Holo ({DEV_MODEL})")
+    # 5. test « dev » : le jumeau est-il rejouable ?
     url, srv = serve(twin_dir)
     try:
-        res = run_agent(url, spec["mission"], session_dir / "runs" / "dev", DEV_MODEL, max_steps=int(os.environ.get("DISCOVERY_MAX_STEPS", "30")))
+        res = run_agent(url, spec["mission"], session_dir / "runs" / "dev", DEV_MODEL,
+                        max_steps=int(os.environ.get("DISCOVERY_MAX_STEPS", "30")))
     finally:
         srv.shutdown()
     sc, errs = score(spec.get("expected"), res["state"])
     record_test(sb, tid, "base", res, sc, errs, "dev")
     dev = {"model": DEV_MODEL, "success_rate": round(sc, 3), "claimed_success": res["claimed_success"],
            "seconds": res["stats"]["seconds"], "calls": res["stats"]["calls"], "errors": errs}
+    uploader.join(timeout=120)
+    sb.update("taches", f"id=eq.{tid}", {"twin": {"fidelite": spec.get("fidelite"), "mission": spec["mission"],
+                                                    "expected": spec.get("expected"), "dev_test": dev,
+                                                    "hf_cost_usd": hf_cost}})
+    st.set(work="ready", dev_test=dev, fidelite=spec.get("fidelite"), message="Environnement de test prêt")
 
-    # 5. question à l'employé
-    question = {"titre": "Ai-je bien compris votre problème ?", **spec["cadrage"]}
-    sb.update("taches", f"id=eq.{tid}", {"status": "analysed",
-                                          "twin": {"fidelite": spec.get("fidelite"), "mission": spec["mission"],
-                                                   "expected": spec.get("expected"), "dev_test": dev, "hf_cost_usd": hf_cost},
-                                          "confirmation": {"question": question, "asked_at": datetime.now(timezone.utc).isoformat()}})
-    st.set(phase="awaiting_confirmation", message="Question posée à l'employé", question=question, dev_test=dev,
-           fidelite=spec.get("fidelite"))
+    # 6. l'employé a peut-être déjà répondu pendant ce temps
+    if st.reload().get("answer"):
+        answer(session_dir)
 
 
 # ---------------------------------------------------------------- phase 2 : casse
@@ -311,7 +348,7 @@ def casse(session_dir: Path) -> None:
     try:
         for model in CASSE_MODELS:
             for name, script in VARIANTS.items():
-                st.set(phase="casse", message=f"Casse : variante {name} avec {model}", casse=results)
+                st.set(phase="casse", message=f"Casse : variante {name} avec {model}", casse=results, progress={"done": len(results), "total": len(CASSE_MODELS) * len(VARIANTS)})
                 try:
                     res = run_agent(url, spec["mission"], session_dir / "runs" / f"casse-{model}-{name}", model,
                                     max_steps=int(os.environ.get("DISCOVERY_MAX_STEPS", "30")), init_script=script)

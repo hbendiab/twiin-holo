@@ -429,21 +429,26 @@ const discoveryState = (dir) => {
   try { return JSON.parse(fs.readFileSync(path.join(dir, 'discovery.json'), 'utf8')); } catch { return null; }
 };
 function runDiscovery(cmd, dir) {
-  const proc = spawn(PYTHON, ['-u', '-m', 'discovery.discovery', cmd, dir], { cwd: REPO_ROOT, env: { ...process.env, PYTHONUTF8: '1' } });
+  // Worker détaché, journal dans <session>/discovery.log : un redémarrage du serveur ne l'interrompt pas.
+  const log = fs.openSync(path.join(dir, 'discovery.log'), 'a');
+  const proc = spawn(PYTHON, ['-u', '-m', 'discovery.discovery', cmd, dir],
+                     { cwd: REPO_ROOT, env: { ...process.env, PYTHONUTF8: '1' }, detached: true, stdio: ['ignore', log, log] });
   proc.on('error', (e) => console.warn('[découverte] impossible de lancer le worker :', e.message));
-  proc.stdout.on('data', (d) => console.log(String(d).trim()));
-  proc.stderr.on('data', (d) => console.warn('[découverte]', String(d).trim().slice(0, 400)));
-  proc.on('close', (code) => { console.log(`[découverte] ${cmd} terminé (code ${code})`); discovery.proc = null; });
+  proc.on('close', (code) => { console.log(`[découverte] ${cmd} terminé (code ${code})`); if (discovery.proc === proc) discovery.proc = null; });
+  proc.unref();
+  console.log(`[découverte] ${cmd} lancé (journal : ${path.join(dir, 'discovery.log')})`);
   discovery = { dir, proc };
 }
+// Un worker tourne-t-il encore pour ce dossier ? (survit aux redémarrages du serveur : on lit l'état écrit par le worker)
+const workerBusy = (st) => !!st && (['upload', 'cadrage', 'answered', 'casse'].includes(st.phase)
+  || (st.phase === 'awaiting_confirmation' && st.work !== 'ready'))
+  && Date.now() - Date.parse(st.updated_at || 0) < 15 * 60 * 1000;
 function startDiscovery(dir) {
   if ((process.env.DISCOVERY || 'on') === 'off') return false;
   const missing = ['SUPABASE_URL', 'SUPABASE_PUBLISHABLE_KEY', 'SUPABASE_EMAIL', 'SUPABASE_PASSWORD', 'HAI_API_KEY'].filter((k) => !process.env[k]);
   if (missing.length) { console.warn(`[découverte] désactivée, variables manquantes : ${missing.join(', ')}`); return false; }
   const st = discoveryState(dir);
-  if (discovery.proc) { console.warn('[découverte] une découverte tourne déjà'); return true; }
-  // Réanalyser = refaire la découverte (sauf si la casse a déjà été validée et lancée)
-  if (st && ['answered', 'casse'].includes(st.phase)) { console.log(`[découverte] casse en cours pour ${path.basename(dir)}`); return true; }
+  if (workerBusy(st)) { console.log(`[découverte] déjà en cours pour ${path.basename(dir)} (${st.phase})`); discovery.dir = dir; return true; }
   try { fs.rmSync(path.join(dir, 'discovery.json'), { force: true }); } catch {}
   runDiscovery('discover', dir);
   return true;
@@ -453,17 +458,19 @@ app.get('/api/discovery', (req, res) => {
   const dir = discovery.dir || latestSessionDir();
   const st = dir ? discoveryState(dir) : null;
   if (!st) return res.json({ phase: 'idle' });
-  res.json({ phase: st.phase, question: st.phase === 'awaiting_confirmation' ? st.question : null });
+  res.json({ phase: st.phase, question: st.phase === 'awaiting_confirmation' ? st.question : null,
+             progress: st.phase === 'casse' ? st.progress || null : null,
+             solution: st.phase === 'done' ? st.solution || null : null });
 });
 app.post('/api/discovery/answer', (req, res) => {
   const dir = discovery.dir || latestSessionDir();
   const st = dir ? discoveryState(dir) : null;
   if (!st || st.phase !== 'awaiting_confirmation') return res.status(409).json({ error: 'Aucune question en attente.' });
-  if (discovery.proc) return res.status(409).json({ error: 'Traitement en cours.' });
   st.answer = { ok: !!req.body?.ok, correction: String(req.body?.correction || '').slice(0, 2000) };
   st.phase = 'answered';
   fs.writeFileSync(path.join(dir, 'discovery.json'), JSON.stringify(st, null, 1));
-  runDiscovery('answer', dir);
+  // Jumeau encore en construction : le worker lira la réponse à la fin. Sinon on lance la suite tout de suite.
+  if (st.work === 'ready') runDiscovery('answer', dir);
   res.json({ ok: true });
 });
 // Détail interne (équipe Twiin seulement, non relié à la page) : jumeau, test dev, casse.
