@@ -21,6 +21,8 @@
   .flow .blk { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; padding: 5px 10px; border-radius: 10px;
                background: var(--panel-2); border: 1px solid var(--panel-border); }
   .flow .blk.holo { border-color: var(--warn); }
+  .flow .blk.holo.cloud { border-color: var(--ok); }
+  .flow .blk em { font-style: normal; font-size: 10.5px; font-weight: 600; margin-left: 4px; color: var(--text-dim); }
   .flow .arrow { color: var(--text-dim); font-size: 12px; }
   .kpis { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin-bottom: 20px; }
   .kpi { padding: 12px 14px; border-radius: 12px; background: var(--panel-2); }
@@ -118,11 +120,12 @@ function select(id) {
   history.replaceState(null, '', `#${id}`);
   document.querySelectorAll('.item').forEach((b) => b.classList.toggle('on', b.dataset.id === id));
   const holo = a.blocks.filter((b) => b.kind === 'holo').length;
+  const holoMac = a.blocks.filter((b) => b.kind === 'holo' && b.env !== 'cloud').length;
   const rate = a.stats.total ? `${Math.round((100 * a.stats.success) / a.stats.total)} %` : '—';
   document.getElementById('dash').innerHTML = `
     <h2>${escapeHtml(a.name)}</h2>
-    <div class="pills">${statusPill(a)}<span class="pill">${escapeHtml(a.freq_label)}</span>${holo ? `<span class="pill warn">${holo} bloc${holo > 1 ? 's' : ''} Holo</span>` : ''}</div>
-    <div class="flow">${a.blocks.map((b, i) => `${i ? '<span class="arrow">→</span>' : ''}<span class="blk ${b.kind}" title="${escapeHtml(KIND[b.kind])}">${blockIcon(b)}${escapeHtml(b.name)}</span>`).join('')}</div>
+    <div class="pills">${statusPill(a)}<span class="pill">${escapeHtml(a.freq_label)}</span>${holo - holoMac ? `<span class="pill on">${holo - holoMac} bloc${holo - holoMac > 1 ? 's' : ''} Holo dans le cloud</span>` : ''}${holoMac ? `<span class="pill warn">${holoMac} bloc${holoMac > 1 ? 's' : ''} Holo sur ton Mac</span>` : ''}</div>
+    <div class="flow">${a.blocks.map((b, i) => `${i ? '<span class="arrow">→</span>' : ''}<span class="blk ${b.kind}${b.env === 'cloud' ? ' cloud' : ''}" title="${escapeHtml(b.kind === 'holo' ? (b.env === 'cloud' ? 'Holo dans le navigateur cloud de H : ne touche pas ton Mac' : 'Holo sur ton Mac : prend la souris') : KIND[b.kind])}">${blockIcon(b)}${escapeHtml(b.name)}${b.kind === 'holo' ? `<em>${b.env === 'cloud' ? '☁ cloud' : 'Mac'}</em>` : ''}</span>`).join('')}</div>
     <div class="kpis">
       <div class="kpi"><span>Exécutions</span><b>${a.stats.total}</b></div>
       <div class="kpi"><span>Réussite</span><b>${rate}</b></div>
@@ -134,7 +137,8 @@ function select(id) {
       ${a.sheet ? `<a class="btn" href="${a.sheet.url}" target="_blank" rel="noopener">${iconsHtml('Google Sheets', 1)}Ouvrir le résultat</a>` : ''}
       <a class="btn" href="${a.n8n_url}" target="_blank" rel="noopener">${iconsHtml('n8n', 1)}Voir dans n8n (avancé)</a>
     </div>
-    ${holo ? '<p class="note warn">Les blocs Holo utilisent la souris et le clavier de ton Mac pendant l\'exécution : ne touche à rien (double Échap pour arrêter).</p>' : ''}
+    ${holoMac ? `<p class="note warn">${holoMac} bloc${holoMac > 1 ? 's' : ''} Holo utilise${holoMac > 1 ? 'nt' : ''} la souris et le clavier de ton Mac pendant l'exécution : ne touche à rien (double Échap pour arrêter).${holo - holoMac ? ' Les blocs « cloud » tournent chez H sans toucher ton Mac.' : ''}</p>`
+      : holo ? '<p class="note">Les blocs Holo tournent dans le navigateur cloud de H : tu peux continuer à utiliser ton Mac.</p>' : ''}
     <div class="msg" id="msg"></div>
 
     <div class="section"><h3>Quand elle tourne</h3>

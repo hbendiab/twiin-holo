@@ -98,7 +98,14 @@ class HoloAgent:
         trajectory limit shared across all local runs, so this matters.
         """
         agent = self.ensure_local_agent() if local else self.ensure_web_agent()
-        return self.client.start_session(agent=agent, messages=first_message)
+        kwargs = {}
+        if not local and self.browser_profile_id:
+            # Navigateur cloud déjà connecté aux sites (profil créé sur platform.hcompany.ai, jamais de mot de passe ici)
+            kwargs["overrides"] = {
+                "agent.environments[kind=web].browser_profile_id": self.browser_profile_id,
+                "agent.environments[kind=web].persist_browser_profile": True,
+            }
+        return self.client.start_session(agent=agent, messages=first_message, **kwargs)
 
     def ensure_web_agent(self, model: str = HOLO_MODEL):
         """Agent navigateur cloud (environnement h/browser) avec le modèle choisi, créé une fois puis réutilisé."""

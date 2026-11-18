@@ -1,0 +1,666 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://twiin.local/schemas/fiche-audit.v2.schema.json",
+  "title": "Twiin — Fiche d'audit d'un poste (v2 : outils + tâches + opportunités)",
+  "description": "Sortie de la brique Audit de Twiin. v1 : inventaire des applis, filtre métier, API, duplication. v2 (compatible v1) : cadrage du dirigeant, tâches déclarées par l'employé, croisement déclaré / observé, opportunités chiffrées (top 3 à observer).",
+  "type": "object",
+  "required": [
+    "audit_id",
+    "date_audit",
+    "entreprise",
+    "poste",
+    "consentement",
+    "applications",
+    "resume"
+  ],
+  "properties": {
+    "audit_id": {
+      "type": "string",
+      "description": "Identifiant unique de l'audit (ex. aud_2026-11-17_001)"
+    },
+    "date_audit": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "version_schema": {
+      "type": "string",
+      "enum": [
+        "1.0",
+        "2.0"
+      ]
+    },
+    "entreprise": {
+      "type": "object",
+      "required": [
+        "nom"
+      ],
+      "properties": {
+        "nom": {
+          "type": "string"
+        },
+        "taille": {
+          "type": "string",
+          "enum": [
+            "TPE",
+            "PME",
+            "ETI"
+          ]
+        },
+        "secteur": {
+          "type": "string"
+        }
+      }
+    },
+    "poste": {
+      "type": "object",
+      "required": [
+        "id",
+        "os"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Identifiant pseudonymisé du poste — jamais le nom du salarié"
+        },
+        "os": {
+          "type": "string",
+          "enum": [
+            "macos",
+            "windows",
+            "linux"
+          ]
+        },
+        "role_metier": {
+          "type": "string",
+          "description": "Ex. assistant(e) de direction, comptable"
+        }
+      }
+    },
+    "consentement": {
+      "type": "object",
+      "required": [
+        "obtenu",
+        "sources_autorisees"
+      ],
+      "properties": {
+        "obtenu": {
+          "type": "boolean"
+        },
+        "date": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "sources_autorisees": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/source_detection"
+          },
+          "description": "Sources que le salarié a accepté de laisser analyser"
+        }
+      }
+    },
+    "applications": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/application"
+      }
+    },
+    "resume": {
+      "type": "object",
+      "required": [
+        "nb_detectees",
+        "nb_metier",
+        "nb_avec_api",
+        "nb_sans_api",
+        "nb_a_valider"
+      ],
+      "properties": {
+        "nb_detectees": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "nb_metier": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "nb_avec_api": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "nb_sans_api": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "nb_api_inconnue": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "nb_a_valider": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Applis dont le filtre ou la détection API a une confiance trop faible"
+        }
+      }
+    },
+    "dirigeant": {
+      "$ref": "#/$defs/dirigeant"
+    },
+    "taches": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/tache"
+      }
+    },
+    "alertes": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/alerte"
+      }
+    },
+    "opportunites": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/opportunite"
+      }
+    }
+  },
+  "$defs": {
+    "source_detection": {
+      "type": "string",
+      "enum": [
+        "logiciel_installe",
+        "telechargement",
+        "historique_navigateur",
+        "extension_navigateur",
+        "observation_process",
+        "connecteur_google_workspace",
+        "connecteur_microsoft_365",
+        "declaration_employe"
+      ]
+    },
+    "application": {
+      "type": "object",
+      "required": [
+        "id",
+        "nom",
+        "type",
+        "sources_detection",
+        "filtre_metier",
+        "api",
+        "duplication"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Slug stable, ex. pennylane"
+        },
+        "nom": {
+          "type": "string"
+        },
+        "editeur": {
+          "type": "string"
+        },
+        "type": {
+          "type": "string",
+          "enum": [
+            "desktop",
+            "saas_web",
+            "extension",
+            "mobile"
+          ]
+        },
+        "identifiant_technique": {
+          "type": "string",
+          "description": "Bundle ID (macOS), clé de registre (Windows) ou domaine (SaaS)"
+        },
+        "version": {
+          "type": "string"
+        },
+        "sources_detection": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/source_detection"
+          }
+        },
+        "usage": {
+          "type": "object",
+          "properties": {
+            "frequence": {
+              "type": "string",
+              "enum": [
+                "quotidien",
+                "hebdomadaire",
+                "rare",
+                "inconnu"
+              ]
+            },
+            "derniere_utilisation": {
+              "type": "string",
+              "format": "date"
+            },
+            "jours_utilises_30": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 30,
+              "description": "Nombre de jours d'utilisation sur les 30 derniers (agrégé, sur accord de l'employé)"
+            },
+            "minutes_semaine": {
+              "type": "number",
+              "minimum": 0,
+              "description": "Temps d'usage observé par semaine, si une source le donne (sert à l'alerte de surestimation)"
+            }
+          },
+          "description": "Agrégé uniquement — pas de liste d'URL visitées"
+        },
+        "filtre_metier": {
+          "type": "object",
+          "required": [
+            "est_metier",
+            "methode",
+            "confiance"
+          ],
+          "properties": {
+            "est_metier": {
+              "type": "boolean"
+            },
+            "categorie": {
+              "type": "string",
+              "enum": [
+                "comptabilite_finance",
+                "rh_paie",
+                "crm_vente",
+                "erp_gestion",
+                "documents_signature",
+                "communication_collab",
+                "scolarite_formation",
+                "support_ticketing",
+                "metier_specifique",
+                "systeme_utilitaire",
+                "perso_loisir",
+                "autre"
+              ]
+            },
+            "methode": {
+              "type": "string",
+              "enum": [
+                "liste_exclusion",
+                "catalogue",
+                "llm",
+                "validation_humaine"
+              ],
+              "description": "Couche du filtre qui a tranché"
+            },
+            "confiance": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            },
+            "justification": {
+              "type": "string"
+            },
+            "a_valider": {
+              "type": "boolean",
+              "description": "true si confiance < 0.7"
+            }
+          }
+        },
+        "api": {
+          "type": "object",
+          "required": [
+            "disponibilite",
+            "confiance"
+          ],
+          "properties": {
+            "disponibilite": {
+              "type": "string",
+              "enum": [
+                "publique",
+                "partenaire",
+                "payante_entreprise",
+                "aucune",
+                "inconnue",
+                "non_recherchee"
+              ],
+              "description": "non_recherchee = appli non métier, on ne cherche pas"
+            },
+            "type": {
+              "type": "string",
+              "enum": [
+                "rest",
+                "graphql",
+                "soap",
+                "sdk",
+                "autre"
+              ]
+            },
+            "doc_url": {
+              "type": "string",
+              "format": "uri"
+            },
+            "spec_openapi_url": {
+              "type": "string",
+              "format": "uri",
+              "description": "Fichier OpenAPI/Swagger s'il existe — permet de générer un mock"
+            },
+            "spec_locale": {
+              "type": "string",
+              "description": "Chemin du fichier de spec téléchargé, ex. specs/pennylane.yaml"
+            },
+            "authentification": {
+              "type": "string",
+              "enum": [
+                "oauth2",
+                "api_key",
+                "basic",
+                "aucune",
+                "inconnue"
+              ]
+            },
+            "couverture_process": {
+              "type": "string",
+              "description": "Ce que l'API permet ou non (ex. lecture seule, pas de création de factures)"
+            },
+            "sources": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "format": "uri"
+              }
+            },
+            "methode": {
+              "type": "string",
+              "enum": [
+                "catalogue",
+                "recherche_web_agent",
+                "validation_humaine"
+              ]
+            },
+            "confiance": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            },
+            "verifie_le": {
+              "type": "string",
+              "format": "date"
+            }
+          }
+        },
+        "duplication": {
+          "type": "object",
+          "required": [
+            "strategie",
+            "dans_process_observe",
+            "statut"
+          ],
+          "properties": {
+            "strategie": {
+              "type": "string",
+              "enum": [
+                "mock_api",
+                "computer_use",
+                "hybride",
+                "hors_perimetre"
+              ],
+              "description": "mock_api si spec OpenAPI dispo ; computer_use si pas d'API ; hors_perimetre si non métier"
+            },
+            "dans_process_observe": {
+              "type": "boolean",
+              "description": "Rempli par la brique Observation"
+            },
+            "statut": {
+              "type": "string",
+              "enum": [
+                "a_faire",
+                "en_cours",
+                "jumeau_pret",
+                "certifie",
+                "non_applicable"
+              ]
+            }
+          }
+        },
+        "confirmee_par_employe": {
+          "type": "boolean",
+          "description": "Q1 du temps 2 : l'employé confirme que l'outil sert à son travail"
+        }
+      }
+    },
+    "dirigeant": {
+      "type": "object",
+      "description": "Temps 0 : cadrage par le dirigeant, une fois par entreprise",
+      "required": [
+        "objectif",
+        "cout_horaire"
+      ],
+      "properties": {
+        "objectif": {
+          "type": "string",
+          "enum": [
+            "gagner_du_temps",
+            "reduire_les_erreurs",
+            "absorber_plus_de_volume",
+            "preparer_facturation_electronique"
+          ]
+        },
+        "irritants": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "cout_horaire": {
+          "type": "number",
+          "minimum": 0,
+          "default": 35,
+          "description": "Coût horaire chargé moyen, en euros"
+        },
+        "consentement_entreprise": {
+          "type": "boolean"
+        },
+        "sources_autorisees": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/source_detection"
+          }
+        }
+      }
+    },
+    "tache": {
+      "type": "object",
+      "description": "Temps 2 : tâche déclarée par l'employé (Q2 à Q8)",
+      "required": [
+        "id",
+        "libelle",
+        "source"
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "libelle": {
+          "type": "string"
+        },
+        "source": {
+          "type": "string",
+          "enum": [
+            "suggestion",
+            "saisie_libre"
+          ]
+        },
+        "suggestion_id": {
+          "type": "string",
+          "description": "Tâche de la bibliothèque (data/taches_par_role.yaml), si source = suggestion"
+        },
+        "frequence_tranche": {
+          "type": "string",
+          "enum": [
+            "1",
+            "2-5",
+            "6-20",
+            "20+",
+            "je_ne_sais_pas"
+          ],
+          "description": "Q3 : fois par semaine"
+        },
+        "duree_tranche": {
+          "type": "string",
+          "enum": [
+            "<5",
+            "5-15",
+            "15-30",
+            "30-60",
+            ">60",
+            "je_ne_sais_pas"
+          ],
+          "description": "Q4 : minutes à chaque fois"
+        },
+        "applis_ids": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Q5 : outils ouverts, dans l'ordre (ids de applications[])"
+        },
+        "recopie": {
+          "type": [
+            "boolean",
+            "null"
+          ],
+          "description": "Q5 : l'employé recopie des infos d'un outil à l'autre ; null = je ne sais pas"
+        },
+        "declencheur": {
+          "type": "string",
+          "enum": [
+            "mail",
+            "date",
+            "demande_collegue",
+            "document_recu",
+            "autre",
+            "je_ne_sais_pas"
+          ],
+          "description": "Q6"
+        },
+        "declencheur_autre": {
+          "type": "string"
+        },
+        "exceptions_transcript": {
+          "type": "string",
+          "description": "Q7 (voix, facultatif). Stocké sur le poste ; jamais envoyé au LLM avec un nom de personne"
+        },
+        "deleguer_en_premier": {
+          "type": "boolean",
+          "description": "Q8 : la tâche que l'employé délèguerait en premier"
+        }
+      }
+    },
+    "alerte": {
+      "type": "object",
+      "description": "Temps 3 : écart entre ce qui est déclaré et ce qui est observé",
+      "required": [
+        "type",
+        "message"
+      ],
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": [
+            "outil_non_observe",
+            "tache_cachee_possible",
+            "surestimation_possible"
+          ]
+        },
+        "tache_id": {
+          "type": "string"
+        },
+        "application_id": {
+          "type": "string"
+        },
+        "message": {
+          "type": "string"
+        }
+      }
+    },
+    "opportunite": {
+      "type": "object",
+      "description": "Temps 3 : score d'une tâche (voir twiin_audit/scoring.py)",
+      "required": [
+        "tache_id",
+        "cout_hebdo_min",
+        "potentiel",
+        "facilite",
+        "tranche_facilite",
+        "priorite",
+        "recommandation",
+        "a_observer"
+      ],
+      "properties": {
+        "tache_id": {
+          "type": "string"
+        },
+        "cout_hebdo_min": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0,
+          "description": "null si la fréquence ou la durée est « je ne sais pas »"
+        },
+        "potentiel": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 100
+        },
+        "facilite": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 100
+        },
+        "tranche_facilite": {
+          "type": "string",
+          "enum": [
+            "facile",
+            "moyen",
+            "difficile"
+          ]
+        },
+        "priorite": {
+          "type": "number",
+          "minimum": 0
+        },
+        "recommandation": {
+          "type": "string",
+          "enum": [
+            "automatiser",
+            "simplifier_d_abord",
+            "ne_pas_automatiser",
+            "a_preciser"
+          ]
+        },
+        "a_observer": {
+          "type": "boolean",
+          "description": "Top 3 des tâches à observer ensuite"
+        },
+        "gain_heures_semaine": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "gain_euros_an": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "detail": {
+          "type": "object",
+          "description": "Sous-scores (traçabilité du calcul)"
+        }
+      }
+    }
+  }
+}

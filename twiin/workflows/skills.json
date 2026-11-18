@@ -20,7 +20,15 @@
     "name": "n8n Holo — note OneNote",
     "description": "Étape lancée par n8n",
     "steps": [
-      "Open Microsoft OneNote, go to the section « Groupe » and open the page « Veille concurrence ». The cursor starts in the page TITLE: type « Veille – L'Oréal (n8n 18/11/2026) », then press Enter so the cursor is in the BODY. Type this text in the body: « No.1 Beauty Group Worldwide. No.1 most innovative company in Europe (Fortune's ranking). ». Then press Enter twice and type: « Articles récents : Can a dupe fool your skin?,Building the Supply Chain of the future – a virtual conversation with MIT... ». Check that the title contains only the title, then stop. Do not modify any other page."
+      "Open Microsoft OneNote, go to the section « Groupe » and open the page « Veille concurrence ». The cursor starts in the page TITLE: type « Veille – L'Oréal (n8n 18/11/2026) », then press Enter so the cursor is in the BODY. Type this text in the body: « No.1 Beauty Group Worldwide. No.1 most innovative company in Europe (Fortune's ranking). ». Then press Enter twice and type: « Articles récents :  ». Check that the title contains only the title, then stop. Do not modify any other page."
+    ]
+  },
+  {
+    "id": "n8n-test-cloud-lire-linkedin",
+    "name": "n8n Test cloud — lire LinkedIn",
+    "description": "Étape lancée par n8n",
+    "steps": [
+      "open https://www.linkedin.com/company/loreal/about/ (the « À propos » tab of the L Oréal company page). Read the page only: do not follow, message or click any button other than navigation or closing a pop-up. Copy every value EXACTLY as written on the page. Then answer ONLY with a JSON object with exactly these keys, filled with the values you READ ON SCREEN (write « non trouvé » if a value is not visible): {\"entreprise\":\"company name\",\"secteur\":\"industry\",\"taille\":\"company size\",\"abonnes\":\"number of followers\"}"
     ]
   },
   {
