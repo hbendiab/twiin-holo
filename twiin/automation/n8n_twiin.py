@@ -127,6 +127,28 @@ def compile_plan(plan):
                 "sendBody": True, "specifyBody": "json", "jsonBody": body,
                 "options": {"timeout": 1500000, "response": {"response": {"responseFormat": "json"}}},
             }, x))
+        elif t in ("holo_web", "excel_append"):
+            # Blocs « sans gêner l'employé » : Holo lit une page web dans un navigateur INVISIBLE ; l'écriture dans un
+            # classeur Excel du poste se fait par fichier, sans Holo. Les deux passent par le serveur Twiin local (jeton).
+            if t == "holo_web":
+                url = TWIIN_URL.replace("/api/holo/run", "/api/holo/web")
+                body = json.dumps({"url": b["url"], "label": b.get("label") or b["name"], "columns": b["columns"]}, ensure_ascii=False)
+            else:
+                url = TWIIN_URL.replace("/api/holo/run", "/api/excel/write")
+                body = ("={{ JSON.stringify({ path: " + json.dumps(b.get("path") or "", ensure_ascii=False) + ", name: "
+                        + json.dumps(b.get("workbook") or "", ensure_ascii=False) + ", rows: $json.rows }) }}")
+            nodes.append(node(b["name"], "n8n-nodes-base.httpRequest", 4.2, {
+                "method": "POST", "url": url,
+                "sendHeaders": True, "headerParameters": {"parameters": [{"name": "x-twiin-token", "value": token}]},
+                "sendBody": True, "specifyBody": "json", "jsonBody": body,
+                "options": {"timeout": 600000, "response": {"response": {"responseFormat": "json"}}},
+            }, x))
+        elif t == "rows_from":
+            src = ", ".join("$(" + json.dumps(n, ensure_ascii=False) + ").first().json.data || {}" for n in b["sources"])
+            code = (f"const rows = [{src}];\n"
+                    "return [{ json: { rows: rows.filter((r) => Object.values(r).some((v) => v && v !== '—')) } }];")
+            nodes.append(node(b["name"], "n8n-nodes-base.code", 2, {"jsCode": code}, x))
+            nodes[-1]["notes"] = "Rassemble les valeurs lues sur chaque page en lignes de tableau."
         elif t == "row":
             lines = ",\n  ".join(f"{json.dumps(k, ensure_ascii=False)}: {js_template(v)}" for k, v in b["fields"].items())
             nodes.append(node(b["name"], "n8n-nodes-base.code", 2, {"jsCode": f"return [{{ json: {{\n  {lines}\n}} }}];"}, x))

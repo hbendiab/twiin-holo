@@ -93,7 +93,9 @@ def run_agent(url: str, mission: str, out_dir: Path, model: str, max_steps: int 
     read_state = "() => (window.__twinState ? window.__twinState() : null)"
     with sync_playwright() as pw:
         browser = pw.chromium.launch()
-        ctx = browser.new_context(viewport={"width": VIEW_W, "height": VIEW_H})
+        ctx = browser.new_context(viewport={"width": VIEW_W, "height": VIEW_H}, locale="fr-FR",
+                                  user_agent=("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) "
+                                              "Chrome/131.0.0.0 Safari/537.36"))
         if init_script:
             ctx.add_init_script(init_script)
         page = ctx.new_page()
@@ -243,6 +245,7 @@ def run_agent(url: str, mission: str, out_dir: Path, model: str, max_steps: int 
           sub_results.append(sub_done)
           outcome = "done" if all(r is not None for r in sub_results) else "max_steps"
           claimed_success = all(bool(r) for r in sub_results)
+        final_url = page.url
         try:
             state = page.evaluate(read_state)
         except Exception:  # noqa: BLE001
@@ -252,4 +255,4 @@ def run_agent(url: str, mission: str, out_dir: Path, model: str, max_steps: int 
     stats["holo_seconds"] = round(stats["holo_seconds"], 1)
     stats["seconds"] = round(time.time() - t0, 1)
     return {"outcome": outcome, "claimed_success": claimed_success, "summary": summary, "state": state,
-            "stats": stats, "history": history, "path": path}
+            "stats": stats, "history": history, "path": path, "final_url": final_url}

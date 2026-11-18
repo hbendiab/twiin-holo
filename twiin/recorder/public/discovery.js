@@ -126,7 +126,22 @@
       <h3>${s.kind === 'automate' ? '⚡ Twiin peut automatiser cette tâche' : '🎬 Twiin propose d\'accélérer cette tâche'}</h3>
       <p>${esc(s.texte)}</p>
       <ul>${(s.raisons || []).map((r) => `<li>${esc(r)}</li>`).join('')}</ul>
-      <div class="dc-row"><button class="primary dc-ok">Compris</button></div>`;
+      <p class="dc-msg"></p>
+      <div class="dc-row">${s.kind === 'automate' ? '<button class="primary dc-create">Créer cette automatisation</button>' : ''}
+        <button class="${s.kind === 'automate' ? '' : 'primary '}dc-ok">${s.kind === 'automate' ? 'Plus tard' : 'Compris'}</button></div>`;
+    const create = card.querySelector('.dc-create');
+    if (create) create.onclick = async () => {
+      const msg = card.querySelector('.dc-msg');
+      create.disabled = true;
+      msg.textContent = 'Création dans n8n… (Holo lira les sites en arrière-plan, sans prendre ton écran)';
+      try {
+        const d = await (await fetch('/api/automations/from-discovery', { method: 'POST' })).json();
+        if (d.error) throw new Error(d.error);
+        msg.innerHTML = `Créée : <b>${esc(d.name)}</b> (${d.blocks.length} blocs). <a href="automatisations.html">Ouvrir Mes automatisations</a>`;
+        try { localStorage.setItem('twiin-solution-vue', JSON.stringify(s)); } catch { /* stockage bloqué */ }
+        closedFor = JSON.stringify(s);
+      } catch (e) { msg.textContent = `Création impossible : ${e.message}`; create.disabled = false; }
+    };
     card.querySelector('.dc-ok').onclick = () => { box.hidden = true; view = 'closed'; closedFor = JSON.stringify(s);
       try { localStorage.setItem('twiin-solution-vue', closedFor); } catch { /* stockage bloqué */ } };
     box.hidden = false;

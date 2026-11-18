@@ -97,7 +97,7 @@ const keepUser = (fn) => { const u = als.getStore(); return (...a) => (u ? als.r
 app.get('/api/config', (req, res) => res.json({ supabase: SB_ON ? { url: SB_URL, anonKey: SB_ANON } : null }));
 // Toutes les routes /api demandent un employé connecté, sauf : la config, la voix (balise <audio>), le pont n8n → Holo
 // (il a son propre jeton) et les fichiers servis.
-const OPEN_API = ['/config', '/voice/say', '/holo/run'];
+const OPEN_API = ['/config', '/voice/say', '/holo/run', '/holo/web', '/excel/write']; // ponts n8n : jeton Twiin propre
 app.use('/api', async (req, res, next) => {
   if (!SB_ON || OPEN_API.some((p) => req.path.startsWith(p))) return next();
   const token = (req.headers.authorization || '').replace(/^Bearer\s+/i, '');
@@ -1053,6 +1053,71 @@ app.post('/api/replay', (req, res) => {
 
 // --- Pont n8n → Holo : n8n envoie des étapes, Holo les fait sur ce Mac, la réponse revient à n8n -----------------
 // Appel SYNCHRONE (n8n attend la fin). Réservé aux appels locaux portant le jeton TWIIN_LOCAL_TOKEN.
+// --- Ponts n8n → Twiin « sans gêner l'employé » ------------------------------------------------------------------
+// /api/holo/web : Holo lit une page web dans un navigateur INVISIBLE (la souris et le clavier restent à l'employé).
+// /api/excel/write : ajoute des lignes dans un classeur Excel du poste, par le fichier, sans Holo.
+const localBridge = (req) => ['127.0.0.1', '::1', '::ffff:127.0.0.1'].includes(req.socket.remoteAddress)
+  && process.env.TWIIN_LOCAL_TOKEN && req.get('x-twiin-token') === process.env.TWIIN_LOCAL_TOKEN;
+const webRuns = new Set(); // lectures en cours (arrêtées par « Arrêter l'automatisation »)
+function runPyJson(mod, input, { timeout = 600000, track } = {}) {
+  return new Promise((resolve) => {
+    const proc = spawn(PYTHON, ['-u', '-m', mod], { cwd: REPO_ROOT, env: { ...process.env, PYTHONUTF8: '1' } });
+    track?.add(proc);
+    let out = '', err = '';
+    const timer = setTimeout(() => killTree(proc), timeout);
+    proc.stdout.on('data', (d) => (out += d));
+    proc.stderr.on('data', (d) => (err += d));
+    proc.on('close', () => {
+      clearTimeout(timer);
+      track?.delete(proc);
+      const line = out.trim().split('\n').filter((l) => l.startsWith('{')).at(-1);
+      try { resolve(JSON.parse(line)); } catch { resolve({ ok: false, error: (err.trim().split('\n').at(-1) || 'échec').slice(0, 300) }); }
+    });
+    proc.stdin.end(JSON.stringify(input));
+  });
+}
+app.post('/api/holo/web', async (req, res) => {
+  if (!localBridge(req)) return res.status(403).json({ error: 'Accès refusé (appel local avec jeton Twiin uniquement).' });
+  const { url, label, columns } = req.body || {};
+  console.log(`n8n → Holo (navigateur invisible) : ${label || url}`);
+  const r = await runPyJson('discovery.web_read', { url, label, columns }, { track: webRuns });
+  console.log(`   → ${r.ok ? 'lu' : 'échec'} en ${Math.round(r.seconds || 0)} s : ${JSON.stringify(r.data || r.error).slice(0, 160)}`);
+  res.json(r);
+});
+app.post('/api/excel/write', async (req, res) => {
+  if (!localBridge(req)) return res.status(403).json({ error: 'Accès refusé (appel local avec jeton Twiin uniquement).' });
+  const r = await runPyJson('discovery.excel_write', req.body || {}, { timeout: 60000 });
+  console.log(`n8n → Excel : ${r.ok ? `${r.added} ligne(s) ajoutée(s) dans ${r.path}` : r.error}`);
+  res.status(r.ok ? 200 : 409).json(r);
+});
+
+// Créer l'automatisation à partir de la solution trouvée par la découverte (au lieu d'un plan réécrit de zéro).
+app.post('/api/automations/from-discovery', async (req, res) => {
+  const dir = discovery.dir || latestSessionDir();
+  if (!dir || !discoveryState(dir)?.solution) return res.status(409).json({ error: 'Pas encore de solution trouvée pour cette tâche.' });
+  try { await ensureN8n(); } catch (e) { return res.status(500).json({ error: e.message }); }
+  const build = await new Promise((resolve) => {
+    const p = spawn(PYTHON, ['-u', '-m', 'discovery.build_automation', dir], { cwd: REPO_ROOT, env: { ...process.env, PYTHONUTF8: '1' } });
+    let out = '', err = '';
+    p.stdout.on('data', (d) => (out += d)); p.stderr.on('data', (d) => (err += d));
+    p.on('close', (code) => resolve(code === 0 ? { plan: out.trim().split('\n').at(-1) } : { error: err.trim().split('\n').at(-1) }));
+  });
+  if (build.error) return res.status(500).json({ error: `Plan impossible : ${build.error}` });
+  const plan = JSON.parse(fs.readFileSync(build.plan, 'utf8'));
+  const imp = await new Promise((resolve) => {
+    const p = spawn(PYTHON, ['-u', N8N_GEN, build.plan, '--no-run'], { cwd: REPO_ROOT, env: { ...process.env, PYTHONUTF8: '1' } });
+    let out = '';
+    p.stdout.on('data', (d) => (out += d));
+    p.on('close', () => resolve(out.split('\n').map((l) => { try { return JSON.parse(l); } catch { return null; } }).find((e) => e?.type === 'imported')));
+  });
+  if (!imp) return res.status(500).json({ error: 'Import dans n8n impossible (voir le journal du serveur).' });
+  const st = discoveryState(dir);
+  await sb('automations?on_conflict=user_id,n8n_id', { method: 'POST', prefer: 'resolution=merge-duplicates,return=minimal',
+    body: { task_id: st?.task_id || null, n8n_id: imp.id, name: plan.name, blocks: plan.blocks, freq: 'manual', active: false } });
+  console.log(`Automatisation créée depuis la découverte : ${plan.name} (${plan.blocks.length} blocs, sans Holo à l'écran)`);
+  res.json({ ok: true, id: imp.id, name: plan.name, blocks: plan.blocks.map((b) => b.name) });
+});
+
 app.post('/api/holo/run', async (req, res) => {
   try {
     const local = ['127.0.0.1', '::1', '::ffff:127.0.0.1'].includes(req.socket.remoteAddress);
@@ -1572,6 +1637,8 @@ app.post('/api/automations/:id/stop', async (req, res) => {
   const stopped = [];
   if (automationRun) { killTree(automationRun.proc); automationRun = null; stopped.push('lancement'); }
   if (replay?.running) { killTree(replay.proc); replay.running = false; stopped.push('Holo'); }
+  for (const p of webRuns) { killTree(p); stopped.push('lecture web'); }
+  webRuns.clear();
   try {
     const execs = (await n8nApi(`/executions?workflowId=${encodeURIComponent(id)}&status=running&limit=20`)).data || [];
     for (const e of execs) { try { await n8nApi(`/executions/${e.id}/stop`, { method: 'POST' }); stopped.push(`n8n #${e.id}`); } catch { /* déjà fini */ } }
