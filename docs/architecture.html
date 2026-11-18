@@ -113,7 +113,7 @@ footer { margin-top: 48px; color: var(--dim); font-size: 13px; }
 <div class="wrap">
   <header>
     <h1>Architecture Twiin</h1>
-    <p class="lede">Ce document présente Twiin à quelqu'un qui découvre le projet : ce qu'il fait, avec quelles technologies, ce qui a été testé, et la version visée à long terme. Le détail technique est replié ; il suffit de cliquer pour l'ouvrir.</p>
+    <p class="lede">Ce document présente Twiin à quelqu'un qui découvre le projet : ce qu'il fait, avec quelles technologies, ce qui a été testé, et la version visée à long terme. Il s'adresse à un lecteur technique qui ne connaît pas encore le projet.</p>
     <p class="meta">Hackathon Build The Future · Team 10 · état au 19/11/2026 · branche feat/decouverte-env-test</p>
   </header>
 
@@ -143,12 +143,11 @@ footer { margin-top: 48px; color: var(--dim); font-size: 13px; }
     <h2>Les mots du projet</h2>
     <div class="lex">
       <div><b>Twiin</b> : notre outil. Il observe une tâche faite une fois par un salarié et propose de l'accélérer ou de l'automatiser.</div>
-      <div><b>Holo</b> : agent d'IA de la société H Company qui utilise un écran comme un humain (« computer use » : il voit, clique, tape).</div>
+      <div><b>Holo</b> : modèle « computer use » de H Company (API compatible OpenAI) : il voit une capture d'écran et renvoie l'action à faire (clic, saisie…).</div>
       <div><b>n8n</b> : outil d'automatisation standard, où une tâche devient une suite de blocs que l'entreprise peut lire et modifier.</div>
       <div><b>Jumeau</b> : copie de test de la tâche, générée automatiquement, avec de fausses données. Les essais s'y font, jamais sur les vrais outils.</div>
-      <div><b>Qwen</b> : modèle d'IA qui lit les captures d'écran et le texte pour comprendre la tâche.</div>
+      <div><b>Qwen</b> : modèle vision-langage (Qwen3.8-27B, via le routeur Hugging Face) qui lit captures et OCR pour comprendre la tâche.</div>
       <div><b>Supabase</b> : la base de données de Twiin (tâches, essais, recommandations), cloisonnée par entreprise.</div>
-      <div><b>API</b> : porte d'accès prévue pour les programmes. Sans API, il ne reste que l'écran, d'où Holo.</div>
       <div><b>DSI</b> : direction informatique de l'entreprise cliente, qui autorise les outils une fois pour tous.</div>
     </div>
   </section>
@@ -229,7 +228,7 @@ footer { margin-top: 48px; color: var(--dim); font-size: 13px; }
           <text x="322" y="344" fill="var(--dim)">document → saisie web sans API</text>
           <text x="322" y="360" fill="var(--dim)">Arrêter · planifier · double Échap</text>
           <rect x="624" y="290" width="310" height="92" rx="8" fill="var(--db-soft)" stroke="var(--db)"/>
-          <text x="636" y="310" font-weight="600" fill="var(--db)">Supabase (base de données)</text>
+          <text x="636" y="310" font-weight="600" fill="var(--db)">Supabase (Postgres + RLS + Auth)</text>
           <text x="636" y="328" fill="var(--dim)">dictionnaire · taches · tests · recommendations</text>
           <text x="636" y="344" fill="var(--dim)">profiles · audits · tutos · automations</text>
           <text x="636" y="360" fill="var(--dim)">automation_runs · back_log</text>
@@ -275,10 +274,10 @@ footer { margin-top: 48px; color: var(--dim); font-size: 13px; }
 
   <section class="block" id="etapes">
     <h2>Les stacks, étape par étape</h2>
-    <p class="sub">Une ligne par étape pour comprendre ce qu'elle fait. Pour les lecteurs techniques : cliquer une étape ouvre le détail (technologie utilisée, pourquoi ce choix, où elle tourne).</p>
+    <p class="sub">Pour chaque étape : ce qu'elle fait, la technologie utilisée, pourquoi ce choix, et où elle tourne. Cliquer sur le titre d'une étape la replie.</p>
     <div class="steps">
 
-      <details class="step">
+      <details class="step" open>
         <summary><span class="num">0</span><h3>Mise en service par la DSI</h3><span class="state s-part">première version</span>
           <span class="what">Une fois pour toute l'entreprise : quelles autorisations donner, par éditeur, pour que les salariés ne configurent rien.</span></summary>
         <div class="step-body tbl"><table>
@@ -288,7 +287,7 @@ footer { margin-top: 48px; color: var(--dim); font-size: 13px; }
         </table></div>
       </details>
 
-      <details class="step">
+      <details class="step" open>
         <summary><span class="num">1</span><h3>Auditer le poste</h3><span class="state s-ok">en place</span>
           <span class="what">Les logiciels installés et vraiment utilisés, et ce que le salarié dit de son travail.</span></summary>
         <div class="step-body tbl"><table>
@@ -296,11 +295,11 @@ footer { margin-top: 48px; color: var(--dim); font-size: 13px; }
           <tr><td>Logiciels du poste</td><td>macOS : applications et usage · Windows : registre (Uninstall + UserAssist)</td><td>savoir quels outils existent avant de proposer quoi que ce soit</td><td><span class="chip c-post">poste</span></td></tr>
           <tr><td>Logos</td><td>extraits des applications du poste (Mac et Windows)</td><td>une page lisible au premier coup d'œil</td><td><span class="chip c-post">poste</span></td></tr>
           <tr><td>Audit vocal</td><td>ElevenLabs Scribe (transcription) + lexique métier</td><td>le salarié décrit son poste à l'oral, sans formulaire</td><td><span class="chip c-ext">API</span></td></tr>
-          <tr><td>Stockage</td><td>Supabase : <code>audits</code>, <code>profiles</code></td><td>chaque salarié ne voit que les données de son entreprise</td><td><span class="chip c-db">base</span></td></tr>
+          <tr><td>Stockage</td><td>Supabase : <code>audits</code>, <code>profiles</code></td><td>chaque salarié ne voit que les données de son entreprise (RLS sur company_id)</td><td><span class="chip c-db">base</span></td></tr>
         </table></div>
       </details>
 
-      <details class="step">
+      <details class="step" open>
         <summary><span class="num">2</span><h3>Observer la tâche</h3><span class="state s-ok">en place</span>
           <span class="what">Le salarié fait sa tâche une fois. Twiin garde des captures, le texte à l'écran et les clics, jamais les touches tapées.</span></summary>
         <div class="step-body tbl"><table>
@@ -312,18 +311,18 @@ footer { margin-top: 48px; color: var(--dim); font-size: 13px; }
         </table></div>
       </details>
 
-      <details class="step">
+      <details class="step" open>
         <summary><span class="num">3</span><h3>Analyser</h3><span class="state s-ok">en place</span>
           <span class="what">Captures, texte et journal deviennent des étapes fidèles, des conseils et un premier verdict.</span></summary>
         <div class="step-body tbl"><table>
           <tr><th>Brique</th><th>Technologie</th><th>Pourquoi</th><th>Où</th></tr>
           <tr><td>Modèle de vision</td><td>Qwen3.8-27B via le routeur Hugging Face (API compatible OpenAI)</td><td>lit images et texte, environ 0,005 $ par analyse, fournisseur interchangeable</td><td><span class="chip c-ext">API</span></td></tr>
-          <tr><td>Robustesse</td><td>réparation automatique des réponses de l'IA</td><td>le modèle rend parfois une réponse mal formée</td><td><span class="chip c-srv">serveur</span></td></tr>
+          <tr><td>Robustesse</td><td>json-repair</td><td>le modèle rend parfois un JSON mal formé</td><td><span class="chip c-srv">serveur</span></td></tr>
           <tr><td>Travail de fond</td><td>workers Python 3.12 lancés par le serveur, sans fenêtre</td><td>la page reste fluide ; aucune console ne s'ouvre chez le salarié</td><td><span class="chip c-srv">serveur</span></td></tr>
         </table></div>
       </details>
 
-      <details class="step">
+      <details class="step" open>
         <summary><span class="num">4</span><h3>Comprendre et faire valider</h3><span class="state s-ok">en place</span>
           <span class="what">Une seule question : « Ai-je bien compris votre problème ? », avec le résultat attendu sous forme de tableau.</span></summary>
         <div class="step-body tbl"><table>
@@ -334,7 +333,7 @@ footer { margin-top: 48px; color: var(--dim); font-size: 13px; }
         </table></div>
       </details>
 
-      <details class="step">
+      <details class="step" open>
         <summary><span class="num">5</span><h3>Construire le jumeau</h3><span class="state s-ok">en place</span>
           <span class="what">Pendant que le salarié lit la question, Twiin reconstruit les écrans de sa tâche dans une page isolée, avec des données fictives.</span></summary>
         <div class="step-body tbl"><table>
@@ -345,7 +344,7 @@ footer { margin-top: 48px; color: var(--dim); font-size: 13px; }
         </table></div>
       </details>
 
-      <details class="step">
+      <details class="step" open>
         <summary><span class="num">6</span><h3>3 essais « conseil »</h3><span class="state s-ok">en place</span>
           <span class="what">Trois agents partent du même point, en même temps, et prennent chacun un chemin différent, comme un GPS.</span></summary>
         <div class="step-body tbl"><table>
@@ -358,19 +357,19 @@ footer { margin-top: 48px; color: var(--dim); font-size: 13px; }
         </table></div>
       </details>
 
-      <details class="step">
+      <details class="step" open>
         <summary><span class="num">7</span><h3>2 essais « automatisation »</h3><span class="state s-ok">en place</span>
           <span class="what">Le mode est décidé d'avance : si tout a une API ou une page lisible, n8n natif ; sinon n8n avec Holo pour l'outil sans API.</span></summary>
         <div class="step-body tbl"><table>
           <tr><th>Brique</th><th>Technologie</th><th>Pourquoi</th><th>Où</th></tr>
-          <tr><td>Orchestrateur</td><td>n8n : l'automatisation est créée, testée, puis supprimée automatiquement</td><td>standard, workflows lisibles et modifiables par l'entreprise</td><td><span class="chip c-srv">serveur</span></td></tr>
+          <tr><td>Orchestrateur</td><td>n8n 2.48 : workflow créé par l'API REST, exécuté par le serveur MCP de n8n, puis supprimé</td><td>standard, workflows lisibles et modifiables par l'entreprise</td><td><span class="chip c-srv">serveur</span></td></tr>
           <tr><td>n8n natif</td><td>lecture HTTP + extraction HTML, ou bloc Code</td><td>le plus rapide et le moins cher (2,5 s, sans Holo)</td><td><span class="chip c-srv">serveur</span></td></tr>
           <tr><td>n8n + Holo</td><td>blocs qui appellent Holo seulement pour l'outil sans API</td><td>computer use réservé à ce qui n'a pas d'autre accès</td><td><span class="chip c-ext">API</span></td></tr>
           <tr><td>Notation</td><td>comparaison avec le résultat attendu : texte tolérant, nombres stricts</td><td>on ne croit pas l'agent sur parole : les « faux réussis » sont détectés</td><td><span class="chip c-srv">serveur</span></td></tr>
         </table></div>
       </details>
 
-      <details class="step">
+      <details class="step" open>
         <summary><span class="num">8</span><h3>Proposer</h3><span class="state s-ok">en place</span>
           <span class="what">90 % ou plus : automatiser avec le workflow testé. Sinon : accélérer, avec des conseils seulement.</span></summary>
         <div class="step-body tbl"><table>
@@ -381,7 +380,7 @@ footer { margin-top: 48px; color: var(--dim); font-size: 13px; }
         </table></div>
       </details>
 
-      <details class="step">
+      <details class="step" open>
         <summary><span class="num">9</span><h3>Livrer et exécuter l'automatisation</h3><span class="state s-ok">en place</span>
           <span class="what">« Créer cette automatisation » construit le workflow à partir de la solution testée. Même quand Holo doit utiliser un logiciel par l'écran (n8n + Holo, en computer use), il le fait dans un navigateur invisible, en arrière-plan : la souris, le clavier et l'écran restent au salarié, qui continue à travailler pendant que l'automatisation tourne.</span></summary>
         <div class="step-body tbl"><table>
@@ -407,8 +406,8 @@ footer { margin-top: 48px; color: var(--dim); font-size: 13px; }
       <tr><td>Qwen3.8-27B (Hugging Face)</td><td>analyse, question, jumeau, classement des outils, lecture des documents</td><td>3 · 4 · 5 · 9</td><td><span class="chip c-ext">API</span></td></tr>
       <tr><td>Holo (H Company)</td><td>agent « computer use » : essais, lecture et saisie sans API</td><td>6 · 7 · 9</td><td><span class="chip c-ext">API</span></td></tr>
       <tr><td>ElevenLabs</td><td>transcription de l'audit vocal, voix des tutos</td><td>1 · 8</td><td><span class="chip c-ext">API</span></td></tr>
-      <tr><td>n8n</td><td>tester, livrer, exécuter et planifier les automatisations</td><td>7 · 9</td><td><span class="chip c-srv">serveur</span></td></tr>
-      <tr><td>Supabase (base de données Postgres)</td><td>tâches, essais, recommandations et comptes, cloisonnés par entreprise</td><td>1 · 4 · 5 · 8</td><td><span class="chip c-db">base</span></td></tr>
+      <tr><td>n8n 2.48 (API REST + serveur MCP)</td><td>tester, livrer, exécuter et planifier les automatisations</td><td>7 · 9</td><td><span class="chip c-srv">serveur</span></td></tr>
+      <tr><td>Supabase (Postgres, RLS, Auth, Storage)</td><td>tâches, essais, recommandations et comptes ; cloisonnement par entreprise via RLS</td><td>1 · 4 · 5 · 8</td><td><span class="chip c-db">base</span></td></tr>
       <tr><td>Node.js 24 + Express</td><td>la page Twiin, ses API, les ponts locaux n8n → poste</td><td>toutes</td><td><span class="chip c-srv">serveur</span></td></tr>
       <tr><td>Python 3.12</td><td>workers : découverte, agents, OCR, journal, documents, Excel</td><td>2 à 9</td><td><span class="chip c-srv">serveur</span></td></tr>
       <tr><td>Playwright + Chromium</td><td>navigateur invisible pour Holo ; collecte des docs publiques</td><td>5 · 6 · 9</td><td><span class="chip c-srv">serveur</span></td></tr>
@@ -996,7 +995,7 @@ if(!reduce)setTimeout(()=>{if(!playing&&cur===STEPS.length-1)replay();},1800);
 
     <div class="frame tbl"><table>
       <tr><th>Dans le graphe</th><th>Dans Supabase</th><th>Aujourd'hui</th></tr>
-      <tr><td>Entreprise</td><td>chaque donnée est rattachée à son entreprise</td><td>en place</td></tr>
+      <tr><td>Entreprise</td><td><code>company_id</code> sur chaque table (RLS)</td><td>en place</td></tr>
       <tr><td>Logiciel</td><td><code>dictionnaire</code></td><td>en place</td></tr>
       <tr><td>Catégorie</td><td>nouvelle table, proposée par Twiin, validée par la DSI</td><td>à faire</td></tr>
       <tr><td>Cas</td><td><code>taches</code> regroupées par similarité (pgvector)</td><td>à faire : aujourd'hui une tâche = un enregistrement</td></tr>
