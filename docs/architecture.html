@@ -1,6 +1,6 @@
 <title>Architecture Twiin</title>
 <meta name="claude:viewport-fit-sides" content="cover">
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@500&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
 <style>
 /* Mise en page : une colonne de lecture. Schéma d'aujourd'hui, stacks étape par étape, puis version finale et graphe vivant. */
 :root {
@@ -52,7 +52,8 @@ section.block { margin-top: 44px; display: grid; gap: 14px; scroll-margin-top: 7
 .c-ext { color: var(--ext); background: var(--ext-soft); }
 .c-db { color: var(--db); background: var(--db-soft); }
 .steps { display: grid; gap: 12px; }
-details.step { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; }
+details.step { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; min-width: 0; }
+section.block > * { min-width: 0; }
 details.step > summary { list-style: none; cursor: pointer; padding: 14px 18px; display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 12px; }
 details.step > summary::-webkit-details-marker { display: none; }
 details.step > summary:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; border-radius: 12px; }
@@ -85,6 +86,9 @@ button:hover, button:focus-visible { border-color: var(--accent); color: var(--a
 canvas#g { display: block; width: 100%; height: 480px; touch-action: none; }
 .caption { padding: 10px 14px 12px; border-top: 1px solid var(--line); font-size: 14px; color: var(--dim); min-height: 3.2em; }
 .caption b { color: var(--ink); }
+.horizon { border: 2px solid var(--accent); background: var(--accent-soft); border-radius: 14px; padding: 18px 20px; display: grid; gap: 6px; }
+.horizon-k { font: 600 12px var(--f-mono); letter-spacing: .08em; text-transform: uppercase; color: var(--accent); }
+.horizon-t { font: 700 1.6rem/1.2 var(--f-display); text-wrap: balance; }
 footer { margin-top: 48px; color: var(--dim); font-size: 13px; }
 @media (max-width: 560px) { h1 { font-size: 1.75rem; } canvas#g { height: 400px; } .state { margin-left: 0; } }
 </style>
@@ -100,7 +104,7 @@ footer { margin-top: 48px; color: var(--dim); font-size: 13px; }
 
   <nav class="toc" aria-label="Sommaire">
     <a href="#schema">Schéma</a><a href="#etapes">Étape par étape</a><a href="#stack">Toute la stack</a>
-    <a href="#chiffres">Chiffres</a><a href="#final">Version finale</a><a href="#graphe">Graphe vivant</a>
+    <a href="#chiffres">Chiffres</a><a href="#final">Vision long terme</a><a href="#graphe">Graphe de savoir-faire</a>
   </nav>
 
   <section class="block" id="schema">
@@ -384,8 +388,14 @@ footer { margin-top: 48px; color: var(--dim); font-size: 13px; }
   </section>
 
   <section class="block final" id="final">
+    <div class="horizon">
+      <p class="horizon-k">À partir d'ici : vision long terme</p>
+      <p class="horizon-t">Ce qui suit n'est pas ce qu'on livre vendredi.</p>
+      <p>C'est la version finale qu'on vise sur le long terme. La démo de vendredi est la version décrite plus haut :
+        tout tourne sur le poste, avec le parcours, les 5 essais et les automatisations déjà en place.</p>
+    </div>
     <p class="eyebrow">Version finale visée</p>
-    <h2>Ce qu'on veut livrer</h2>
+    <h2>Ce vers quoi Twiin va</h2>
     <p class="sub">Le salarié n'installe et ne configure rien. Il se connecte avec le compte de son entreprise. Tout le calcul
       tourne dans le cloud, en Europe, dans des environnements jetables. Sur le poste, il ne reste qu'un petit capteur.</p>
     <div class="frame">
@@ -493,180 +503,434 @@ footer { margin-top: 48px; color: var(--dim); font-size: 13px; }
   </section>
 
   <section class="block" id="graphe">
-    <p class="eyebrow">Version finale · données</p>
-    <h2>Le graphe de l'entreprise</h2>
-    <p class="sub">Dans Supabase, tout est relié : un salarié fait des tâches, une tâche utilise des logiciels, chaque tâche
-      a ses essais, une automatisation sert une ou plusieurs tâches. En version finale, Twiin montre ces liens comme un
-      graphe vivant, dans la page Back et pour la DSI. Quand deux salariés font la même tâche, Twiin le voit, et une seule
-      automatisation sert les deux. Exemple ci-dessous avec des données fictives.</p>
-    <div class="graph">
-      <div class="graph-top">
-        <div class="legend" id="glegend"></div>
-        <button type="button" id="gplay">Voir le graphe se construire</button>
-        <button type="button" id="gpause" aria-pressed="false">Pause</button>
-      </div>
-      <canvas id="g" aria-label="Graphe animé : salariés, tâches, logiciels, essais et automatisations d'une entreprise fictive"></canvas>
-      <p class="caption" id="gcap"><b>Survolez un point</b> pour voir ses liens. Les points lumineux qui circulent sont les échanges : les essais qui remontent, les automatisations qui écrivent.</p>
+    <p class="eyebrow">Vision long terme · données</p>
+    <h2>Le graphe de savoir-faire</h2>
+    <p class="sub">Twiin range chaque tâche enregistrée dans un arbre : entreprise › logiciel (Excel, Sage, logiciel interne…)
+      › catégorie › cas précis. Le but : rapprocher les tâches qui se ressemblent sans être identiques. Un même cas
+      regroupe plusieurs salariés (« moi aussi », ou un process similaire reconnu), ce qui donne un meilleur score aux
+      recommandations : on sait combien de personnes et combien d'heures sont en jeu. La DSI fixe un seuil, valide les
+      catégories proposées, et reçoit les pistes A (conseil), B (ses outils) et C (Holo, en dernier recours).
+      Exemple ci-dessous avec une entreprise fictive.</p>
+    <style>
+/* Layout : en-tête + scène SVG (arbre outil > catégorie > cas, branches A/B/C à droite, employés en bas) | panneau latéral (seuil, journal, catalogue) */
+#tg{
+  --bg:#F4F6F8; --surface:#FFFFFF; --ink:#17202B; --muted:#657083; --line:#D2D8E1; --line-soft:#E6EAF0;
+  --accent:#08795A; --accent-soft:#E1F2EA;
+  --watch:#B05E00; --watch-soft:#FBEFDF;
+  --a:#2B62D6; --a-soft:#E6EDFC; --b:#7546CF; --b-soft:#EFE8FB; --c:#BF2D6C; --c-soft:#FBE7EF;
+  --f-display:"Space Grotesk",ui-sans-serif,system-ui,sans-serif;
+  --f-text:"Inter",ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;
+  --f-mono:"JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]) #tg{
+  --bg:#0F141B; --surface:#171E28; --ink:#E6EAF0; --muted:#97A2B4; --line:#2D3744; --line-soft:#212A35;
+  --accent:#3CC99C; --accent-soft:#11362B; --watch:#F1A64C; --watch-soft:#3A2A15;
+  --a:#7FA5FF; --a-soft:#1A2848; --b:#B596FF; --b-soft:#2A2046; --c:#F173AA; --c-soft:#40182B; color-scheme:dark}
+}
+:root[data-theme="dark"] #tg{
+  --bg:#0F141B; --surface:#171E28; --ink:#E6EAF0; --muted:#97A2B4; --line:#2D3744; --line-soft:#212A35;
+  --accent:#3CC99C; --accent-soft:#11362B; --watch:#F1A64C; --watch-soft:#3A2A15;
+  --a:#7FA5FF; --a-soft:#1A2848; --b:#B596FF; --b-soft:#2A2046; --c:#F173AA; --c-soft:#40182B; color-scheme:dark}
+#tg [hidden]{display:none!important}
+#tg{background:var(--bg);color:var(--ink);font-family:var(--f-text);font-size:14px;line-height:1.45}
+#tg .wrap{max-width:1440px;margin:0 auto;padding-block:20px 28px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));display:grid;gap:16px}
+#tg header{display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:12px}
+#tg h1{font-family:var(--f-display);font-weight:600;font-size:26px;margin:0;letter-spacing:-.01em}
+#tg .sub{color:var(--muted);margin:2px 0 0}
+#tg .controls{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+#tg button{font:inherit;font-weight:500;border:1px solid var(--line);background:var(--surface);color:var(--ink);border-radius:8px;padding:7px 14px;cursor:pointer}
+#tg button:hover{border-color:var(--muted)}
+#tg button:focus-visible{outline:2px solid var(--a);outline-offset:2px}
+#tg button.primary{background:var(--ink);color:var(--bg);border-color:var(--ink);min-width:96px}
+#tg .progress{display:flex;gap:3px}
+#tg .progress button{flex:1;height:8px;padding:0;border:0;border-radius:3px;background:var(--line);min-width:0}
+#tg .progress button.done{background:var(--muted)}
+#tg .progress button.cur{background:var(--accent)}
+#tg .main{display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:16px;align-items:start}
+@media (max-width:980px){#tg .main{grid-template-columns:minmax(0,1fr)}
+}
+#tg .stage{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:16px;display:grid;gap:10px;min-width:0}
+#tg .caption{min-height:3.2em;display:flex;gap:12px;align-items:baseline}
+#tg .stepno{font-family:var(--f-mono);font-size:12px;color:var(--muted);white-space:nowrap}
+#tg .captext{font-size:16px;font-weight:500;text-wrap:balance}
+#tg .svgbox{overflow-x:auto}
+#tg svg#g{display:block;width:100%;min-width:820px;height:auto}
+#tg aside{display:grid;gap:12px;min-width:0}
+#tg .panel{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:14px;display:grid;gap:8px}
+#tg .panel h2{font-family:var(--f-display);font-size:13px;font-weight:600;margin:0;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}
+#tg .rule{display:flex;gap:8px;flex-wrap:wrap;align-items:center;font-family:var(--f-mono);font-size:13px}
+#tg .rule b{background:var(--accent-soft);color:var(--accent);padding:2px 8px;border-radius:6px;font-weight:500}
+#tg .small{color:var(--muted);font-size:12px;margin:0}
+#tg ol.log{list-style:none;margin:0;padding:0;display:grid;gap:7px;min-height:220px}
+#tg ol.log li{font-size:12.5px;line-height:1.4;animation:in .35s ease}
+#tg ol.log li .who{font-weight:600;margin-right:4px}
+#tg ol.log li.dsi .who{color:var(--b)}
+#tg ol.log li.twiin .who{color:var(--accent)}
+#tg ol.log li.emp .who{color:var(--a)}
+@keyframes in{from{opacity:0;transform:translateY(-4px)}}
+#tg .chips{display:flex;flex-wrap:wrap;gap:6px}
+#tg .chip{font-size:12px;border:1px solid var(--line);border-radius:999px;padding:3px 10px;color:var(--muted);transition:all .4s}
+#tg .chip.used{border-color:var(--ink);color:var(--ink);font-weight:600}
+#tg .legend{display:grid;gap:6px;font-size:12.5px}
+#tg .legend div{display:flex;gap:8px;align-items:center}
+#tg .sw{width:12px;height:12px;border-radius:3px;flex:none;border:1.5px solid}
+#tg .summary{background:var(--accent-soft);border-color:var(--accent)}
+#tg .summary .big{font-family:var(--f-display);font-size:22px;font-weight:600;color:var(--accent)}
+/* SVG */
+#tg svg text{font-family:var(--f-text);fill:var(--ink)}
+#tg .edge{fill:none;stroke:var(--line);stroke-width:1.5;stroke-dasharray:1;stroke-dashoffset:1;transition:stroke-dashoffset .8s ease,stroke .4s}
+#tg .edge.on{stroke-dashoffset:0}
+#tg .edge.hot{stroke:var(--accent);stroke-width:2}
+#tg .node{opacity:0;transform:scale(.88);transform-box:fill-box;transform-origin:center;transition:opacity .5s ease,transform .5s ease}
+#tg .node.on{opacity:1;transform:none}
+#tg .node rect.box{fill:var(--surface);stroke:var(--line);stroke-width:1.5;transition:fill .5s,stroke .5s}
+#tg .root rect.box{fill:var(--ink);stroke:var(--ink)}
+#tg .root text{fill:var(--bg)}
+#tg .tool rect.box{fill:var(--line-soft)}
+#tg .lbl{font-size:12.5px;font-weight:600}
+#tg .tool .lbl{font-family:var(--f-display);font-size:13.5px}
+#tg .meta{font-family:var(--f-mono);font-size:11.5px;fill:var(--muted)}
+#tg .barbg{fill:var(--line-soft)}
+#tg .bar{fill:var(--muted);transition:fill .4s}
+#tg .bar.full{fill:var(--accent)}
+#tg .barlbl{font-size:9.5px;fill:var(--muted)}
+#tg .node.proposed rect.box{stroke-dasharray:5 4;stroke:var(--muted)}
+#tg .node.lit rect.box{fill:var(--accent-soft);stroke:var(--accent);stroke-width:2.2}
+#tg .node.lit .meta{fill:var(--accent)}
+#tg .node.grouped rect.box{stroke:var(--accent)}
+#tg .node.watch rect.box{fill:var(--watch-soft);stroke:var(--watch)}
+#tg .node.watch .meta{fill:var(--watch)}
+#tg .node.drop{opacity:.42}
+#tg .node.flash rect.box{animation:flash 1.3s ease}
+@keyframes flash{0%{stroke-width:2}35%{stroke-width:7}100%{stroke-width:2.2}}
+#tg .agg{font-family:var(--f-mono);font-size:11px;fill:var(--accent);opacity:0;transition:opacity .5s}
+#tg .agg.on{opacity:1}
+#tg .tag{opacity:0;transition:opacity .4s}
+#tg .tag.on{opacity:1}
+#tg .tag rect{fill:var(--b-soft);stroke:var(--b)}
+#tg .tag text{font-size:10.5px;font-weight:600;fill:var(--b)}
+#tg .br rect.box{stroke-width:1.5}
+#tg .br.A rect.box{fill:var(--a-soft);stroke:var(--a)}
+#tg .br.A .bt{fill:var(--a)}
+#tg .br.B rect.box{fill:var(--b-soft);stroke:var(--b)}
+#tg .br.B .bt{fill:var(--b)}
+#tg .br.C rect.box{fill:var(--c-soft);stroke:var(--c)}
+#tg .br.C .bt{fill:var(--c)}
+#tg .bt{font-size:12px;font-weight:600}
+#tg .bd{font-size:11px;fill:var(--muted)}
+#tg .bto{font-size:10px;fill:var(--muted);font-family:var(--f-mono)}
+#tg .bedge{fill:none;stroke-width:1.5;stroke-dasharray:1;stroke-dashoffset:1;transition:stroke-dashoffset .7s}
+#tg .bedge.on{stroke-dashoffset:0}
+#tg .bedge.A{stroke:var(--a)}
+#tg .bedge.B{stroke:var(--b)}
+#tg .bedge.C{stroke:var(--c)}
+#tg .bracket{fill:none;stroke:var(--accent);stroke-width:2;opacity:0;transition:opacity .5s}
+#tg .bracket.on{opacity:1}
+#tg .emp{fill:var(--surface);stroke:var(--muted);stroke-width:1.3;transition:fill .4s,stroke .4s}
+#tg .emp.eng{fill:var(--ink);stroke:var(--ink)}
+#tg .emp.ping{animation:ping .7s ease}
+@keyframes ping{50%{r:8}}
+#tg .grp{font-size:10.5px;fill:var(--muted)}
+#tg .empttl{font-family:var(--f-display);font-size:12px;font-weight:600;fill:var(--muted)}
+#tg .pt{fill:var(--a)}
+#tg .pt.rec{fill:var(--accent)}
+#tg .ring{fill:none;stroke:var(--accent);stroke-width:1.5}
+#tg .plus{font-family:var(--f-mono);font-size:12px;font-weight:500;fill:var(--a)}
+#tg .plus.rec{fill:var(--accent)}
+@media (prefers-reduced-motion:reduce){#tg *{transition:none!important;animation:none!important}
+}
+
+
+#tg .tg-wrap{padding:0;max-width:none}
+#tg .tg-h{font-family:var(--f-display);font-weight:600;font-size:20px;margin:0}
+#tg{background:transparent;min-width:0}
+#tg .tg-wrap>*{min-width:0}
+#tg .chip{font:12px var(--f-text)}
+#tg .caption{padding:0;border:0;min-height:3.2em}
+#tg .sub{max-width:none}
+</style>
+<div id="tg"><div class="wrap tg-wrap">
+  <header>
+    <div>
+      <h3 class="tg-h">Graphe de savoir-faire Twiin</h3>
+      <p class="sub">Entreprise fictive Acme, 34 employés. Les noms sont remplacés par des rôles : la DSI ne voit que des groupes.</p>
     </div>
+    <div class="controls">
+      <button id="play" class="primary" type="button">Lecture</button>
+      <button id="replay" type="button">Rejouer</button>
+      <button id="speed" type="button" aria-label="Vitesse">Vitesse 1×</button>
+    </div>
+  </header>
+
+  <div class="progress" id="progress" aria-label="Étapes"></div>
+
+  <div class="main">
+    <section class="stage">
+      <div class="caption" aria-live="polite"><span class="stepno" id="stepno"></span><span class="captext" id="cap"></span></div>
+      <div class="svgbox"><svg id="g" viewBox="0 0 1190 650" role="img" aria-label="Arbre Acme : outils, catégories, cas, branches de sortie et employés"></svg></div>
+    </section>
+
+    <aside>
+      <div class="panel" id="sumpanel" hidden>
+        <h2>Rapport DSI</h2>
+        <div class="big">529 h/mois</div>
+        <p class="small" style="color:var(--ink)">2 groupes retenus : factures fournisseurs (14 pers, 497 h) et rapports Excel (11 pers, 32 h). Commandes PDF sous surveillance (65 h, 4 pers).</p>
+      </div>
+      <div class="panel">
+        <h2>Seuil fixé par la DSI</h2>
+        <div class="rule"><b>≥ 10 personnes</b>ET<b>≥ 30 h/mois</b></div>
+        <p class="small">Sur chaque cas, la barre du haut compte les personnes, celle du bas les heures. Un cas s'allume quand les deux sont pleines.</p>
+      </div>
+      <div class="panel">
+        <h2>Journal</h2>
+        <ol class="log" id="log"></ol>
+      </div>
+      <div class="panel">
+        <h2>Catalogue d'outils de la DSI</h2>
+        <div class="chips" id="chips"></div>
+      </div>
+      <div class="panel">
+        <h2>Légende</h2>
+        <div class="legend">
+          <div><span class="sw" style="background:var(--a-soft);border-color:var(--a)"></span>A · conseil, proposé à l'employé qui enregistre</div>
+          <div><span class="sw" style="background:var(--b-soft);border-color:var(--b)"></span>B · automatisation avec les outils de la DSI</div>
+          <div><span class="sw" style="background:var(--c-soft);border-color:var(--c)"></span>C · Holo, sans API ni texte exploitable</div>
+          <div><span class="sw" style="background:var(--accent-soft);border-color:var(--accent)"></span>Cas partagé, au-dessus du seuil</div>
+          <div><span class="sw" style="background:var(--watch-soft);border-color:var(--watch)"></span>Sous surveillance (heures oui, personnes non)</div>
+          <div><span class="sw" style="background:var(--surface);border-color:var(--muted);border-style:dashed"></span>Catégorie proposée par Twiin, à valider</div>
+        </div>
+      </div>
+    </aside>
+  </div>
+</div>
+
+</div>
+<script>
+(function(){
+const NS='http://www.w3.org/2000/svg';
+const svg=document.getElementById('g');
+
+/* ---------- Données de l'exemple ---------- */
+const ROOT={x:16,y:277,w:132,h:46};
+const TOOLS={sage:{label:'Sage 100',y:100},excel:{label:'Excel',y:335},sf:{label:'Salesforce',y:520}};
+const CATS={
+  saisie:{tool:'sage',label:'Saisie de factures',y:100},
+  rapports:{tool:'excel',label:'Automatisation de rapports',y:240},
+  reception:{tool:'excel',label:'Réception de données',y:345},
+  autres:{tool:'excel',label:'Autres : notes de frais',y:430},
+  relances:{tool:'sf',label:'Relances commerciales',y:520}};
+const CASES={
+  facture:{cat:'saisie',label:'Traiter une facture fournisseur',y:100,n:14,h:497},
+  hebdo:{cat:'rapports',label:'Rapport hebdomadaire des ventes',y:205,n:6,h:21},
+  treso:{cat:'rapports',label:'Rapport mensuel de trésorerie',y:275,n:5,h:11},
+  commandes:{cat:'reception',label:'Saisir les commandes reçues en PDF',y:345,n:4,h:65},
+  notes:{cat:'autres',label:'Vérifier les notes de frais',y:430,n:2,h:7},
+  relances:{cat:'relances',label:'Relancer les devis sans réponse',y:520,n:3,h:28}};
+const SEUIL_N=10, SEUIL_H=30;
+const BR={
+  fA:{k:'A',from:'facture',y:48,t:'A · Conseil',to:'→ employée',d:'Supprimer la vérif. TVA manuelle'},
+  fB:{k:'B',from:'facture',y:100,t:'B · Outils de la DSI',to:'→ DSI',d:'n8n + Outlook : réception, approbation'},
+  fC:{k:'C',from:'facture',y:152,t:'C · Holo, dernier recours',to:'→ DSI',d:'Factures scannées vers Sage 100 sans API'},
+  rB:{k:'B',from:'group',y:216,t:'B · Outils de la DSI',to:'→ DSI',d:'API Salesforce, Power Query, envoi n8n'},
+  rC:{k:'C',from:'group',y:266,t:'C · Holo, dernier recours',to:'→ DSI',d:'Relevés du portail bancaire sans API'}};
+const CHIPS={ms:'Microsoft 365',gw:'Google Workspace',n8n:'n8n',claude:'Claude',holo:'Holo'};
+const X={tool:180,toolW:120,cat:340,catW:205,cas:585,casW:260,br:905,brW:272};
+const TH=34, CH=58, BH=44;
+
+/* employés : un point par personne, groupés par rôle */
+const GROUPS=[['facture','Comptabilité',14],['hebdo','Contrôle de gestion',6],['treso','Trésorerie',5],['commandes','ADV',4],['relances','Commerciaux',3],['notes','Assistants',2]];
+const EMPS=[]; {let x=150; GROUPS.forEach(([c,role,n],gi)=>{const x0=x; for(let i=0;i<n;i++){EMPS.push({c,x,y:600}); x+=23;} GROUPS[gi].push(x0,x-23); x+=26;});}
+const first=c=>EMPS.findIndex(e=>e.c===c);
+const range=(c,from)=>{const o=[];EMPS.forEach((e,i)=>{if(e.c===c&&i>=from)o.push(i)});return o;};
+
+/* ---------- Construction du SVG ---------- */
+function el(tag,attrs,parent,text){const e=document.createElementNS(NS,tag);for(const k in attrs)e.setAttribute(k,attrs[k]);if(text!=null)e.textContent=text;(parent||svg).appendChild(e);return e;}
+const gEdges=el('g',{}),gNodes=el('g',{}),gFx=el('g',{});
+const nodes={},edges=[],tags={};
+function curve(x1,y1,x2,y2){const m=(x1+x2)/2;return `M${x1},${y1} C${m},${y1} ${m},${y2} ${x2},${y2}`;}
+function edge(to,x1,y1,x2,y2,cls){const p=el('path',{d:curve(x1,y1,x2,y2),class:cls||'edge',pathLength:1},gEdges);edges.push({to,p});return p;}
+function tag(id,x,y){const g=el('g',{class:'tag'},gNodes);const r=el('rect',{x:0,y:y-11,height:17,rx:5},g);const t=el('text',{x:0,y:y+1,'text-anchor':'end'},g);tags[id]={g,r,t,x};}
+
+// racine
+{const g=el('g',{class:'node root'},gNodes);el('rect',{class:'box',x:ROOT.x,y:ROOT.y,width:ROOT.w,height:ROOT.h,rx:10},g);
+ el('text',{class:'lbl',x:ROOT.x+14,y:ROOT.y+20,style:'font-family:var(--f-display);font-size:15px'},g,'Acme');
+ el('text',{x:ROOT.x+14,y:ROOT.y+36,style:'font-size:11px;opacity:.75'},g,'graphe d’entreprise');nodes.root={g};}
+for(const id in TOOLS){const t=TOOLS[id];const g=el('g',{class:'node tool'},gNodes);
+ el('rect',{class:'box',x:X.tool,y:t.y-TH/2,width:X.toolW,height:TH,rx:17},g);
+ el('text',{class:'lbl',x:X.tool+X.toolW/2,y:t.y+5,'text-anchor':'middle'},g,t.label);
+ nodes['t-'+id]={g};edge('t-'+id,ROOT.x+ROOT.w,ROOT.y+ROOT.h/2,X.tool,t.y);}
+for(const id in CATS){const c=CATS[id];const g=el('g',{class:'node cat'},gNodes);
+ el('rect',{class:'box',x:X.cat,y:c.y-TH/2,width:X.catW,height:TH,rx:8},g);
+ const l=el('text',{class:'lbl',x:X.cat+12,y:c.y+4.5},g,c.label);
+ nodes['k-'+id]={g,l};edge('k-'+id,X.tool+X.toolW,TOOLS[c.tool].y,X.cat,c.y);
+ tag('k-'+id,X.cat+X.catW,c.y-TH/2-8);}
+const agg=el('text',{class:'agg',x:X.cat+12,y:CATS.rapports.y+TH/2+15},gNodes,'groupe : 11 pers · 32 h/mois');
+for(const id in CASES){const c=CASES[id];const y=c.y-CH/2,x=X.cas;const g=el('g',{class:'node case'},gNodes);
+ el('rect',{class:'box',x,y,width:X.casW,height:CH,rx:9},g);
+ el('text',{class:'lbl',x:x+12,y:y+21},g,c.label);
+ const m=el('text',{class:'meta',x:x+12,y:y+43},g);
+ const tn=el('tspan',{},m,'0');el('tspan',{},m,' pers · ');const th=el('tspan',{},m,'0');el('tspan',{},m,' h/mois');
+ el('text',{class:'barlbl',x:x+162,y:y+38},g,'pers');el('text',{class:'barlbl',x:x+162,y:y+49},g,'heures');
+ el('rect',{class:'barbg',x:x+196,y:y+33,width:52,height:5,rx:2},g);el('rect',{class:'barbg',x:x+196,y:y+44,width:52,height:5,rx:2},g);
+ const bn=el('rect',{class:'bar',x:x+196,y:y+33,width:0,height:5,rx:2},g);const bh=el('rect',{class:'bar',x:x+196,y:y+44,width:0,height:5,rx:2},g);
+ nodes['c-'+id]={g,tn,th,bn,bh};edge('c-'+id,X.cat+X.catW,CATS[c.cat].y,x,c.y);
+ tag('c-'+id,x+X.casW,y-8);}
+// accolade du groupe rapports
+const bx=X.cas+X.casW, jy=(CASES.hebdo.y+CASES.treso.y)/2;
+const bracket=el('path',{class:'bracket',d:`M${bx},${CASES.hebdo.y} H${bx+18} V${CASES.treso.y} H${bx}`},gEdges);
+// branches
+const bnodes={},bedges={};
+for(const id in BR){const b=BR[id];const g=el('g',{class:'node br '+b.k},gNodes);const y=b.y-BH/2;
+ el('rect',{class:'box',x:X.br,y,width:X.brW,height:BH,rx:9},g);
+ el('text',{class:'bt',x:X.br+12,y:y+18},g,b.t);el('text',{class:'bto',x:X.br+X.brW-10,y:y+18,'text-anchor':'end'},g,b.to);
+ el('text',{class:'bd',x:X.br+12,y:y+34},g,b.d);bnodes[id]=g;
+ const sx=b.from==='facture'?bx:bx+18, sy=b.from==='facture'?CASES.facture.y:jy;
+ bedges[id]=el('path',{class:'bedge '+b.k,d:curve(sx,sy,X.br,b.y),pathLength:1},gEdges);}
+// employés
+el('text',{class:'empttl',x:16,y:604},gNodes,'Employés');
+const empEls=EMPS.map(e=>el('circle',{class:'emp',cx:e.x,cy:e.y,r:6},gNodes));
+GROUPS.forEach(g=>el('text',{class:'grp',x:(g[3]+g[4])/2,y:628,'text-anchor':'middle'},gNodes,g[1]+' ('+g[2]+')'));
+// catalogue
+const chipsBox=document.getElementById('chips');const chipEls={};
+for(const k in CHIPS){const s=document.createElement('span');s.className='chip';s.textContent=CHIPS[k];chipsBox.appendChild(s);chipEls[k]=s;}
+
+/* ---------- Scénario ---------- */
+const rec=(e,c)=>[e,c,'rec'], too=(es,c)=>es.map(e=>[e,c,'too']);
+const STEPS=[
+ {cap:'La DSI crée le graphe d’Acme et renseigne son catalogue d’outils.',dur:3000,
+  run:s=>{s.on.add('root');s.catalog=true;log(s,'dsi','DSI','renseigne son catalogue : Microsoft 365, Google Workspace, n8n, Claude, Holo.');}},
+ {cap:'Une comptable enregistre son process une seule fois. Holo l’observe et Twiin le range : Sage 100 › Saisie de factures › cas précis.',dur:4200,
+  fx:[rec(0,'facture')],run:s=>{log(s,'emp','Comptable','enregistre « Traiter une facture fournisseur ».');log(s,'twiin','Twiin','classe le cas sous Sage 100 › Saisie de factures.');}},
+ {cap:'Le conseil A lui est proposé tout de suite : Sage 100 vérifie déjà la TVA, l’étape à la calculatrice peut sauter.',dur:3600,
+  run:s=>{s.br.add('fA');s.chips.add('claude');log(s,'twiin','Twiin → employée','conseil A : supprimer la vérification TVA manuelle, environ 3 min gagnées par facture.');}},
+ {cap:'Un commercial enregistre ses relances de devis : une branche Salesforce apparaît.',dur:3000,
+  fx:[rec(first('relances'),'relances')],run:s=>log(s,'emp','Commercial','enregistre « Relancer les devis sans réponse ».')},
+ {cap:'Une contrôleuse de gestion enregistre son rapport hebdomadaire : Excel › Automatisation de rapports.',dur:3000,
+  fx:[rec(first('hebdo'),'hebdo')],run:s=>log(s,'emp','Contrôle de gestion','enregistre « Rapport hebdomadaire des ventes ».')},
+ {cap:'Une deuxième comptable enregistre la même tâche. Twiin reconnaît un process similaire et le rattache au cas existant.',dur:3800,
+  fx:[rec(1,'facture')],run:s=>{log(s,'emp','Comptable','enregistre sa saisie de factures.');log(s,'twiin','Twiin','process similaire à 91 % : rattaché au cas existant, pas de nouveau nœud.');}},
+ {cap:'Les autres comptables se reconnaissent et cliquent « moi aussi ». Pas de nouvel enregistrement ni de nouvelle analyse : le compteur monte.',dur:5600,tween:2400,
+  fx:too(range('facture',2),'facture'),run:s=>{log(s,'emp','12 comptables','cliquent « moi aussi » sur « Traiter une facture fournisseur ».');log(s,'twiin','Twiin','12 enregistrements et 12 analyses Holo évités.');}},
+ {cap:'D’autres process arrivent. Quand rien ne correspond, Twiin propose une catégorie, en pointillés, que la DSI validera.',dur:4400,
+  fx:[rec(first('treso'),'treso'),rec(first('commandes'),'commandes'),rec(first('notes'),'notes')],
+  run:s=>{s.st['k-autres']='proposed';log(s,'emp','Trésorerie','enregistre « Rapport mensuel de trésorerie ».');log(s,'emp','ADV','enregistre « Saisir les commandes reçues en PDF ».');log(s,'twiin','Twiin','propose la catégorie « Autres : notes de frais ».');}},
+ {cap:'Les « moi aussi » s’accumulent sur les autres cas.',dur:5200,tween:2200,
+  fx:[...too(range('hebdo',first('hebdo')+1),'hebdo'),...too(range('treso',first('treso')+1),'treso'),...too(range('commandes',first('commandes')+1),'commandes'),...too(range('relances',first('relances')+1),'relances'),...too(range('notes',first('notes')+1),'notes')],
+  run:s=>log(s,'emp','15 employés','cliquent « moi aussi » sur les rapports, les commandes PDF, les relances et les notes de frais.')},
+ {cap:'Seuil de la DSI : au moins 10 personnes ET 30 h/mois. Les factures fournisseurs le franchissent avec 14 personnes et 497 h/mois.',dur:4200,
+  run:s=>{s.st['c-facture']='lit';s.hot.add('c-facture');s.hot.add('k-saisie');s.hot.add('t-sage');log(s,'twiin','Twiin','seuil franchi : « Traiter une facture fournisseur ».');}},
+ {cap:'Aucun rapport ne passe seul, mais les deux cas de la même catégorie le dépassent ensemble : 11 personnes, 32 h/mois.',dur:4400,
+  run:s=>{s.group=true;s.st['k-rapports']='lit';s.st['c-hebdo']='grouped';s.st['c-treso']='grouped';['k-rapports','c-hebdo','c-treso','t-excel'].forEach(i=>s.hot.add(i));log(s,'twiin','Twiin','regroupe les deux rapports en remontant l’arbre : seuil franchi ensemble.');}},
+ {cap:'Le reste est sous le seuil. Les 3 commerciaux sont écartés. Les commandes PDF restent sous surveillance : 4 personnes seulement, mais 65 h/mois.',dur:4600,
+  run:s=>{s.st['c-relances']='drop';s.st['c-notes']='drop';s.st['c-commandes']='watch';log(s,'twiin','Twiin','écarte les relances (3 pers) et les notes de frais (2 pers), surveille les commandes PDF.');}},
+ {cap:'La DSI valide la taxonomie proposée : accepter, renommer, fusionner, ignorer.',dur:4400,
+  run:s=>{s.tags['c-facture']='accepté';s.tags['k-rapports']='fusionnés';s.tags['k-autres']='renommé';s.tags['c-relances']='ignoré';s.rename=true;delete s.st['k-autres'];
+   log(s,'dsi','DSI','accepte « Traiter une facture fournisseur ».');log(s,'dsi','DSI','fusionne les deux rapports en un groupe.');log(s,'dsi','DSI','renomme « Autres : notes de frais » en « Notes de frais ».');log(s,'dsi','DSI','ignore « Relancer les devis ».');}},
+ {cap:'Pour les factures, B automatise avec les outils de la DSI, et C confie à Holo ce qui n’a ni API ni texte exploitable : factures scannées, Sage 100.',dur:4800,
+  run:s=>{s.br.add('fB');s.br.add('fC');['n8n','ms','holo'].forEach(c=>s.chips.add(c));log(s,'twiin','Twiin → DSI','pistes B et C pour les factures fournisseurs.');}},
+ {cap:'Pour les rapports, B passe par les API et n8n. C sert seulement au portail bancaire, qui n’a pas d’API.',dur:4400,
+  run:s=>{s.br.add('rB');s.br.add('rC');log(s,'twiin','Twiin → DSI','pistes B et C pour les rapports Excel.');}},
+ {cap:'Rapport DSI : 2 groupes retenus, 529 h/mois en jeu. Aucun nom d’employé n’y figure.',dur:3000,
+  run:s=>{s.summary=true;log(s,'twiin','Twiin → DSI','rapport envoyé : 2 groupes, 529 h/mois.');}}
+];
+function log(s,kind,who,text){s.log.push({kind,who,text});}
+
+function blank(){return{on:new Set(),count:{},eng:new Set(),st:{},hot:new Set(),br:new Set(),tags:{},chips:new Set(),log:[],catalog:false,group:false,rename:false,summary:false};}
+function build(i){const s=blank();for(const c in CASES)s.count[c]=0;
+ for(let k=0;k<=i;k++){const st=STEPS[k];(st.fx||[]).forEach(([e,c])=>{s.count[c]++;s.eng.add(e);s.on.add('c-'+c);s.on.add('k-'+CASES[c].cat);s.on.add('t-'+CATS[CASES[c].cat].tool);});st.run(s);}
+ return s;}
+
+/* ---------- Rendu ---------- */
+const disp={};for(const c in CASES)disp[c]={n:0,h:0};
+const hrs=(c,n)=>Math.round(n*CASES[c].h/CASES[c].n);
+let prevSt={},tw=null;
+function setCounters(f){for(const c in CASES){const d=disp[c],N=nodes['c-'+c];
+ N.tn.textContent=Math.round(d.n);N.th.textContent=Math.round(d.h);
+ N.bn.setAttribute('width',Math.min(1,d.n/SEUIL_N)*52);N.bh.setAttribute('width',Math.min(1,d.h/SEUIL_H)*52);
+ N.bn.classList.toggle('full',d.n>=SEUIL_N);N.bh.classList.toggle('full',d.h>=SEUIL_H);}}
+function tweenCounters(s,ms){cancelAnimationFrame(tw);const from={},to={};
+ for(const c in CASES){from[c]={...disp[c]};to[c]={n:s.count[c],h:hrs(c,s.count[c])};}
+ if(!ms){for(const c in CASES)disp[c]=to[c];setCounters();return;}
+ const t0=performance.now();const f=t=>{const k=Math.max(0,Math.min(1,(t-t0)/ms));
+  for(const c in CASES){disp[c]={n:from[c].n+(to[c].n-from[c].n)*k,h:from[c].h+(to[c].h-from[c].h)*k};}
+  setCounters();if(k<1)tw=requestAnimationFrame(f);};tw=requestAnimationFrame(f);}
+
+function render(s,i,anim,tween){
+ nodes.root.g.classList.toggle('on',s.on.has('root'));
+ for(const id in nodes){if(id==='root')continue;const g=nodes[id].g;g.classList.toggle('on',s.on.has(id));
+  const st=s.st[id]||'';['lit','watch','drop','proposed','grouped'].forEach(c=>g.classList.toggle(c,st===c));
+  if(anim&&st==='lit'&&prevSt[id]!=='lit'){g.classList.remove('flash');void g.getBBox();g.classList.add('flash');}}
+ prevSt={...s.st};
+ edges.forEach(e=>{e.p.classList.toggle('on',s.on.has(e.to));e.p.classList.toggle('hot',s.hot.has(e.to));});
+ nodes['k-autres'].l.textContent=s.rename?'Notes de frais':'Autres : notes de frais';
+ for(const id in BR){bnodes[id].classList.toggle('on',s.br.has(id));bedges[id].classList.toggle('on',s.br.has(id));}
+ bracket.classList.toggle('on',s.group);agg.classList.toggle('on',s.group);
+ for(const id in tags){const T=tags[id],txt=s.tags[id];T.g.classList.toggle('on',!!txt);
+  if(txt){T.t.textContent=txt;const w=txt.length*6.1+14;T.r.setAttribute('x',T.x-w);T.r.setAttribute('width',w);T.t.setAttribute('x',T.x-7);}}
+ empEls.forEach((e,k)=>e.classList.toggle('eng',s.eng.has(k)));
+ for(const k in chipEls)chipEls[k].classList.toggle('used',s.chips.has(k));
+ document.getElementById('cap').textContent=i<0?'Appuyez sur Lecture pour voir le graphe se construire.':STEPS[i].cap;
+ document.getElementById('stepno').textContent=i<0?'':'Étape '+(i+1)+'/'+STEPS.length;
+ const L=document.getElementById('log');L.innerHTML='';
+ s.log.slice(-8).reverse().forEach(e=>{const li=document.createElement('li');li.className=e.kind;const b=document.createElement('span');b.className='who';b.textContent=e.who;li.append(b,document.createTextNode(e.text));L.appendChild(li);});
+ document.getElementById('sumpanel').hidden=!s.summary;
+ [...document.getElementById('progress').children].forEach((b,k)=>{b.classList.toggle('done',k<i);b.classList.toggle('cur',k===i);});
+ tweenCounters(s,tween);}
+
+/* ---------- Effets : enregistrements et « moi aussi » ---------- */
+let gen=0;
+function clearFx(){gen++;gFx.innerHTML='';}
+function runFx(st){const my=gen,list=st.fx||[];if(!list.length)return;
+ const spread=list.length>1?Math.min(1800,(st.tween||1200))/speed:0;
+ list.forEach(([e,c,kind],k)=>{const delay=list.length>1?k*spread/(list.length-1):0;setTimeout(()=>{if(my!==gen)return;fly(e,c,kind,my);},delay);});}
+function fly(e,c,kind,my){const E=EMPS[e],C=CASES[c],dot=empEls[e];
+ dot.classList.remove('ping');void dot.getBBox();dot.classList.add('ping');
+ const tx=X.cas+40+(e%7)*28,ty=C.y+CH/2-2,x0=E.x,y0=E.y-8,cx=(x0+tx)/2,cy=Math.max(y0,ty)+20;
+ const g=el('g',{},gFx);const big=kind==='rec';
+ const p=el('circle',{class:'pt'+(big?' rec':''),r:big?6:4},g);const ring=big?el('circle',{class:'ring',r:6},g):null;
+ const dur=(big?1300:900)/speed,t0=performance.now();
+ const f=t=>{if(my!==gen)return;const k=Math.max(0,Math.min(1,(t-t0)/dur)),q=k<.5?2*k*k:1-Math.pow(-2*k+2,2)/2;
+  const x=(1-q)*(1-q)*x0+2*(1-q)*q*cx+q*q*tx,y=(1-q)*(1-q)*y0+2*(1-q)*q*cy+q*q*ty;
+  p.setAttribute('cx',x);p.setAttribute('cy',y);if(ring){ring.setAttribute('cx',x);ring.setAttribute('cy',y);ring.setAttribute('r',6+6*Math.abs(Math.sin(k*9)));ring.setAttribute('opacity',1-k*.6);}
+  if(k<1)requestAnimationFrame(f);else{g.remove();plus(c,big,my);}};
+ requestAnimationFrame(f);}
+function plus(c,big,my){const C=CASES[c];const t=el('text',{class:'plus'+(big?' rec':''),x:big?X.cas+X.casW-12:X.cas+X.casW-14-Math.random()*90,y:C.y-CH/2-4,'text-anchor':'end'},gFx,big?'enregistré':'+1');
+ const t0=performance.now(),f=tt=>{if(my!==gen){t.remove();return;}const k=Math.max(0,Math.min(1,(tt-t0)/900));t.setAttribute('transform',`translate(0,${-12*k})`);t.setAttribute('opacity',1-k);if(k<1)requestAnimationFrame(f);else t.remove();};requestAnimationFrame(f);}
+
+/* ---------- Lecture ---------- */
+let cur=-1,playing=false,timer=null,speed=1;
+const btnPlay=document.getElementById('play');
+const prog=document.getElementById('progress');
+STEPS.forEach((st,k)=>{const b=document.createElement('button');b.type='button';b.setAttribute('aria-label','Aller à l’étape '+(k+1));b.title='Étape '+(k+1);b.onclick=()=>{pause();clearFx();go(k,false);};prog.appendChild(b);});
+function go(i,withFx){cur=i;const s=build(i);clearFx();render(s,i,true,i>=0?((STEPS[i].tween||900)/speed):0);if(withFx&&i>=0)runFx(STEPS[i]);}
+function tick(){if(cur>=STEPS.length-1){playing=false;upd();return;}go(cur+1,true);timer=setTimeout(tick,STEPS[cur].dur/speed);}
+function play(){if(playing)return;if(cur>=STEPS.length-1)return replay();playing=true;upd();tick();}
+function pause(){playing=false;clearTimeout(timer);upd();}
+function replay(){clearTimeout(timer);clearFx();cur=-1;const s=build(-1);render(s,-1,false,0);playing=true;upd();timer=setTimeout(tick,500/speed);}
+function upd(){btnPlay.textContent=playing?'Pause':(cur>=STEPS.length-1?'Revoir':'Lecture');}
+btnPlay.onclick=()=>playing?pause():play();
+document.getElementById('replay').onclick=replay;
+document.getElementById('speed').onclick=e=>{speed=speed===1?2:1;e.currentTarget.textContent='Vitesse '+speed+'×';};
+document.addEventListener('keydown',e=>{if(e.code==='Space'&&e.target===document.body){e.preventDefault();btnPlay.click();}});
+
+// État de repos : le graphe complet, puis lecture automatique depuis le début
+go(STEPS.length-1,false);upd();
+const reduce=window.matchMedia&&matchMedia('(prefers-reduced-motion: reduce)').matches;
+if(!reduce)setTimeout(()=>{if(!playing&&cur===STEPS.length-1)replay();},1800);
+})();
+</script>
     <div class="frame tbl"><table>
-      <tr><th>Dans le graphe</th><th>Table Supabase</th><th>Lien</th></tr>
-      <tr><td>Entreprise</td><td><code>profiles.company_id</code></td><td>isole tout le reste (RLS)</td></tr>
-      <tr><td>Salarié</td><td><code>profiles</code>, <code>audits</code></td><td>« fait » une tâche</td></tr>
-      <tr><td>Tâche</td><td><code>taches</code></td><td>« utilise » un logiciel ; « ressemble à » une autre tâche (pgvector, à venir)</td></tr>
-      <tr><td>Logiciel</td><td><code>dictionnaire</code></td><td>API, page lisible ou écran seulement</td></tr>
-      <tr><td>Essai</td><td><code>tests</code></td><td>« teste » une tâche, avec sa réussite mesurée</td></tr>
-      <tr><td>Automatisation</td><td><code>automations</code>, <code>automation_runs</code></td><td>« automatise » une ou plusieurs tâches</td></tr>
+      <tr><th>Dans le graphe</th><th>Dans Supabase</th><th>Aujourd'hui</th></tr>
+      <tr><td>Entreprise</td><td><code>company_id</code> sur chaque table (RLS)</td><td>en place</td></tr>
+      <tr><td>Logiciel</td><td><code>dictionnaire</code></td><td>en place</td></tr>
+      <tr><td>Catégorie</td><td>nouvelle table, proposée par Twiin, validée par la DSI</td><td>à faire</td></tr>
+      <tr><td>Cas</td><td><code>taches</code> regroupées par similarité (pgvector)</td><td>à faire : aujourd'hui une tâche = un enregistrement</td></tr>
+      <tr><td>« Moi aussi »</td><td>lien salarié ↔ cas, sans nouvel enregistrement ni nouvelle analyse</td><td>à faire</td></tr>
+      <tr><td>Pistes A / B / C</td><td><code>recommendations</code> + <code>tests</code></td><td>en place pour une tâche ; à étendre au cas regroupé</td></tr>
     </table></div>
   </section>
 
   <footer>Page tenue à jour au fil des changements. Code : <code>hbendiab/twiin-holo</code>, branche <code>feat/decouverte-env-test</code>, détails dans <code>docs/README-decouverte.md</code>.</footer>
 </div>
 
-<script>
-(() => {
-  const cv = document.getElementById('g');
-  const ctx = cv.getContext('2d');
-  const cap = document.getElementById('gcap');
-  const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-  const css = (v) => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
-  const KINDS = {
-    co:   { label: 'Entreprise', color: '--accent', r: 15 },
-    emp:  { label: 'Salarié', color: '--post', r: 10 },
-    task: { label: 'Tâche', color: '--srv', r: 11 },
-    sw:   { label: 'Logiciel', color: '--ext', r: 8 },
-    test: { label: 'Essai', color: '--dim', r: 4 },
-    auto: { label: 'Automatisation', color: '--db', r: 12 },
-  };
-  // Données fictives : une entreprise, trois salariés, trois tâches dont deux identiques
-  const N = [
-    ['co', 'Exemple SAS', 0], ['emp', 'Comptable', 1], ['emp', 'Acheteur', 1], ['emp', 'Assistante', 1],
-    ['sw', 'QONTA', 1], ['sw', 'Excel', 1], ['sw', 'Outlook', 1], ['sw', 'Sites marchands', 1],
-    ['task', 'Saisir une facture', 2], ['task', 'Comparer 3 sites', 2], ['task', 'Saisir une facture', 5],
-    ['auto', 'Saisie facture (Holo invisible)', 4], ['auto', 'Comparatif → Excel (n8n)', 4],
-  ];
-  const nodes = N.map(([k, name, ph], i) => ({ id: i, k, name, ph, x: 0, y: 0, vx: 0, vy: 0 }));
-  const E = [[0,1,'emploie',0],[0,2,'emploie',0],[0,3,'emploie',0],[1,8,'fait',0],[2,9,'fait',0],[3,10,'fait',0],
-    [8,4,'utilise',0],[8,6,'utilise',0],[9,7,'utilise',0],[9,5,'utilise',0],[10,4,'utilise',0],
-    [11,8,'automatise',0],[12,9,'automatise',0],[10,8,'ressemble à',5],[11,10,'automatise',5]];
-  [8, 9].forEach((t) => { for (let j = 0; j < 5; j++) {
-    const id = nodes.length;
-    nodes.push({ id, k: 'test', name: j < 3 ? `Essai conseil ${j + 1}` : `Essai automatisation ${j - 2}`, ph: 3, x: 0, y: 0, vx: 0, vy: 0 });
-    E.push([id, t, 'teste', 0]); } });
-  const edges = E.map(([a, b, rel, p]) => ({ a: nodes[a], b: nodes[b], rel, ph: Math.max(nodes[a].ph, nodes[b].ph, p) }));
-  const PHASES = [
-    'Une entreprise rejoint Twiin.',
-    '<b>Audit des postes</b> : les salariés et leurs logiciels apparaissent.',
-    '<b>Enregistrement</b> : chaque tâche est reliée à son salarié et aux logiciels qu\'elle utilise.',
-    '<b>5 essais par tâche</b> : 3 « conseil » et 2 « automatisation », chacun mesuré.',
-    '<b>Automatisation livrée</b> : la meilleure solution testée devient un workflow n8n.',
-    '<b>Tâche identique repérée</b> : l\'assistante saisit aussi des factures, la même automatisation la sert.',
-  ];
-  const LAST = PHASES.length - 1;
-  let W = 0, H = 0, phase = LAST, phaseT = 0, building = false, paused = false, hover = null;
-  const t0 = performance.now();
-  document.getElementById('glegend').innerHTML = Object.values(KINDS)
-    .map((k) => `<span><i class="sw" style="background:var(${k.color})"></i>${k.label}</span>`).join('');
 
-  function size() {
-    const dpr = Math.min(window.devicePixelRatio || 1, 2);
-    W = cv.clientWidth; H = cv.clientHeight;
-    cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr); ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-  }
-  function seed() {
-    nodes.forEach((n, i) => { const a = i * 2.399, r = 30 + 16 * Math.sqrt(i);
-      n.x = W / 2 + Math.cos(a) * r; n.y = H / 2 + Math.sin(a) * r * 0.7; n.vx = n.vy = 0; });
-  }
-  const visible = (n) => n.ph <= phase;
-  const live = (e) => e.ph <= phase;
-  function step() {
-    const vis = nodes.filter(visible);
-    const k = Math.min(1, W / 700);
-    for (const a of vis) {
-      for (const b of vis) { if (a === b) continue;
-        const dx = a.x - b.x, dy = a.y - b.y, d2 = dx * dx + dy * dy + 1, f = 46 * k / d2;
-        a.vx += dx * f; a.vy += dy * f; }
-      a.vx += (W / 2 - a.x) * 0.002; a.vy += (H / 2 - a.y) * 0.003;
-    }
-    for (const e of edges) { if (!live(e)) continue;
-      const L = (e.rel === 'teste' ? 34 : e.rel === 'ressemble à' ? 110 : 80) * (0.6 + 0.4 * k);
-      const dx = e.b.x - e.a.x, dy = e.b.y - e.a.y, d = Math.hypot(dx, dy) || 1, f = (d - L) * 0.015;
-      e.a.vx += dx / d * f; e.a.vy += dy / d * f; e.b.vx -= dx / d * f; e.b.vy -= dy / d * f; }
-    for (const n of vis) { n.vx *= 0.8; n.vy *= 0.8; n.x += n.vx; n.y += n.vy;
-      const r = KINDS[n.k].r + 8; n.x = Math.max(r + 40, Math.min(W - r - 40, n.x)); n.y = Math.max(r + 18, Math.min(H - r, n.y)); }
-  }
-  function linked(n) { const s = new Set([n]); edges.forEach((e) => { if (!live(e)) return; if (e.a === n) s.add(e.b); if (e.b === n) s.add(e.a); }); return s; }
-  function draw(now) {
-    ctx.clearRect(0, 0, W, H);
-    const ink = css('--ink'), dim = css('--dim'), line = css('--line'), panel = css('--panel'), srv = css('--srv');
-    const hl = hover ? linked(hover) : null;
-    for (const e of edges) { if (!live(e)) continue;
-      const on = !hl || (hl.has(e.a) && hl.has(e.b)), sim = e.rel === 'ressemble à';
-      ctx.strokeStyle = sim ? srv : on ? dim : line;
-      ctx.globalAlpha = on ? (e.rel === 'teste' ? 0.35 : 0.55) : 0.12;
-      ctx.lineWidth = sim ? 1.6 : 1;
-      ctx.setLineDash(sim ? [5, 4] : []);
-      ctx.beginPath(); ctx.moveTo(e.a.x, e.a.y); ctx.lineTo(e.b.x, e.b.y); ctx.stroke();
-      ctx.setLineDash([]);
-      if (!reduce && on && e.rel !== 'emploie' && !sim) { // échanges qui circulent sur les liens
-        const speed = e.rel === 'teste' ? 0.0007 : 0.00042, p = ((now - t0) * speed + e.a.id * 0.137) % 1;
-        const from = e.rel === 'teste' || e.rel === 'automatise' ? e.a : e.b, to = from === e.a ? e.b : e.a;
-        ctx.globalAlpha = 0.95; ctx.fillStyle = css(KINDS[from.k].color);
-        ctx.beginPath(); ctx.arc(from.x + (to.x - from.x) * p, from.y + (to.y - from.y) * p, 2.4, 0, Math.PI * 2); ctx.fill(); }
-    }
-    for (const n of nodes) { if (!visible(n)) continue;
-      const K = KINDS[n.k], on = !hl || hl.has(n);
-      const born = building && n.ph === phase ? Math.min(1, (now - phaseT) / 500) : 1;
-      const r = Math.max(0.1, K.r * born * (n.k === 'auto' && !reduce ? 1 + 0.07 * Math.sin(now / 380) : 1));
-      ctx.globalAlpha = on ? 1 : 0.25;
-      if (n.k === 'auto' || n.k === 'co') { ctx.fillStyle = css(K.color); ctx.globalAlpha *= 0.18;
-        ctx.beginPath(); ctx.arc(n.x, n.y, r + 7, 0, Math.PI * 2); ctx.fill(); ctx.globalAlpha = on ? 1 : 0.25; }
-      ctx.fillStyle = css(K.color); ctx.strokeStyle = panel; ctx.lineWidth = 2;
-      ctx.beginPath(); ctx.arc(n.x, n.y, r, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
-      if (n.k !== 'test' || hover === n) {
-        ctx.font = (n.k === 'co' ? '600 13px ' : '500 12px ') + '"IBM Plex Sans", "Segoe UI", sans-serif';
-        ctx.fillStyle = on ? ink : dim; ctx.textAlign = 'center';
-        const half = ctx.measureText(n.name).width / 2 + 4;
-        ctx.fillText(n.name, Math.max(half, Math.min(W - half, n.x)), n.y - r - 7);
-      }
-    }
-    ctx.globalAlpha = 1;
-  }
-  function loop(now) {
-    if (!paused) {
-      if (building && now - phaseT > 2600) {
-        if (phase < LAST) { phase++; phaseT = now; cap.innerHTML = PHASES[phase]; } else building = false;
-      }
-      step(); draw(now);
-    }
-    requestAnimationFrame(loop);
-  }
-  function settle() { for (let i = 0; i < 500; i++) step(); }
-  size(); seed(); settle(); draw(performance.now());
-  window.addEventListener('resize', () => { size(); settle(); draw(performance.now()); });
-  if (!reduce) requestAnimationFrame(loop);
-
-  const pb = document.getElementById('gpause');
-  document.getElementById('gplay').onclick = () => {
-    paused = false; pb.textContent = 'Pause'; pb.setAttribute('aria-pressed', 'false');
-    if (reduce) { cap.innerHTML = PHASES.join(' '); return; }
-    phase = 0; phaseT = performance.now(); building = true; seed(); cap.innerHTML = PHASES[0];
-  };
-  pb.onclick = () => { paused = !paused; pb.textContent = paused ? 'Reprendre' : 'Pause'; pb.setAttribute('aria-pressed', String(paused)); };
-  function pick(ev) {
-    const r = cv.getBoundingClientRect(), x = ev.clientX - r.left, y = ev.clientY - r.top;
-    let best = null, bd = 22;
-    for (const n of nodes) { if (!visible(n)) continue; const d = Math.hypot(n.x - x, n.y - y); if (d < bd) { bd = d; best = n; } }
-    return best;
-  }
-  cv.addEventListener('pointermove', (ev) => {
-    hover = pick(ev);
-    if (hover && !building) {
-      const rels = edges.filter((e) => live(e) && (e.a === hover || e.b === hover))
-        .map((e) => `${e.rel} ${(e.a === hover ? e.b : e.a).name}`);
-      cap.innerHTML = `<b>${KINDS[hover.k].label} · ${hover.name}</b> : ${[...new Set(rels)].slice(0, 6).join(' · ')}`;
-    }
-    if (reduce || paused) draw(performance.now());
-  });
-  cv.addEventListener('pointerleave', () => { hover = null; if (reduce || paused) draw(performance.now()); });
-})();
-</script>
