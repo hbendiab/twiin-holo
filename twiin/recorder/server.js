@@ -1672,6 +1672,42 @@ app.post('/api/automations/:id/schedule', async (req, res) => {
   }
 });
 
+// --- Mise en service (DSI) : les autorisations à donner UNE fois pour toute l'entreprise, déduites des audits des postes --
+const SETUP_FAMILIES = [
+  { key: 'microsoft', label: 'Microsoft 365', match: /microsoft 365|office|excel|word|outlook|onedrive|teams|sharepoint|microsoft-graph/i,
+    how: 'Une application dans Entra ID (annuaire Microsoft) + « consentement administrateur », une seule fois pour toute l\'entreprise.',
+    covers: 'Excel, Outlook, Teams, OneDrive, SharePoint', types: /^microsoft/i },
+  { key: 'google', label: 'Google Workspace', match: /google workspace|google drive|gmail|google sheets|google docs|google agenda|google-workspace/i,
+    how: 'Un compte de service avec « délégation à l\'échelle du domaine », autorisé une fois par l\'admin Google.',
+    covers: 'Sheets, Gmail, Drive, Agenda', types: /^google/i },
+];
+const NOT_BUSINESS = /chrome|edge|firefox|safari|navigateur|python|node\.js|visual studio|vs code|cursor|docker|sql server|odbc|ole db|driver|nvidia|mcafee|webadvisor|installer|launcher|compatibility|photos|steam|game|jeu/i;
+app.get('/api/setup', async (req, res) => {
+  try {
+    const dirs = fs.existsSync(AUDIT_DIR) ? fs.readdirSync(AUDIT_DIR).sort() : [];
+    const audit = dirs.length ? readJson(path.join(AUDIT_DIR, dirs.at(-1), 'audit_poste.json')) : null;
+    if (!audit) return res.json({ audit: null });
+    let creds = [];
+    try { creds = (await n8nApi('/credentials?limit=100')).data || []; } catch { /* n8n arrêté */ }
+    const tools = audit.tools.map((t) => ({ name: t.app, connector: t.connector, api: t.api === 'oui', category: t.category,
+                                            label: `${t.app} ${t.connector || ''} ${(t.components || []).map((c) => c.name).join(' ')}` }));
+    const families = SETUP_FAMILIES.map((f) => {
+      const found = tools.filter((t) => f.match.test(t.label));
+      const ok = creds.filter((c) => f.types.test(c.type || ''));
+      return { key: f.key, label: f.label, how: f.how, covers: f.covers, tools: found.map((t) => t.name), connected: ok.length > 0,
+               credentials: ok.map((c) => c.name) };
+    }).filter((f) => f.tools.length);
+    const inFamily = (t) => SETUP_FAMILIES.some((f) => f.match.test(t.label));
+    const others = tools.filter((t) => t.api && t.connector && !inFamily(t) && !NOT_BUSINESS.test(t.label) && t.connector !== 'n8n')
+      .map((t) => ({ name: t.name, connector: t.connector, connected: creds.some((c) => (c.type || '').toLowerCase().includes(t.connector.split('-')[0])) }));
+    const screen = tools.filter((t) => !t.api && !inFamily(t) && !NOT_BUSINESS.test(t.label)).map((t) => t.name);
+    const total = families.reduce((n, f) => n + f.tools.length, 0) + others.length;
+    res.json({ audit: { at: audit.generated_at, outils: audit.summary.outils }, families, others, screen,
+               coverage: total ? Math.round((100 * families.reduce((n, f) => n + f.tools.length, 0)) / total) : 0,
+               n8n_credentials_url: `${N8N_URL}/home/credentials`, credentials: creds.map((c) => ({ name: c.name, type: c.type })) });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 // Réessayer la création d'une automatisation qui avait échoué (après avoir ajouté la connexion dans n8n, par exemple).
 app.post('/api/automations/:id/retry', async (req, res) => {
   const f = readFailed().find((x) => x.id === req.params.id);

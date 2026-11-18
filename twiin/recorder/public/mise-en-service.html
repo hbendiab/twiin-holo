@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Twiin · Mise en service</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Google+Sans+Flex:wght@300;400;500;600;700&display=swap">
+<link rel="stylesheet" href="pages.css">
+<style>
+  .fam { display: grid; gap: 14px; margin-top: 18px; }
+  .fcard { background: var(--panel); border: 1px solid var(--panel-border); border-radius: 14px; padding: 16px 18px; display: grid; gap: 8px; }
+  .fcard h3 { margin: 0; font-size: 16px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+  .fcard p { margin: 0; font-size: 14px; color: var(--text-dim); }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+  .chips span { font-size: 12px; padding: 3px 10px; border-radius: 999px; background: var(--panel-2); color: var(--text-dim); }
+  .kpi { font-size: 28px; font-weight: 600; }
+  ol.how { margin: 4px 0 0; padding-left: 20px; font-size: 13.5px; display: grid; gap: 4px; }
+</style>
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="/"><span id="logoCells"></span><span>Tw<b>ii</b>n</span></a>
+    <nav class="nav"><a href="/#enregistrer">Analyser une tâche</a><a href="/videos.html">Mes vidéos</a><a href="/automatisations.html">Mes automatisations</a><a href="/back.html" class="nav-back">Back</a><a href="/mise-en-service.html" aria-current="page">Mise en service</a></nav>
+    <button id="themeBtn" type="button">Thème sombre</button>
+  </header>
+
+  <h1>Mise en service</h1>
+  <p class="lead">Pour la DSI, une seule fois pour toute l'entreprise : les autorisations qui permettent à Twiin d'automatiser
+    les logiciels réellement utilisés, déduites des audits des postes. Les salariés n'ont ensuite rien à configurer.</p>
+  <div id="out"><p class="meta">Chargement…</p></div>
+
+<script src="/vendor/supabase/supabase.js"></script>
+  <script src="auth.js"></script>
+  <script src="common.js"></script>
+<script>
+window.addEventListener('load', async () => {
+  const out = document.getElementById('out');
+  const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const pill = (ok) => ok ? '<span class="pill on">Connecté</span>' : '<span class="pill bad">À autoriser</span>';
+  try {
+    const d = await (await fetch('/api/setup')).json();
+    if (d.error) throw new Error(d.error);
+    if (!d.audit) { out.innerHTML = '<p class="meta">Pas encore d\'audit de poste : lance « Les logiciels de ton poste » à l\'étape Audit.</p>'; return; }
+    out.innerHTML = `
+      <p class="meta">D'après l'audit du ${new Date(d.audit.at).toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' })}
+        (${d.audit.outils} logiciels sur le poste). Pour l'entreprise, Twiin regroupera les audits de tous les postes.</p>
+      <div class="fcard"><span class="meta">Logiciels métier couverts par ${d.families.length} autorisation${d.families.length > 1 ? 's' : ''} d'éditeur</span>
+        <span class="kpi">${d.coverage} %</span></div>
+      <div class="fam">
+        ${d.families.map((f) => `<div class="fcard">
+          <h3>${esc(f.label)} ${pill(f.connected)}</h3>
+          <p>${esc(f.how)}</p>
+          <p>Couvre : ${esc(f.covers)}. Trouvé sur ce poste :</p>
+          <div class="chips">${f.tools.map((t) => `<span>${esc(t)}</span>`).join('')}</div>
+          ${f.connected ? `<p>Connexion n8n : ${f.credentials.map(esc).join(', ')}</p>` : `<ol class="how">
+            <li>La DSI crée l'autorisation chez ${esc(f.label.split(' ')[0])} (une fois).</li>
+            <li>Elle colle l'identifiant et le secret obtenus dans le n8n de l'entreprise : <a href="${d.n8n_credentials_url}" target="_blank" rel="noopener">ouvrir les connexions n8n</a>.</li>
+            <li>Twiin les réutilise ensuite pour toutes les automatisations et tous les salariés.</li></ol>`}
+        </div>`).join('')}
+        ${d.others.length ? `<div class="fcard"><h3>Autres outils avec API</h3>
+          <p>Une installation « niveau espace de travail » par outil, faite par l'admin de l'outil (une fois).</p>
+          <div class="chips">${d.others.map((o) => `<span>${esc(o.name)} · ${o.connected ? 'connecté' : 'à autoriser'}</span>`).join('')}</div></div>` : ''}
+        ${d.screen.length ? `<div class="fcard"><h3>Logiciels sans API</h3>
+          <p>Aucune autorisation possible : Holo les utilise à l'écran (dans un environnement isolé), avec le coffre de mots de passe de l'entreprise.</p>
+          <div class="chips">${d.screen.map((t) => `<span>${esc(t)}</span>`).join('')}</div></div>` : ''}
+      </div>`;
+  } catch (e) { out.innerHTML = `<p class="meta">Mise en service indisponible : ${esc(e.message)}</p>`; }
+});
+</script>
+</body>
+</html>
