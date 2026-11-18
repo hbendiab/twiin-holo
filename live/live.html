@@ -1,0 +1,194 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Twiin Live</title>
+<style>
+  :root { --bg:#0e1014; --card:#171a21; --line:#272b35; --fg:#e8eaed; --muted:#9aa0a6;
+          --cap:#4ea1ff; --think:#b388ff; --dec:#ff6b5b; --act:#ffd166; --nav:#36d399; --bad:#ea4335; }
+  * { box-sizing:border-box; }
+  body { margin:0; font:14px/1.5 system-ui, -apple-system, sans-serif; background:var(--bg); color:var(--fg); }
+  header { display:flex; flex-wrap:wrap; gap:12px 20px; align-items:center; padding:14px 20px; border-bottom:1px solid var(--line); }
+  header h1 { margin:0; font-size:18px; } header h1 span { color:var(--dec); }
+  #task { flex:1; min-width:240px; color:var(--muted); }
+  .pill { padding:3px 12px; border-radius:99px; background:var(--line); font-weight:600; font-size:12px; white-space:nowrap; }
+  .pill.run { background:var(--think); color:#000; } .pill.ok { background:var(--nav); color:#000; } .pill.ko { background:var(--bad); }
+  main { display:grid; grid-template-columns:minmax(0,1.6fr) minmax(320px,1fr); gap:18px; padding:18px 20px; height:calc(100vh - 62px); }
+  @media (max-width: 960px) { main { grid-template-columns:1fr; height:auto; padding:12px; } }
+  .card { background:var(--card); border-radius:12px; padding:14px; }
+  h2 { font-size:12px; text-transform:uppercase; letter-spacing:.08em; color:var(--muted); margin:0 0 10px; }
+  /* cycle */
+  .cycle { display:flex; gap:6px; flex-wrap:wrap; margin-bottom:12px; }
+  .ph { flex:1; min-width:110px; padding:8px 10px; border-radius:10px; border:1px solid var(--line); color:var(--muted); font-weight:600; transition:all .25s; }
+  .ph small { display:block; font-weight:400; font-size:11px; }
+  .ph.on { color:#000; transform:translateY(-2px); }
+  .ph.capture.on { background:var(--cap); } .ph.thinking.on { background:var(--think); }
+  .ph.decision.on { background:var(--dec); } .ph.action.on { background:var(--act); } .ph.navigation.on { background:var(--nav); }
+  /* écran */
+  .screen { position:relative; border-radius:10px; overflow:hidden; border:1px solid var(--line); background:#000; }
+  .bar { display:flex; gap:8px; align-items:center; padding:6px 10px; background:#22262f; font:12px ui-monospace, monospace; color:#cfd3d8; }
+  .bar i { width:10px; height:10px; border-radius:50%; background:#444; display:inline-block; }
+  #url { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  #screen { display:block; width:100%; aspect-ratio:1280/800; object-fit:contain; background:#0b0c0f; }
+  #caption { margin-top:10px; font-size:15px; min-height:46px; }
+  #caption .why { color:var(--muted); font-style:italic; display:block; font-size:13px; }
+  .left { display:flex; flex-direction:column; min-height:0; }
+  /* fil */
+  .feed { overflow:auto; min-height:0; display:flex; flex-direction:column; }
+  #feed { flex:1; overflow:auto; padding-right:4px; }
+  .ev { display:grid; grid-template-columns:30px 1fr auto; gap:8px; padding:9px 4px; border-top:1px solid var(--line); animation:in .35s ease; }
+  .ev:first-child { border-top:0; }
+  @keyframes in { from { opacity:0; transform:translateX(10px); } to { opacity:1; transform:none; } }
+  .ic { width:30px; height:30px; border-radius:8px; display:grid; place-items:center; font-size:16px; background:var(--line); }
+  .ev .t { color:var(--muted); font-size:11px; font-variant-numeric:tabular-nums; }
+  .ev .k { font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.05em; }
+  .ev .why { color:var(--muted); font-style:italic; font-size:12.5px; }
+  .ev img { margin-top:6px; width:150px; border-radius:6px; border:1px solid var(--line); cursor:zoom-in; display:block; }
+  .ev.capture .k { color:var(--cap); } .ev.thinking .k { color:var(--think); } .ev.decision .k { color:var(--dec); }
+  .ev.navigation .k { color:var(--nav); } .ev.blocked .k, .ev.error .k { color:var(--bad); } .ev.draft .k, .ev.done .k { color:var(--nav); }
+  .ev.vault .k { color:var(--act); }
+  .verify { margin-top:6px; padding:10px; border-radius:8px; white-space:pre-wrap; font:12px/1.5 ui-monospace, monospace; }
+  .verify.ok { background:#0f3a26; } .verify.ko { background:#3d1512; }
+  .muted { color:var(--muted); }
+  .left { overflow:auto; }
+  .chrono { display:flex; gap:24px; align-items:flex-end; flex-wrap:wrap; margin-bottom:10px; }
+  .big { font-size:34px; font-weight:800; font-variant-numeric:tabular-nums; line-height:1; }
+  .big small { font-size:13px; font-weight:500; color:var(--muted); display:block; margin-top:4px; }
+  table.hist { width:100%; border-collapse:collapse; font-size:12.5px; font-variant-numeric:tabular-nums; }
+  table.hist th { text-align:left; color:var(--muted); font-weight:600; padding:4px 6px; border-bottom:1px solid var(--line); }
+  table.hist td { padding:5px 6px; border-bottom:1px solid var(--line); }
+</style>
+</head>
+<body>
+<header>
+  <h1>Twiin <span>Live</span></h1>
+  <div id="task">En attente de l'agent…</div>
+  <span id="step" class="pill">étape 0</span>
+  <span id="clock" class="pill">0,0 s</span>
+  <span id="status" class="pill run">en cours</span>
+</header>
+<main>
+  <section class="left">
+    <div class="cycle">
+      <div class="ph capture">📸 Capture<small>l'agent prend une photo de l'écran</small></div>
+      <div class="ph thinking">🧠 Réflexion<small>Holo analyse la photo</small></div>
+      <div class="ph decision">🎯 Décision<small>où cliquer / quoi écrire</small></div>
+      <div class="ph action">▶️ Action<small>il agit dans la fenêtre</small></div>
+      <div class="ph navigation">➡️ Page<small>il change de page</small></div>
+    </div>
+    <div class="screen">
+      <div class="bar"><i></i><i></i><i></i><span id="url">—</span></div>
+      <img id="screen" alt="Ce que voit l'agent">
+    </div>
+    <div class="card" style="margin-top:12px">
+      <h2>⏱️ Temps de saisie d'une facture</h2>
+      <div class="chrono">
+        <div class="big" id="cur">—<small>ce run (de la 1re capture au brouillon)</small></div>
+        <div class="big" id="avg" style="color:var(--nav)">—<small>moyenne des saisies réussies</small></div>
+        <div class="big" id="perstep" style="color:var(--think)">—<small>par étape (dont ~6,5 s imposées par la limite gratuite)</small></div>
+      </div>
+      <table class="hist"><thead><tr><th>Run</th><th>Facture</th><th>Résultat</th><th>Durée</th><th>Étapes</th><th>Temps Holo</th></tr></thead><tbody id="hist"></tbody></table>
+    </div>
+    <div id="caption" class="card" style="margin-top:12px">Le navigateur de l'agent s'ouvre dans une autre fenêtre. Ici, tu vois ce qu'il voit et ce qu'il décide.</div>
+  </section>
+  <section class="card feed">
+    <h2>Ce que fait l'agent, étape par étape</h2>
+    <div id="feed"></div>
+  </section>
+</main>
+<script>
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const META = {
+  task: ["📋", "Mission"], vault: ["🔐", "Connexion"], capture: ["📸", "Capture d'écran"], thinking: ["🧠", "Réflexion"],
+  decision: ["🎯", "Décision"], navigation: ["➡️", "Nouvelle page"], blocked: ["🛑", "Bloqué"], dialog: ["💬", "Fenêtre"],
+  draft: ["✅", "Brouillon enregistré"], done: ["🏁", "Terminé"], verify: ["🔎", "Vérification"], error: ["⚠️", "Problème"],
+  info: ["ℹ️", "Info"], end: ["⏹", "Fin"], stats: ["📊", "Bilan"],
+};
+let since = 0, t0 = Date.now(), running = true, lastT = 0, startT = null, endT = null;
+const fmt = (s) => s == null ? "—" : (s >= 60 ? `${Math.floor(s / 60)} min ${String(Math.round(s % 60)).padStart(2, "0")} s` : `${s.toFixed(0)} s`);
+async function loadHistory() {
+  try {
+    const h = await (await fetch("/history")).json();
+    const ok = h.filter((r) => r.ok && r.seconds);
+    if (ok.length) {
+      $("avg").firstChild.textContent = fmt(ok.reduce((a, r) => a + r.seconds, 0) / ok.length);
+      $("perstep").firstChild.textContent = (ok.reduce((a, r) => a + r.per_step, 0) / ok.length).toFixed(1).replace(".", ",") + " s";
+    }
+    $("hist").innerHTML = h.slice(0, 8).map((r) => `<tr><td class="muted">${esc(r.run.slice(9, 11) + ":" + r.run.slice(11, 13))}${r.vision === "focus" ? " · zone" : ""}</td>` +
+      `<td>${esc(r.invoice)}</td><td>${r.ok ? "✅ brouillon" : "❌ échec"}</td><td>${fmt(r.seconds)}</td><td>${r.steps}</td>` +
+      `<td>${r.holo_seconds != null ? fmt(r.holo_seconds) : "—"}</td></tr>`).join("") || `<tr><td colspan="6" class="muted">Aucun run terminé.</td></tr>`;
+  } catch (_) {}
+}
+loadHistory();
+
+function phase(p) {
+  document.querySelectorAll(".ph").forEach((el) => el.classList.toggle("on", el.classList.contains(p)));
+}
+function show(img, url) {
+  if (img) $("screen").src = img;
+  if (url) $("url").textContent = url;
+}
+
+function render(e) {
+  const [icon, label] = META[e.kind] || ["•", e.kind];
+  let body = "";
+  const m = e.tokens || e.latency ? `<div class="muted" style="font-size:11.5px">🧮 ${esc(e.px || "")} · ${esc(e.tokens ?? "?")} tokens · ${esc(e.latency ?? "?")} s</div>` : "";
+  if (e.kind === "capture") body = `<div class="muted">${esc(e.title || "")}</div>${e.text ? `<div style="font-size:12.5px;color:var(--cap)">${esc(e.text)}</div>` : ""}`;
+  else if (e.kind === "decision") body = `<b>${esc(e.text)}</b>${e.reason ? `<div class="why">« ${esc(e.reason)} »</div>` : ""}${m}`;
+  else if (e.kind === "stats") body = `<div class="verify ok" style="background:#1d2340">${esc(e.text)}\nDurée totale : ${esc(e.seconds)} s</div>`;
+  else if (e.kind === "navigation") body = `<b>${esc(e.title || "")}</b><div class="muted" style="word-break:break-all">${esc(e.url)}</div>`;
+  else if (e.kind === "done") body = `${esc(e.text)}${e.reason ? `<div class="why">« ${esc(e.reason)} »</div>` : ""}`;
+  else if (e.kind === "verify") body = `<div class="verify ${e.ok ? "ok" : "ko"}">${esc(e.text)}</div>`;
+  else body = esc(e.text || "");
+  const img = e.img ? `<img src="${esc(e.img)}" data-url="${esc(e.url || "")}">` : "";
+  const step = e.step ? ` · étape ${e.step}` : "";
+  const div = document.createElement("div");
+  div.className = "ev " + e.kind;
+  div.innerHTML = `<div class="ic">${icon}</div><div><div class="k">${label}${step}</div>${body}${img}</div><div class="t">${e.t.toFixed(1)} s</div>`;
+  div.querySelectorAll("img").forEach((im) => im.onclick = () => show(im.src, im.dataset.url));
+  $("feed").appendChild(div);
+  $("feed").scrollTop = $("feed").scrollHeight;
+}
+
+function apply(e) {
+  render(e);
+  lastT = e.t;
+  if (e.step) $("step").textContent = "étape " + e.step;
+  switch (e.kind) {
+    case "task": $("task").textContent = e.text; break;
+    case "vault": phase(""); show(null, e.url); break;
+    case "capture": if (startT == null) startT = e.t; phase("capture"); show(e.img, e.url);
+      $("caption").innerHTML = `📸 L'agent vient de prendre une capture de l'écran <span class="why">${esc(e.text || e.title || "")}${e.zone ? " — le cadre bleu = la seule partie envoyée à Holo" : ""}</span>`; break;
+    case "thinking": phase("thinking"); $("caption").innerHTML = `🧠 Holo regarde la capture et réfléchit…`; break;
+    case "decision": phase("decision"); if (e.img) show(e.img);
+      $("caption").innerHTML = `🎯 <b>${esc(e.text)}</b>${e.reason ? `<span class="why">« ${esc(e.reason)} »</span>` : ""}`;
+      setTimeout(() => { if (document.querySelector(".ph.decision.on")) phase("action"); }, 900); break;
+    case "navigation": phase("navigation"); show(null, e.url); break;
+    case "blocked": $("caption").innerHTML = `🛑 <b>${esc(e.text)}</b>`; break;
+    case "draft": endT = e.t; $("cur").firstChild.textContent = fmt(endT - startT);
+      if (e.kind === "draft") $("cur").style.color = "var(--nav)";
+    case "done": phase(""); $("caption").innerHTML = `✅ <b>${esc(e.text)}</b>`; break;
+    case "verify": $("status").textContent = e.ok ? "vérifié ✓" : "à revoir"; $("status").className = "pill " + (e.ok ? "ok" : "ko"); break;
+    case "end": running = false; phase(""); if (endT == null && startT != null) $("cur").firstChild.textContent = fmt(lastT - startT) + " ✗"; loadHistory(); break;
+  }
+}
+
+async function poll() {
+  try {
+    const evs = await (await fetch(`/events?since=${since}`)).json();
+    if (since === 0 && evs.length) t0 = Date.now() - evs[evs.length - 1].t * 1000;
+    evs.forEach(apply);
+    since += evs.length;
+  } catch (_) { /* serveur arrêté */ }
+  if (running) setTimeout(poll, 400);
+}
+setInterval(() => {
+  if (running && startT != null && endT == null) $("cur").firstChild.textContent = fmt((Date.now() - t0) / 1000 - startT);
+}, 250);
+setInterval(() => { if (running) $("clock").textContent = ((Date.now() - t0) / 1000).toFixed(1).replace(".", ",") + " s"; }, 100);
+poll();
+</script>
+</body>
+</html>

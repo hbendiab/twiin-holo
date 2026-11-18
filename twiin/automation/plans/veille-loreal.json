@@ -1,0 +1,85 @@
+{
+  "id": "twiinVeilleLoreal",
+  "name": "Veille L'Oréal (LinkedIn → Google Sheets → OneNote)",
+  "schedule_cron": "0 9 * * 1",
+  "blocks": [
+    {
+      "type": "holo",
+      "name": "Holo — lire LinkedIn",
+      "steps": [
+        "In Google Chrome, open https://www.linkedin.com/company/loreal/about/ (the « À propos » tab of the L'Oréal company page). Read the page only: do not follow, message or click any button other than navigation. Copy every value EXACTLY as written on the page, character by character (accents, plural, spaces)."
+      ],
+      "expect": {
+        "entreprise": "company name",
+        "secteur": "sector / industry as written on the page",
+        "siege": "headquarters city",
+        "taille": "company size EXACTLY as written in the « Taille de l'entreprise » field of the « À propos » tab (e.g. « 10 001 employés et plus »), NOT the short summary at the top of the page",
+        "abonnes": "number of followers as written",
+        "description": "first two sentences of the « Vue d'ensemble » text"
+      }
+    },
+    {
+      "type": "row",
+      "name": "Préparer la ligne",
+      "fields": {
+        "Entreprise": "{{Holo — lire LinkedIn.entreprise}}",
+        "Secteur": "{{Holo — lire LinkedIn.secteur}}",
+        "Siège": "{{Holo — lire LinkedIn.siege}}",
+        "Taille": "{{Holo — lire LinkedIn.taille}}",
+        "Abonnés": "{{Holo — lire LinkedIn.abonnes}}",
+        "Date": "{{today}}",
+        "Source": "LinkedIn, lu par Holo",
+        "Exécution n8n": "{{execution}}"
+      }
+    },
+    {
+      "type": "verify",
+      "name": "Vérifier les valeurs",
+      "rules": {
+        "Entreprise": {
+          "required": true
+        },
+        "Secteur": {
+          "required": true
+        },
+        "Siège": {
+          "required": true
+        },
+        "Taille": {
+          "required": true,
+          "pattern": "employés et plus|^\\d[\\d\\s]*\\s*-\\s*\\d"
+        },
+        "Abonnés": {
+          "required": true,
+          "pattern": "\\babonnés\\b"
+        },
+        "Date": {
+          "required": true
+        }
+      }
+    },
+    {
+      "type": "sheets_append",
+      "name": "Ajouter la ligne (Google Sheets)",
+      "sheet": "veille",
+      "columns": [
+        "Entreprise",
+        "Secteur",
+        "Siège",
+        "Taille",
+        "Abonnés",
+        "Date",
+        "Source",
+        "Exécution n8n",
+        "Vérification"
+      ]
+    },
+    {
+      "type": "holo",
+      "name": "Holo — note OneNote",
+      "steps": [
+        "Open Microsoft OneNote, go to the section « Veille concurrence » and create a new page. The cursor starts in the page TITLE: type « Veille – {{Holo — lire LinkedIn.entreprise}} (n8n {{today}}) », then press Enter so the cursor is in the BODY. Type this text in the body: « {{Holo — lire LinkedIn.description}} ». Check that the title contains only the title, then stop. Do not modify any other page."
+      ]
+    }
+  ]
+}

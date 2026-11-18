@@ -1,0 +1,277 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Twiin · Enregistrement</title>
+<style>
+  :root {
+    /* palette Twiin (identique à Twiin Live) */
+    --bg: #0e1014;
+    --panel: #171a21;
+    --panel-border: #272b35;
+    --text: #e8eaed;
+    --text-dim: #9aa0a6;
+    --accent: #4ea1ff;
+    --accent-dim: #2f6fb8;
+    --ok: #36d399;
+    --warn: #ffd166;
+    --bad: #ff6b5b;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    background: radial-gradient(ellipse at top, #141a26 0%, var(--bg) 55%);
+    color: var(--text);
+    max-width: 760px;
+    margin: 0 auto;
+    padding: 56px 20px 80px;
+    line-height: 1.5;
+  }
+
+  .eyebrow {
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--accent);
+    margin: 0 0 10px;
+  }
+
+  h1 {
+    font-size: 34px;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+    margin: 0 0 8px;
+  }
+
+  .subtitle {
+    color: var(--text-dim);
+    font-size: 15px;
+    margin: 0 0 32px;
+  }
+
+  .controls {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 20px;
+  }
+
+  button {
+    font-family: inherit;
+    font-size: 14px;
+    font-weight: 600;
+    padding: 11px 20px;
+    border-radius: 999px;
+    border: 1px solid transparent;
+    cursor: pointer;
+    transition: opacity 0.15s ease, transform 0.05s ease;
+  }
+
+  button:active { transform: scale(0.98); }
+  button:disabled { opacity: 0.35; cursor: default; }
+
+  #startBtn {
+    background: var(--accent);
+    color: #08111f;
+  }
+  #startBtn:hover:not(:disabled) { background: var(--accent-dim); }
+
+  #addBtn {
+    background: transparent;
+    color: var(--accent);
+    border-color: var(--accent);
+  }
+  #addBtn:hover:not(:disabled) { background: rgba(255,255,255,0.04); }
+
+  #screens { display: flex; flex-wrap: wrap; gap: 8px; margin: -8px 0 14px; font-size: 12px; color: var(--text-dim); }
+  #screens .scr { border: 1px solid var(--panel-border); border-radius: 999px; padding: 4px 10px; }
+  #screens .scr b { color: var(--text); }
+
+  .thumb { position: relative; }
+  .thumb span { position: absolute; left: 4px; top: 4px; font-size: 10px; font-weight: 700; padding: 1px 5px;
+                border-radius: 6px; background: rgba(0,0,0,0.65); color: #fff; }
+
+  #reBtn { background: transparent; color: var(--text-dim); border-color: var(--panel-border); margin-left: auto; }
+  #reBtn:hover:not(:disabled) { color: var(--text); border-color: var(--accent); }
+
+  #stopBtn {
+    background: transparent;
+    color: var(--text);
+    border-color: var(--panel-border);
+  }
+  #stopBtn:hover:not(:disabled) { border-color: var(--accent); }
+
+  #status {
+    font-size: 13px;
+    color: var(--text-dim);
+    margin: 4px 0 24px;
+    min-height: 18px;
+  }
+
+  #frames {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin: 0 0 32px;
+  }
+
+  #frames img {
+    width: 96px;
+    border-radius: 8px;
+    border: 1px solid var(--panel-border);
+    opacity: 0.9;
+  }
+
+  #journal h4 { margin: 0 0 8px; font-size: 13px; color: var(--text); }
+  #journal ol { max-height: 220px; overflow-y: auto; margin: 0 0 28px; padding-left: 20px; font-size: 12px;
+                color: var(--text-dim); line-height: 1.6; }
+  #journal li span { display: inline-block; min-width: 52px; color: var(--accent); font-variant-numeric: tabular-nums; }
+
+  #results { display: flex; flex-direction: column; gap: 14px; }
+
+  .workflow {
+    background: var(--panel);
+    border: 1px solid var(--panel-border);
+    border-radius: 14px;
+    padding: 20px 22px;
+  }
+
+  .workflow h3 {
+    margin: 0 0 6px;
+    font-size: 17px;
+    font-weight: 700;
+  }
+
+  .workflow p {
+    margin: 4px 0;
+    font-size: 14px;
+    color: var(--text-dim);
+  }
+
+  .workflow p strong {
+    color: var(--text);
+    font-weight: 600;
+  }
+
+  .workflow ol {
+    margin: 12px 0 0;
+    padding-left: 20px;
+    font-size: 14px;
+  }
+
+  .workflow ol li {
+    margin: 4px 0;
+    color: var(--text);
+  }
+
+  .workflow ol li::marker {
+    color: var(--ok);
+    font-weight: 700;
+  }
+
+  /* --- workflow modifiable, amélioration, rejeu --- */
+  .wf-name { width: 100%; background: transparent; border: 0; border-bottom: 1px dashed var(--panel-border);
+             color: var(--text); font-family: inherit; font-size: 17px; font-weight: 700; padding: 2px 0 6px; margin-bottom: 6px; }
+  .wf-name:focus { outline: none; border-bottom-color: var(--accent); }
+  .steps { list-style: none; padding: 0; margin: 14px 0 8px; counter-reset: st; }
+  .steps li { display: flex; gap: 8px; align-items: flex-start; margin: 6px 0; counter-increment: st; }
+  .steps li::before { content: counter(st); min-width: 22px; height: 22px; border-radius: 50%; background: #222733;
+                      color: var(--ok); font-weight: 700; font-size: 12px; display: grid; place-items: center; margin-top: 6px; }
+  .steps textarea { flex: 1; min-width: 0; resize: vertical; background: #12151b; color: var(--text);
+                    border: 1px solid var(--panel-border); border-radius: 8px; padding: 7px 9px; font: 13px/1.45 inherit;
+                    font-family: inherit; }
+  .steps textarea:focus { outline: none; border-color: var(--accent); }
+  .icon-btn { background: transparent; border: 1px solid var(--panel-border); color: var(--text-dim); padding: 4px 9px;
+              border-radius: 8px; font-size: 13px; margin-top: 4px; }
+  .icon-btn:hover:not(:disabled) { color: var(--text); border-color: var(--accent); }
+  .wf-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+  .btn-improve { background: transparent; color: var(--accent); border-color: var(--accent); }
+  .btn-replay { background: var(--ok); color: #062a1c; }
+  .btn-ghost { background: transparent; color: var(--text-dim); border-color: var(--panel-border); }
+  .btn-stop { background: transparent; color: var(--bad); border-color: var(--bad); }
+  .changes { margin: 14px 0 0; padding: 12px 14px; border-radius: 10px; background: #12151b; border: 1px solid var(--panel-border); }
+  .changes h4, .replay h4 { margin: 0 0 8px; font-size: 13px; }
+  .changes ul { margin: 0; padding-left: 0; list-style: none; font-size: 13px; color: var(--text-dim); }
+  .changes li { margin: 5px 0; }
+  .tag { display: inline-block; font-size: 10px; font-weight: 700; padding: 1px 7px; border-radius: 999px; margin-right: 6px;
+         text-transform: uppercase; letter-spacing: .04em; }
+  .tag.fiabilite { background: rgba(54,211,153,.15); color: var(--ok); }
+  .tag.process { background: rgba(78,161,255,.15); color: var(--accent); }
+  .replay { margin: 14px 0 0; padding: 12px 14px; border-radius: 10px; background: #12151b; border: 1px solid var(--panel-border); }
+  .replay .rstatus { font-size: 13px; color: var(--text); margin-bottom: 8px; }
+  .replay ol { margin: 0; padding-left: 20px; font-size: 13px; }
+  .replay li { margin: 6px 0; color: var(--text-dim); }
+  .replay li.running { color: var(--text); }
+  .replay li.ok b { color: var(--ok); }
+  .replay li.ko b { color: var(--bad); }
+  .replay .answer { display: block; margin-top: 3px; white-space: pre-wrap; color: var(--text-dim); font-size: 12px; }
+  .replay .meta { font-size: 12px; color: var(--text-dim); margin-top: 8px; }
+  .replay a { color: var(--accent); }
+  .btn-advice { background: var(--accent); color: #08111f; }
+  .steps textarea.todo { border-color: var(--warn); background: #2a2410; }
+  .todo-msg { color: var(--warn) !important; font-size: 13px !important; }
+  .advice { margin: 14px 0 0; padding: 14px 16px; border-radius: 10px; background: #131925; border: 1px solid var(--accent-dim); }
+  .advice h4 { margin: 0 0 10px; font-size: 14px; }
+  .advice small { color: var(--text-dim); font-weight: 400; }
+  .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 8px; }
+  .tile { background: #0e1014; border: 1px solid var(--panel-border); border-radius: 8px; padding: 8px 10px; }
+  .tile span { display: block; font-size: 11px; color: var(--text-dim); }
+  .tile b { font-size: 15px; font-variant-numeric: tabular-nums; }
+  .advice .apps { font-size: 12px; margin: 8px 0 0 !important; }
+  .advice .headline { color: var(--text) !important; font-weight: 600; margin-top: 12px !important; }
+  .recos { padding-left: 20px; margin: 8px 0 0; font-size: 13px; }
+  .recos li { margin: 10px 0; color: var(--text-dim); }
+  .reco-head { display: flex; justify-content: space-between; gap: 10px; color: var(--text); }
+  .gain { color: var(--ok); font-weight: 700; white-space: nowrap; }
+  .kind { font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color: var(--accent); margin: 2px 0 4px; }
+  .lbl { color: var(--text); }
+  .advice .auto { margin-top: 10px !important; color: var(--text) !important; }
+  .btn-verdict { background: transparent; color: var(--accent); border-color: var(--accent); }
+  .verdict { margin: 14px 0 0; padding: 14px 16px; border-radius: 10px; background: #131925; border: 1px solid var(--accent-dim); }
+  .verdict h4 { margin: 0 0 8px; font-size: 14px; }
+  .verdict small { color: var(--text-dim); font-weight: 400; margin-left: 6px; }
+  .verdict .v.auto { color: var(--ok); } .verdict .v.acc { color: var(--warn); }
+  .reasons, .plan { margin: 6px 0; padding-left: 20px; font-size: 13px; color: var(--text-dim); }
+  .reasons li, .plan li { margin: 4px 0; }
+  .plan b { color: var(--text); } .plan .how { font-size: 11px; color: var(--accent); }
+  .hint { font-size: 12px !important; color: var(--text-dim); margin: 6px 0 !important; }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0; }
+  .chip { font-size: 11px; padding: 2px 8px; border-radius: 999px; border: 1px solid var(--panel-border); }
+  .chip.api { color: var(--ok); border-color: rgba(54,211,153,.4); } .chip.noapi { color: var(--warn); border-color: rgba(255,209,102,.4); }
+  .branch { margin-top: 10px; font-size: 13px; color: var(--text); }
+  .n8n { margin-top: 12px; padding: 12px 14px; border-radius: 10px; background: #12151b; border: 1px solid var(--panel-border); }
+  .n8n h4 { margin: 0 0 8px; font-size: 14px; }
+  .nstatus { font-size: 13px; color: var(--text); margin-bottom: 8px; }
+  .nplan { margin: 0; padding-left: 20px; font-size: 13px; color: var(--text-dim); }
+  .nplan li { margin: 6px 0; }
+  .nplan b { color: var(--text); }
+  .nplan .kind { font-size: 11px; color: var(--accent); margin-left: 6px; }
+  .nplan .out { display: block; font-size: 12px; margin-top: 2px; }
+  .nholo { font-size: 12px; color: var(--warn); margin-top: 8px; min-height: 16px; }
+  .nlinks { font-size: 12px; margin-top: 8px; }
+  .nlinks a { color: var(--accent); }
+</style>
+</head>
+<body>
+  <p class="eyebrow">Twiin</p>
+  <h1>Record a session</h1>
+  <p class="subtitle">Use your computer normally. Several monitors? Click « + Ajouter un écran » once per screen. Stop when you're done — the screen text is read locally (OCR), then Qwen segments the session into daily workflows worth automating.</p>
+
+  <div class="controls">
+    <button id="startBtn">Start recording</button>
+    <button id="addBtn" disabled>+ Ajouter un écran</button>
+    <button id="stopBtn" disabled>Stop</button>
+    <button id="reBtn" title="Refaire l'analyse du dernier enregistrement, sans le refaire">↻ Relancer l'analyse</button>
+  </div>
+  <div id="screens"></div>
+
+  <div id="status"></div>
+  <div id="frames"></div>
+  <div id="journal"></div>
+  <div id="results"></div>
+
+  <script src="app.js"></script>
+</body>
+</html>

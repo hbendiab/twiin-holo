@@ -1,0 +1,13 @@
+{
+  "_doc": "Lignes des factures fictives INV-001…010 (reprises de show-me-once prep/factures/generer_factures.py). Taxe = libellé exact de la liste comptarex.",
+  "INV-001": [["Ramettes papier A4 80 g (carton de 5)", 10, "24,90", "20 %"]],
+  "INV-002": [["Hébergement serveur – octobre 2026", 1, "149,00", "20 %"], ["Nom de domaine (1 an)", 2, "12,50", "20 %"]],
+  "INV-003": [["Café en grains 1 kg", 6, "18,40", "5,5 %"], ["Location machine à café – octobre", 1, "45,00", "20 %"]],
+  "INV-004": [["Livraison palette Paris → Lille", 3, "85,00", "20 %"]],
+  "INV-005": [["Flyers A5 quadri (x1000)", 2, "89,00", "20 %"], ["Cartes de visite (x500)", 4, "29,90", "20 %"], ["Frais de calage", 1, "15,00", "20 %"]],
+  "INV-006": [["Entretien des locaux – octobre 2026", 1, "620,00", "20 %"]],
+  "INV-007": [["Fauteuil ergonomique", 4, "310,00", "20 % autoliquidation UE"]],
+  "INV-008": [["Formation Excel avancé (1 jour)", 3, "350,00", "20 %"]],
+  "INV-009": [["Remplacement tableau électrique", 1, "780,00", "20 %"], ["Main d'œuvre (heures)", 5, "55,00", "20 %"]],
+  "INV-010": [["Stylos bille bleus (boîte de 50)", 3, "14,90", "20 %"], ["Classeurs A4 dos 8 cm", 20, "3,20", "20 %"], ["Post-it 76x76 (lot de 12)", 5, "9,80", "20 %"]]
+}

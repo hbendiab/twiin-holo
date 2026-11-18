@@ -1,0 +1,28 @@
+# ── Secrets : ne JAMAIS committer (les modèles sans valeurs sont les .env.example) ──
+.env
+**/.env
+!**/.env.example
+
+# ── Dépendances et caches (se réinstallent) ──
+.venv/
+**/.venv/
+node_modules/
+**/node_modules/
+__pycache__/
+*.pyc
+*.egg-info/
+.DS_Store
+
+# ── Données personnelles et sorties générées (captures de l'écran, enregistrements, bases locales) ──
+# Twiin Observer v1 (capture/) : enregistrements, captures, transcriptions
+capture/backend/data/
+# Twiin Live (live/) : captures des rejeux
+live/runs/
+# comptarex : base SQLite recréée au lancement (données fictives à graine fixe)
+comptarex/data/*.db
+comptarex/data/*.db-wal
+comptarex/data/*.db-shm
+# Archives du premier test : captures d'écran et images annotées
+archives/premier-test-holo/screenshots/
+
+# ── twiin/ (cœur de Twiin) : ses exclusions (secrets, données personnelles, dépendances, n8n) sont dans twiin/.gitignore ──

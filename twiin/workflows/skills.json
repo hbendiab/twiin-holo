@@ -1,0 +1,64 @@
+[
+  {
+    "id": "n8n-holo-lire-articles-linkedin",
+    "name": "n8n Holo — lire articles LinkedIn",
+    "description": "Étape lancée par n8n",
+    "steps": [
+      "In Google Chrome, on the L'Oréal LinkedIn company page, click the « Posts » tab, then click the « Articles » filter. Read the titles of the 3 most recent articles. Do not click on any article, do not like, comment or share. Copy the titles EXACTLY as written. Then answer ONLY with a JSON object with exactly these keys, filled with the values you READ ON SCREEN (write « non trouvé » if a value is not visible): {\"articles\":\"list of the 3 most recent article titles, separated by « | »\"}"
+    ]
+  },
+  {
+    "id": "n8n-holo-lire-linkedin",
+    "name": "n8n Holo — lire LinkedIn",
+    "description": "Étape lancée par n8n",
+    "steps": [
+      "In Google Chrome, open https://www.linkedin.com/company/loreal/about/ (the « À propos » tab of the L'Oréal company page). Read the page only: do not follow, message or click any button other than navigation. Copy every value EXACTLY as written on the page, character by character (accents, plural, spaces). Then answer ONLY with a JSON object with exactly these keys, filled with the values you READ ON SCREEN (write « non trouvé » if a value is not visible): {\"entreprise\":\"company name as written in the page title\",\"secteur\":\"sector / industry as written in the « Secteur » field\",\"siege\":\"headquarters city as written in the « Siège social » field\",\"taille\":\"company size EXACTLY as written in the « Taille de l'entreprise » field (e.g. « 10 001 employés et plus »), NOT the short summary at the top of the page\",\"abonnes\":\"number of followers as written in the « Abonnés » field (e.g. « 7 M d'abonnés »)\",\"description\":\"the full text of the « Vue d'ensemble » (overview) description, first two sentences max\"}"
+    ]
+  },
+  {
+    "id": "n8n-holo-note-onenote",
+    "name": "n8n Holo — note OneNote",
+    "description": "Étape lancée par n8n",
+    "steps": [
+      "Open Microsoft OneNote, go to the section « Groupe » and open the page « Veille concurrence ». The cursor starts in the page TITLE: type « Veille – L'Oréal (n8n 18/11/2026) », then press Enter so the cursor is in the BODY. Type this text in the body: « No.1 Beauty Group Worldwide. No.1 most innovative company in Europe (Fortune's ranking). ». Then press Enter twice and type: « Articles récents : Can a dupe fool your skin?,Building the Supply Chain of the future – a virtual conversation with MIT... ». Check that the title contains only the title, then stop. Do not modify any other page."
+    ]
+  },
+  {
+    "id": "par-nyc-price-check-10-17-dec-2026",
+    "name": "PAR-NYC price check 10-17 Dec 2026",
+    "description": "The user checked current round-trip prices for Paris (PAR) to New York (NYC), 10-17 December 2026, 1 adult, economy, on Google Flights and KAYAK without booking.",
+    "steps": [
+      "Open Google Flights and search a round trip from Paris (PAR) to New York (NYC), departing 10 December 2026 and returning 17 December 2026, 1 adult, economy class.",
+      "Record the lowest and typical round-trip prices shown.",
+      "Open KAYAK (kayak.fr) and run the same search: Paris (PAR) to New York (NYC), departing 10 December 2026 and returning 17 December 2026, 1 adult, economy, prices in EUR.",
+      "Record the lowest round-trip price and the cheapest carrier/offer on KAYAK.",
+      "Compare the Google Flights and KAYAK prices and report the cheapest option (site, airline, price) as a recommendation. Do not book anything and do not enter any personal or payment information."
+    ]
+  },
+  {
+    "id": "veille-concurrence-l-oreal",
+    "name": "Veille concurrence L'Oréal",
+    "description": "Rechercher L'Oréal sur LinkedIn, copier les données clés (nom, secteur, taille, abonnés) dans Excel « veille_entreprises », puis noter le descriptif et des observations dans OneNote « Veille concurrence ».",
+    "steps": [
+      "In Google Chrome, click the LinkedIn search bar (top of page) and type « l'oreal ». In the results, click on the L'Oréal company page to open it. Check: the page title should read « L'Oréal ».",
+      "On the L'Oréal LinkedIn page, click the « À propos » tab. The page should show fields including Secteur and Taille de l'entreprise. Select the text « Fabrication de parfums et de produits pour la toilette » (Secteur field) and press ⌘C. Then switch to Microsoft Excel (file « veille_entreprises »), double-click cell B2, and press ⌘V. Check: B2 now contains « Fabrication de parfums et de produits pour la toilette ».",
+      "Back on the L'Oréal LinkedIn page (À propos tab), select the company name « L'Oréal » (the large title at the top of the page) and press ⌘C. Switch to Excel, double-click cell A2, and press ⌘V. Check: A2 contains « L'Oréal ».",
+      "Still on the L'Oréal LinkedIn page (À propos tab), select the text « 10 001 employés et plus » (Taille de l'entreprise field) and press ⌘C. Switch to Excel, double-click cell D2, and press ⌘V. Check: D2 contains « 10 001 employés et plus ».",
+      "On the L'Oréal LinkedIn page, click the « Présentation » tab. Select the text « 7 M d'abonnés » and press ⌘C. Switch to Excel, double-click cell E2, and press ⌘V. Check: E2 contains « 7 M d'abonnés ».",
+      "In Excel, double-click cell F2 and type the date (7 characters). Press Enter to confirm. Check: F2 displays the date.",
+      "Switch to Microsoft OneNote. Navigate to the page « Veille concurrence » (section Groupe, dated mardi 17 novembre 2026). Click in the page body to place the cursor. Back on the L'Oréal LinkedIn page (Présentation tab), select the full company description text and press ⌘C. Return to OneNote and press ⌘V to paste the description into the page.",
+      "On the L'Oréal LinkedIn page, click the « Posts » tab, then click the « Articles » filter button to view only articles. Read the articles, then switch to OneNote and type your notes (approximately 43 characters) in the « Veille concurrence » page body."
+    ]
+  },
+  {
+    "id": "veille-l-or-al-linkedin-excel-onenote",
+    "name": "Veille L'Oréal (LinkedIn → Excel → OneNote)",
+    "description": "Copie fidèle de la veille enregistrée le 17/11/2026 : infos L'Oréal copiées de LinkedIn vers Excel (ligne 3) et OneNote (nouvelle page).",
+    "steps": [
+      "In Google Chrome, on LinkedIn, search for « l'oreal », open the L'Oréal company page and click its « À propos » (About) tab.",
+      "Fill row 3 of the Excel workbook « veille_entreprises » by copying values from the L'Oréal LinkedIn « À propos » tab, one cell at a time (select the text on LinkedIn, ⌘C, then click the Excel cell, ⌘V): the sector « Fabrication de parfums et de produits pour la toilette » into B3; the company name « L'Oréal » into A3; the company size « 10 001 employés et plus » (as written in the « À propos » tab, not the « Plus de 10 K employés » summary) into D3; the follower count « 7 M d'abonnés » into E3. Then click cell F3, type « 17/11/2026 » and press Enter. Do not modify any other cell.",
+      "Open Microsoft OneNote, go to the section « Veille concurrence » and create a new page. The cursor starts in the page TITLE: type « Veille – L'Oréal (rejeu) » there, then press Enter (or click in the page body, below the date and time line) so that the cursor is in the BODY of the page, not in the title. Then copy (⌘C) the L'Oréal description (« Vue d'ensemble ») from the LinkedIn « À propos » tab and paste it (⌘V) into the page body. Before answering, look at the page and check that the title contains ONLY « Veille – L'Oréal (rejeu) » and that the description is below it; if not, fix it. Do not modify any other page.",
+      "Back in Chrome, on the L'Oréal LinkedIn page, click the « Posts » tab, then click the « Articles » filter. Do not follow the page and do not send any message."
+    ]
+  }
+]

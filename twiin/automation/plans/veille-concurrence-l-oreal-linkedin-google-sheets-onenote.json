@@ -1,0 +1,98 @@
+{
+  "name": "Veille concurrence L'Oréal (LinkedIn → Google Sheets → OneNote)",
+  "schedule_cron": "0 9 * * 1",
+  "blocks": [
+    {
+      "type": "holo",
+      "name": "Holo — lire LinkedIn",
+      "steps": [
+        "In Google Chrome, open https://www.linkedin.com/company/loreal/about/ (the « À propos » tab of the L'Oréal company page). Read the page only: do not follow, message or click any button other than navigation. Copy every value EXACTLY as written on the page, character by character (accents, plural, spaces)."
+      ],
+      "expect": {
+        "entreprise": "company name as written in the page title",
+        "secteur": "sector / industry as written in the « Secteur » field",
+        "siege": "headquarters city as written in the « Siège social » field",
+        "taille": "company size EXACTLY as written in the « Taille de l'entreprise » field (e.g. « 10 001 employés et plus »), NOT the short summary at the top of the page",
+        "abonnes": "number of followers as written in the « Abonnés » field (e.g. « 7 M d'abonnés »)",
+        "description": "the full text of the « Vue d'ensemble » (overview) description, first two sentences max"
+      }
+    },
+    {
+      "type": "row",
+      "name": "Préparer la ligne",
+      "fields": {
+        "Entreprise": "{{Holo — lire LinkedIn.entreprise}}",
+        "Secteur": "{{Holo — lire LinkedIn.secteur}}",
+        "Siège": "{{Holo — lire LinkedIn.siege}}",
+        "Taille": "{{Holo — lire LinkedIn.taille}}",
+        "Abonnés": "{{Holo — lire LinkedIn.abonnes}}",
+        "Date": "{{today}}",
+        "Source": "LinkedIn, lu par Holo",
+        "Exécution n8n": "{{execution}}"
+      }
+    },
+    {
+      "type": "verify",
+      "name": "Vérifier les valeurs",
+      "rules": {
+        "Entreprise": {
+          "required": true,
+          "pattern": "L'Oréal"
+        },
+        "Secteur": {
+          "required": true,
+          "pattern": "Fabrication|parfums|toilette"
+        },
+        "Siège": {
+          "required": true
+        },
+        "Taille": {
+          "required": true,
+          "pattern": "employés et plus|^\\d[\\d\\s]*\\s*-\\s*\\d"
+        },
+        "Abonnés": {
+          "required": true,
+          "pattern": "\\d+\\s*M?\\s*d'abonnés|abonnés"
+        },
+        "Date": {
+          "required": true,
+          "pattern": "^\\d{2}/\\d{2}/\\d{4}$"
+        }
+      }
+    },
+    {
+      "type": "sheets_append",
+      "name": "Ajouter la ligne (Google Sheets)",
+      "sheet": "veille",
+      "columns": [
+        "Entreprise",
+        "Secteur",
+        "Siège",
+        "Taille",
+        "Abonnés",
+        "Date",
+        "Source",
+        "Exécution n8n",
+        "Vérification"
+      ]
+    },
+    {
+      "type": "holo",
+      "name": "Holo — lire articles LinkedIn",
+      "steps": [
+        "In Google Chrome, on the L'Oréal LinkedIn company page, click the « Posts » tab, then click the « Articles » filter. Read the titles of the 3 most recent articles. Do not click on any article, do not like, comment or share. Copy the titles EXACTLY as written."
+      ],
+      "expect": {
+        "articles": "list of the 3 most recent article titles, separated by « | »"
+      }
+    },
+    {
+      "type": "holo",
+      "name": "Holo — note OneNote",
+      "steps": [
+        "Open Microsoft OneNote, go to the section « Groupe » and open the page « Veille concurrence ». The cursor starts in the page TITLE: type « Veille – {{Holo — lire LinkedIn.entreprise}} (n8n {{today}}) », then press Enter so the cursor is in the BODY. Type this text in the body: « {{Holo — lire LinkedIn.description}} ». Then press Enter twice and type: « Articles récents : {{Holo — lire articles LinkedIn.articles}} ». Check that the title contains only the title, then stop. Do not modify any other page."
+      ]
+    }
+  ],
+  "id": "twiinveilleconcu"
+}

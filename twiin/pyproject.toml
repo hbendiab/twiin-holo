@@ -1,0 +1,24 @@
+[project]
+name = "twiin"
+version = "0.1.0"
+description = "Twiin : observer une tâche, l'analyser, la rejouer avec Holo, l'automatiser (n8n) ou en faire un tuto."
+requires-python = ">=3.10"
+dependencies = [
+    "hai-agents[desktop]>=1.5",      # Holo (H Company) + pilotage du Mac
+    "python-dotenv>=1.0",
+    "requests>=2.31",
+    "openai>=1.0",                   # appels au modèle d'analyse (Hugging Face, compatible OpenAI) pour les tutos
+    "pillow>=10",                    # taille des captures des tutos
+    "mutagen>=1.47",                 # durée des voix off ElevenLabs
+    "json-repair>=0.30",             # réparation des réponses JSON du modèle
+    "pyobjc-framework-Vision>=10; sys_platform == 'darwin'",
+    "pyobjc-framework-Quartz>=10; sys_platform == 'darwin'",
+]
+
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["twiin*"]

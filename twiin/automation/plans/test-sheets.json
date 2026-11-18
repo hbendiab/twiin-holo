@@ -1,0 +1,8 @@
+{
+  "id": "twiinTestSheets1",
+  "name": "Test Sheets",
+  "blocks": [
+    {"type": "row", "name": "Préparer la ligne", "fields": {"Entreprise": "TEST technique", "Secteur": "—", "Siège": "—", "Taille": "—", "Abonnés": "—", "Date": "{{today}}", "Source": "Test Twiin → n8n (sans Holo)", "Exécution n8n": "{{execution}}"}},
+    {"type": "sheets_append", "name": "Ajouter la ligne (Google Sheets)", "sheet": "veille", "columns": ["Entreprise", "Secteur", "Siège", "Taille", "Abonnés", "Date", "Source", "Exécution n8n"]}
+  ]
+}

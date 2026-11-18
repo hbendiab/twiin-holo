@@ -1,0 +1,40 @@
+# ── Secrets : ne JAMAIS committer (modèle sans valeurs : .env.example) ──
+.env
+**/.env
+!**/.env.example
+
+# ── Dépendances et caches (se réinstallent) ──
+.venv/
+__pycache__/
+*.pyc
+*.egg-info/
+.DS_Store
+node_modules/
+**/node_modules/
+# n8n 2.48 isolé et son Node 24 (≈ 2,8 Go, réinstallables, voir automation/n8n-runtime/start.sh)
+automation/n8n-runtime/node_modules/
+automation/n8n-runtime/bin/
+
+# ── Données personnelles : captures de l'écran, journaux d'actions, analyses d'enregistrements ──
+workflows/sessions/
+workflows/runs/
+workflows/last_run*.json
+workflows/candidates*.json
+# Tutos vidéo : captures des rejeux, voix générées, vidéos rendues, essais de voix, conseils d'un enregistrement
+tuto/video/public/tutos/
+tuto/video/out/
+tuto/essais-voix/
+tuto/advice-*.json
+
+# ── Automatisations n8n générées ──
+# Les workflows compilés contiennent le jeton du pont n8n → Holo (TWIIN_LOCAL_TOKEN) : ne pas les publier.
+automation/workflows/
+# n8ncli : caches et états locaux
+automation/n8n-cli/n8n/config/cache/
+automation/n8n-cli/n8n/config/sync-state.json
+automation/n8n-cli/n8n/config/unconfigured-credentials.json
+automation/n8n-cli/n8n/config/workflow-folders.json
+automation/n8n-cli/n8n/references/
+# Workflows n8n récupérés en TypeScript : ils contiennent aussi le jeton dès qu'il y a un bloc Holo
+# (à corriger : ranger le jeton dans une connexion n8n « Header Auth » au lieu de l'écrire dans le nœud)
+automation/n8n-cli/n8n/workflows/
