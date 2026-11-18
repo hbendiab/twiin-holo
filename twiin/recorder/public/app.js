@@ -929,7 +929,8 @@ async function createN8n(wf, verdict, el) {
           }
         } else if (e.type === 'imported') {
           st.textContent = 'Importé dans n8n. Test en cours…';
-          links.innerHTML = `<a href="${e.url}" target="_blank">Ouvrir le workflow dans n8n</a>`;
+          links.innerHTML = `<a class="link-btn" href="/automatisations.html#${encodeURIComponent(e.id || '')}">Voir mon automatisation</a> · `
+            + `<a href="${e.url}" target="_blank">Ouvrir le workflow dans n8n</a>`;
         } else if (e.type === 'executing') {
           links.innerHTML += ` · <a href="${e.url}" target="_blank">Voir l'exécution n° ${e.execution} dans n8n</a>`;
         } else if (e.type === 'node') {
@@ -950,7 +951,8 @@ async function createN8n(wf, verdict, el) {
           if (e.ok) setStep(4);
           if (e.ok) links.innerHTML = `<a class="link-btn" href="/automatisations.html#${encodeURIComponent(e.id || '')}">Régler et suivre dans Mes automatisations</a> · ` + links.innerHTML;
           st.textContent = e.ok ? '✅ Automatisation créée et testée avec succès. Elle est en pause : choisis quand elle tourne dans « Mes automatisations ».'
-                                : `❌ Le test a échoué (${e.status}). Ouvre l'exécution dans n8n pour voir le nœud en erreur.`;
+                                : (links.innerHTML ? `❌ Le test a échoué (${e.status}). Ouvre l'exécution dans n8n pour voir le nœud en erreur.`
+                                                   : `❌ Automatisation non créée : ${e.status}`);
         }
       }
       const last = (hs || []).at(-1);

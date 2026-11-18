@@ -553,7 +553,9 @@ function runDiscovery(cmd, dir) {
   // Worker détaché, journal dans <session>/discovery.log : un redémarrage du serveur ne l'interrompt pas.
   const log = fs.openSync(path.join(dir, 'discovery.log'), 'a');
   const proc = spawn(PYTHON, ['-u', '-m', 'discovery.discovery', cmd, dir],
-                     { cwd: REPO_ROOT, env: { ...process.env, PYTHONUTF8: '1' }, detached: true, stdio: ['ignore', log, log] });
+                     // Windows : pas « detached » (sinon une console s'ouvre malgré windowsHide) ; le journal en fichier suffit
+                     // à ce que le worker survive à un redémarrage du serveur.
+                     { cwd: REPO_ROOT, env: { ...process.env, PYTHONUTF8: '1' }, detached: !IS_WIN, stdio: ['ignore', log, log] });
   proc.on('error', (e) => console.warn('[découverte] impossible de lancer le worker :', e.message));
   proc.on('close', (code) => { console.log(`[découverte] ${cmd} terminé (code ${code})`); if (discovery.proc === proc) discovery.proc = null; });
   proc.unref();
@@ -969,7 +971,15 @@ app.post('/api/n8n/create', async (req, res) => {
     fs.mkdirSync(path.dirname(events), { recursive: true });
     fs.writeFileSync(events, JSON.stringify({ type: 'plan', plan, cost_usd: resp.usage?.cost ?? null }) + '\n');
     const proc = spawn(PYTHON, ['-u', N8N_GEN, planFile, '--events', events], { cwd: REPO_ROOT });
-    proc.stderr.on('data', (d) => process.stderr.write(`[n8n] ${d}`));
+    let genErr = '';
+    proc.stderr.on('data', (d) => { genErr += d; process.stderr.write(`[n8n] ${d}`); });
+    // Si la création échoue avant la fin (ex. connexion Google Sheets absente), la page reçoit l'erreur au lieu d'attendre.
+    proc.on('close', () => {
+      if (!readJsonl(events).some((e) => e.type === 'done')) {
+        const why = genErr.trim().split(/\r?\n/).filter(Boolean).at(-1) || 'création interrompue';
+        fs.appendFileSync(events, JSON.stringify({ type: 'done', ok: false, status: why.replace(/^\[n8n\]\s*/, '').slice(0, 300) }) + String.fromCharCode(10));
+      }
+    });
     n8nRun = { proc, events, running: true };
     proc.on('close', keepUser(async () => {
       n8nRun.running = false;
