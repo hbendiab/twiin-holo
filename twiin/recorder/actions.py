@@ -20,6 +20,7 @@ Règles de confiance :
 
 Permissions macOS pour l'app qui lance l'enregistreur (VS Code, Terminal…) :
   - Surveillance de l'entrée (clics et clavier) ; Accessibilité (libellé de l'élément cliqué).
+  - Automatisation → Google Chrome (URL de l'onglet actif, ex. « ?size=S ») : sans elle, pas d'URL dans le journal.
 Sans « Surveillance de l'entrée », le journal note quand même les changements d'app et de fenêtre.
 
 Test manuel :  ../.venv/bin/python actions.py --out /tmp/actions.jsonl   (Ctrl+C pour arrêter)
@@ -27,6 +28,7 @@ Test manuel :  ../.venv/bin/python actions.py --out /tmp/actions.jsonl   (Ctrl+C
 import argparse
 import json
 import signal
+import subprocess
 import sys
 import time
 
@@ -43,6 +45,9 @@ TYPING_IDLE_S = 1.5        # une rafale de frappe se termine après 1,5 s sans t
 # comme des actions, car elles comptent pour rejouer la tâche (ex. Entrée pour quitter le titre d'une page OneNote).
 STRUCTURE_KEYS = {36: "Entrée", 76: "Entrée", 48: "Tab", 53: "Échap"}
 POLL_S = 0.5               # changement d'app / de fenêtre vérifié deux fois par seconde
+URL_POLL_S = 1.5           # URL de l'onglet Chrome relue au plus toutes les 1,5 s (osascript coûte ~0,1 s)
+CHROME = "Google Chrome"
+CHROME_URL_SCRIPT = 'tell application "Google Chrome" to get URL of active tab of front window'
 IGNORED_OWNERS = {"Window Server", "Dock", "SystemUIServer", "Control Center", "Centre de contrôle",
                   "Notification Center", "Centre de notifications"}
 ROLE_FR = {"AXButton": "bouton", "AXLink": "lien", "AXTextField": "champ", "AXTextArea": "zone de texte",
@@ -54,7 +59,16 @@ ROLE_FR = {"AXButton": "bouton", "AXLink": "lien", "AXTextField": "champ", "AXTe
 
 out_file = None
 system_wide = AXUIElementCreateSystemWide()
-state = {"app": None, "window": None, "burst": None, "running": True, "tap": None}
+state = {"app": None, "window": None, "burst": None, "running": True, "tap": None, "url": None, "url_at": 0.0}
+
+
+def chrome_url():
+    """URL de l'onglet actif de Chrome (ex. « …/puffer-jacket-pink?size=S »), ou None. Jamais bloquant longtemps."""
+    try:
+        r = subprocess.run(["osascript", "-e", CHROME_URL_SCRIPT], capture_output=True, text=True, timeout=1.5)
+        return (r.stdout.strip() or None) if r.returncode == 0 else None
+    except Exception:  # noqa: BLE001  (Chrome fermé, permission Automation refusée, délai dépassé)
+        return None
 
 
 def emit(ev: dict):
@@ -155,6 +169,7 @@ def on_event(proxy, etype, event, refcon):
             emit({"type": "click", "button": "left" if etype == Quartz.kCGEventLeftMouseDown else "right",
                   "display": display_of(p.x, p.y), "x": int(p.x), "y": int(p.y),
                   "app": app, "window": win, "element": element,
+                  "url": state["url"] if app == CHROME else None,
                   "double": Quartz.CGEventGetIntegerValueField(event, Quartz.kCGMouseEventClickState) >= 2})
         elif etype == Quartz.kCGEventKeyDown:
             flags = Quartz.CGEventGetFlags(event)
@@ -198,6 +213,17 @@ def poll(timer, info):
     if app and (app != state["app"] or win != state["window"]):
         state["app"], state["window"] = app, win
         emit({"type": "app", "app": app, "window": win, "display": disp})
+    # l'URL de Chrome est un signal fort (ex. « ?size=S » : la taille choisie). On en garde la trace dans le journal :
+    # un événement « url » à chaque changement, et l'URL courante est recopiée dans chaque clic.
+    if app == CHROME:
+        if time.time() - state["url_at"] >= URL_POLL_S:
+            state["url_at"] = time.time()
+            url = chrome_url()
+            if url != state["url"]:
+                state["url"] = url
+                emit({"type": "url", "app": app, "window": win, "url": url})
+    elif state["url"] is not None:
+        state["url"] = None
 
 
 def main():

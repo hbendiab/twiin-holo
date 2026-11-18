@@ -806,6 +806,12 @@ async function createN8n(wf, verdict, el) {
     st.textContent = `Erreur : ${e.message}`;
     return;
   }
+  followN8nRun(el);
+}
+
+// Suit une exécution n8n en cours (création ou lancement) : plan, nœuds, Holo, lien vers l'exécution.
+function followN8nRun(el) {
+  const st = el.querySelector('.nstatus'), plan = el.querySelector('.nplan'), holo = el.querySelector('.nholo'), links = el.querySelector('.nlinks');
   let next = 0;
   const rows = new Map();
   const timer = setInterval(async () => {
@@ -855,6 +861,39 @@ async function createN8n(wf, verdict, el) {
   }, 1500);
 }
 
+// --- ▶ Lancer un workflow n8n déjà créé (plan de automation/plans/, sans regénérer le plan) ----------------------
+async function loadPlans() {
+  try {
+    const { plans } = await (await fetch('/api/n8n/plans')).json();
+    const sel = document.getElementById('planSelect');
+    sel.innerHTML = plans.map((p) => `<option value="${escapeHtml(p)}">${escapeHtml(p.replace(/\.json$/, ''))}</option>`).join('');
+    document.getElementById('launchN8n').hidden = !plans.length;
+  } catch { /* pas de liste : la section reste cachée */ }
+}
+
+async function launchN8n(planName, el) {
+  const ok = confirm(`Lancer le workflow « ${planName.replace(/\.json$/, '')} » dans ton n8n local et le TESTER ?\n\n` +
+    `Si il contient des blocs Holo, Holo prendra la souris et le clavier de ton Mac pendant le test : ne touche à rien ` +
+    `(double Échap pour l'arrêter).\n\nContinuer ?`);
+  if (!ok) return;
+  el.hidden = false;
+  el.innerHTML = `<div class="n8n"><h4>${iconsHtml('n8n', 1)}Automatisation n8n</h4><div class="nstatus">Lancement…</div>
+    <ol class="nplan"></ol><div class="nholo"></div><div class="nlinks"></div></div>`;
+  const st = el.querySelector('.nstatus');
+  try {
+    const r = await fetch('/api/n8n/launch', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+                                               body: JSON.stringify({ plan: planName }) });
+    const d = await r.json();
+    if (d.error) throw new Error(d.error);
+  } catch (e) {
+    st.textContent = `Erreur : ${e.message}`;
+    return;
+  }
+  followN8nRun(el);
+}
+document.getElementById('launchBtn').addEventListener('click', () =>
+  launchN8n(document.getElementById('planSelect').value, document.getElementById('n8nLaunch')));
+
 // --- Accueil : un exemple déjà rempli (filet de sécurité pour la démo) + reprise de la dernière tâche ---------------
 // Enregistrement réel du 17/11 (veille L'Oréal, LinkedIn → Excel → OneNote), copié de workflows/candidates.json.
 const EXAMPLE_WORKFLOW = {
@@ -898,6 +937,7 @@ document.getElementById('lastBtn').addEventListener('click', () => {
   renderWorkflows(lastWorkflows);
   statusEl.textContent = 'Dernière tâche analysée : reprends à l\'étape 2.';
 });
+loadPlans();
 iconsReady.then(() => {
   showExample();
   // http://localhost:3000/#exemple ouvre directement l'exemple (pratique en démo si l'enregistrement en direct coince)

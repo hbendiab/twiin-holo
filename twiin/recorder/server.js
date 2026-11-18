@@ -663,9 +663,15 @@ AVAILABLE RESOURCES:
 - Google Sheet "factures" columns: Facture, Fournisseur, Numéro, Date, Total HT, TVA, Total TTC, Statut comptarex, Vérification, Exécution n8n
 - comptarex (fake accounting software, http://127.0.0.1:8042, NO public API for entering invoices → Holo), but a read-only
   admin API GET http://127.0.0.1:8042/api/invoices (auth "comptarex") lists saved invoices for checking.
+RELIABILITY RULES (a computer-use agent is unreliable on long multi-step instructions):
+- ONE Holo block per item and per site: never chain several searches or products in one block (a block = one search, one product page, one value).
+- Repeat EVERY option the employee chose (size, color, variant, filter, country) explicitly in the step of EACH item; if a site shows prices per option (e.g. per size), the step must say which option to select before reading the price.
+- If the recording shows an option for some items only, apply the same option logic to the other items and note the gap in an optional top-level "warnings" array of short strings (e.g. "taille non enregistrée pour le pull, à confirmer").
+- Check identity before reading a value: tell Holo to verify the product name and color in the page title.
+- If the task text mentions a frequency (every Monday, daily...), set schedule_cron accordingly (e.g. "0 8 * * 1"); use null only when none is mentioned.
 SAFETY: never send, publish, pay, validate, delete, follow or message anything; in accounting software always stop at
 « Enregistrer le brouillon ». Only write to the resources above or to new pages.
-Return ONLY JSON, no fences: {"name":"short title","schedule_cron":"cron or null","blocks":[…]}.
+Return ONLY JSON, no fences: {"name":"short title","schedule_cron":"cron or null","warnings":[],"blocks":[…]}.
 Use « » instead of straight double quotes inside strings. Example of a good plan:
 `;
 
@@ -678,12 +684,25 @@ app.post('/api/n8n/create', async (req, res) => {
     const user = `TASK\nName: ${wf.name || ''}\nSummary: ${wf.summary || ''}\nSteps:\n` +
       (wf.steps || []).map((x, i) => `${i + 1}. ${x}`).join('\n') +
       (req.body?.verdict ? `\n\nTWIIN ANALYSIS\n${JSON.stringify(req.body.verdict).slice(0, 3000)}` : '');
-    const { data: resp } = await client.chat.completions.create({
-      model: HF_MODEL, max_tokens: MAX_OUTPUT_TOKENS, temperature: 0, reasoning_effort: REASONING_EFFORT,
-      messages: [{ role: 'system', content: PLAN_PROMPT + example }, { role: 'user', content: user }],
-    }).withResponse();
-    const raw = resp.choices?.[0]?.message?.content || '';
-    const { result: plan } = parseWorkflows(raw);
+    // Le modèle rend parfois un JSON invalide (guillemets droits dans un texte, virgule en trop) : jusqu'à 3 essais,
+    // et la réponse brute est gardée dans workflows/runs/ pour comprendre ce qui a cloché.
+    let resp, plan, lastErr;
+    for (let attempt = 1; attempt <= 3 && !plan; attempt++) {
+      const hint = attempt === 1 ? '' : '\n\nYour previous answer was not valid JSON. Return ONLY valid JSON. Use « » instead of straight double quotes inside strings, no trailing commas, no comments.';
+      ({ data: resp } = await client.chat.completions.create({
+        model: HF_MODEL, max_tokens: MAX_OUTPUT_TOKENS, temperature: attempt === 1 ? 0 : 0.2, reasoning_effort: REASONING_EFFORT,
+        messages: [{ role: 'system', content: PLAN_PROMPT + example }, { role: 'user', content: user + hint }],
+      }).withResponse());
+      const raw = resp.choices?.[0]?.message?.content || '';
+      try { plan = parseWorkflows(raw).result; }
+      catch (err) {
+        lastErr = err;
+        console.warn(`Plan n8n : essai ${attempt}/3 invalide (${err.message})`);
+        fs.mkdirSync(path.join(REPO_ROOT, 'workflows', 'runs'), { recursive: true });
+        fs.writeFileSync(path.join(REPO_ROOT, 'workflows', 'runs', `${new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)}-plan-brut-essai${attempt}.txt`), raw);
+      }
+    }
+    if (!plan) throw new Error(`Le modèle n'a pas rendu un plan lisible après 3 essais (${lastErr?.message}). Réessaie.`);
     if (!Array.isArray(plan.blocks) || !plan.blocks.length) throw new Error('Plan vide : réessaie.');
     const known = ['holo', 'row', 'verify', 'sheets_append', 'http'];
     const bad = plan.blocks.filter((b) => !known.includes(b.type));
@@ -720,6 +739,38 @@ app.get('/api/n8n/events', (req, res) => {
       .filter((e) => ['step_start', 'step_end', 'stalled', 'restart'].includes(e.type)).slice(-3);
   }
   res.json({ events: all.slice(since), next: all.length, running: n8nRun.running, holo, holoRunning: !!replay?.running });
+});
+
+// --- Lancer un workflow n8n déjà créé (plan dans automation/plans/), sans regénérer le plan -----------------------
+// Même suivi que « Créer l'automatisation » : n8n_twiin.py importe le plan puis le teste (sans --no-run).
+app.get('/api/n8n/plans', (req, res) => {
+  const plans = fs.existsSync(N8N_PLANS)
+    ? fs.readdirSync(N8N_PLANS).filter((f) => f.endsWith('.json')).sort()
+    : [];
+  res.json({ plans });
+});
+
+app.post('/api/n8n/launch', (req, res) => {
+  try {
+    if (n8nRun?.running) return res.status(409).json({ error: 'Une automatisation est déjà en cours.' });
+    if (replay?.running) return res.status(409).json({ error: 'Holo est occupé par un rejeu.' });
+    const name = path.basename(String(req.body?.plan || ''));            // pas de chemin : un nom de fichier seul
+    const planFile = path.join(N8N_PLANS, name);
+    if (!name.endsWith('.json') || !fs.existsSync(planFile)) return res.status(404).json({ error: 'Plan introuvable.' });
+    const plan = JSON.parse(fs.readFileSync(planFile, 'utf8'));
+    const events = path.join(REPO_ROOT, 'workflows', 'runs', `${new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)}-n8n-launch.jsonl`);
+    fs.mkdirSync(path.dirname(events), { recursive: true });
+    fs.writeFileSync(events, JSON.stringify({ type: 'plan', plan }) + '\n');    // la page affiche les blocs comme pour une création
+    const proc = spawn(PYTHON, ['-u', N8N_GEN, planFile, '--events', events], { cwd: REPO_ROOT });
+    proc.stderr.on('data', (d) => process.stderr.write(`[n8n] ${d}`));
+    n8nRun = { proc, events, running: true };
+    proc.on('close', () => { n8nRun.running = false; spawn('osascript', ['-e', 'tell application "Google Chrome" to activate']); });
+    console.log(`Lancement n8n : ${plan.name || name}`);
+    res.json({ plan: name });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // --- Rejouer un workflow sur ce Mac avec Holo (scripts/run_live.py), suivi en direct par la page ----------------
@@ -805,14 +856,16 @@ app.post('/api/holo/run', async (req, res) => {
     replay.running = false;
     const evs = fs.readFileSync(events, 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l));
     const end = evs.find((e) => e.type === 'end') || {};
-    const answers = evs.filter((e) => e.type === 'step_end').map((e) => e.answer || '');
+    // la réponse de Holo est tantôt un texte, tantôt un objet { content: "…" } : on la ramène toujours à un texte
+    const asText = (a) => (typeof a === 'string' ? a : (a && typeof a.content === 'string' ? a.content : (a == null ? '' : JSON.stringify(a))));
+    const answers = evs.filter((e) => e.type === 'step_end').map((e) => asText(e.answer));
     let data = null;
     const last = answers.at(-1) || '';
     const a = last.indexOf('{'), b = last.lastIndexOf('}');
     if (expect && a >= 0 && b > a) {
       try { data = JSON.parse(jsonrepair(last.slice(a, b + 1))); } catch { data = null; }
     }
-    res.json({ ok: !!end.ok, status: end.status || 'inconnu', seconds: Math.round((Date.now() - t0) / 1000),
+    res.status(end.ok ? 200 : 502).json({ ok: !!end.ok, status: end.status || 'inconnu', seconds: Math.round((Date.now() - t0) / 1000),
                answers, data, usage: end.usage || {}, restarts: end.restarts || 0 });
   } catch (err) {
     if (replay) replay.running = false;
