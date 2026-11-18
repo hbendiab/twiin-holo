@@ -160,6 +160,17 @@ def norm(v) -> str:
     return s.rstrip("/")
 
 
+def same(a, b) -> bool:
+    """Même valeur, à la mise en forme près : « Transports Leroy » = « TRANSPORTS LEROY — 401LEROY » (libellé + code)."""
+    x, y = norm(a), norm(b)
+    if x == y:
+        return True
+    x2, y2 = re.sub(r"[^a-z0-9.]", "", x), re.sub(r"[^a-z0-9.]", "", y)
+    if not (re.search(r"[a-z]", x2) and re.search(r"[a-z]", y2)):
+        return False  # nombres (prix, montants) : égalité stricte, jamais « 49.99 » = « 149.99 »
+    return len(min(x2, y2, key=len)) >= 4 and (x2 in y2 or y2 in x2)
+
+
 def score(expected: dict, state: dict | None) -> tuple[float, list[str]]:
     """Part des cellules attendues retrouvées dans l'état final du jumeau (ordre des lignes indifférent)."""
     exp = (expected or {}).get("rows") or []
@@ -172,7 +183,7 @@ def score(expected: dict, state: dict | None) -> tuple[float, list[str]]:
     for row in exp:
         best, best_hits = None, -1
         for g in remaining:
-            h = sum(1 for k, v in row.items() if norm(g.get(k)) == norm(v))
+            h = sum(1 for k, v in row.items() if same(g.get(k), v))
             if h > best_hits:
                 best, best_hits = g, h
         total += len(row)
@@ -180,7 +191,7 @@ def score(expected: dict, state: dict | None) -> tuple[float, list[str]]:
         if best is not None:
             remaining.remove(best)
         for k, v in row.items():
-            if best is None or norm(best.get(k)) != norm(v):
+            if best is None or not same(best.get(k), v):
                 errs.append(f"{k} : attendu « {v} », obtenu « {(best or {}).get(k, '')} »")
     return (hit / total if total else 0.0), errs[:8]
 
