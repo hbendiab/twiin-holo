@@ -512,7 +512,7 @@ footer { margin-top: 48px; color: var(--dim); font-size: 13px; }
       › catégorie › cas précis. Le but : rapprocher les tâches qui se ressemblent sans être identiques. Un même cas
       regroupe plusieurs salariés (« moi aussi », ou un process similaire reconnu), ce qui donne un meilleur score aux
       recommandations : on sait combien de personnes et combien d'heures sont en jeu. La DSI fixe un seuil, valide les
-      catégories proposées, et reçoit les pistes A (conseil), B (ses outils) et C (Holo, en dernier recours).
+      catégories proposées, et reçoit les solutions : un conseil que le salarié applique lui-même, ou une automatisation (n8n, ou n8n + Holo en computer use quand le logiciel n'a pas d'API).
       Exemple ci-dessous avec une entreprise fictive.</p>
     <style>
 .graph { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; overflow: hidden; min-width: 0; }
@@ -543,7 +543,7 @@ canvas#kg { display: block; width: 100%; min-width: 760px; height: 560px; touch-
   </div>
   <div class="gcap" aria-live="polite"><span class="no" id="kgno"></span><span class="tx" id="kgcap"></span></div>
   <div class="gprog" id="kgprog" aria-label="Étapes du scénario"></div>
-  <div class="gscroll"><canvas id="kg" aria-label="Graphe animé : entreprise, logiciels, catégories, cas, salariés et pistes A, B, C d'une entreprise fictive"></canvas></div>
+  <div class="gscroll"><canvas id="kg" aria-label="Graphe animé : entreprise, logiciels, catégories, cas, salariés et solutions (conseil ou automatisation) d'une entreprise fictive"></canvas></div>
   <div class="gfoot">
     <span class="rule">Seuil fixé par la DSI : <b>≥ 10 personnes</b> et <b>≥ 30 h/mois</b></span>
     <span class="hov" id="kghover">Survolez un point pour voir ses liens.</span>
@@ -554,7 +554,7 @@ canvas#kg { display: block; width: 100%; min-width: 760px; height: 560px; touch-
   const cv = document.getElementById('kg'), ctx = cv.getContext('2d');
   const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   const css = (v) => getComputedStyle(cv).getPropertyValue(v).trim();
-  // Colonnes de l'arbre : entreprise › logiciel › catégorie › cas › pistes ; les salariés gravitent autour de leur cas
+  // Colonnes de l'arbre : entreprise › logiciel › catégorie › cas › solutions ; les salariés gravitent autour de leur cas
   const COL = { co: 0.04, sw: 0.2, cat: 0.38, case: 0.57, piste: 0.76 };
   const KINDS = {
     co:    { label: 'Entreprise', color: '--ink', r: 15 },
@@ -562,13 +562,13 @@ canvas#kg { display: block; width: 100%; min-width: 760px; height: 560px; touch-
     cat:   { label: 'Catégorie', color: '--srv', r: 9 },
     case:  { label: 'Cas (tâches similaires regroupées)', color: '--accent', r: 10 },
     emp:   { label: 'Salarié', color: '--post', r: 3.6 },
-    piste: { label: 'Piste A · B · C', color: '--db', r: 8 },
+    piste: { label: 'Solution', color: '--db', r: 8 },
   };
   const SEUIL_N = 10, SEUIL_H = 30;
   const nodes = [], edges = [], byId = {};
   const add = (id, k, name, extra = {}) => { const n = { id, k, name, x: 0, y: 0, vx: 0, vy: 0, ...extra }; nodes.push(n); byId[id] = n; return n; };
   const link = (a, b, rel) => edges.push({ a: byId[a], b: byId[b], rel });
-  add('acme', 'co', 'Acme');
+  add('acme', 'co', 'Entreprise');
   add('sage', 'sw', 'Sage 100'); add('excel', 'sw', 'Excel'); add('sf', 'sw', 'Salesforce');
   add('k-saisie', 'cat', 'Saisie de factures'); add('k-rap', 'cat', 'Automatisation de rapports');
   add('k-rec', 'cat', 'Réception de données'); add('k-ndf', 'cat', 'Notes de frais'); add('k-rel', 'cat', 'Relances commerciales');
@@ -585,20 +585,18 @@ canvas#kg { display: block; width: 100%; min-width: 760px; height: 560px; touch-
   for (const id in CASES) { const [cat, name, n, h, role] = CASES[id];
     add('c-' + id, 'case', name, { N: n, H: h, role }); link(cat, 'c-' + id, 'contient');
     for (let i = 0; i < n; i++) { add(`e-${id}-${i}`, 'emp', `${role} ${i + 1}`, { home: 'c-' + id }); link(`e-${id}-${i}`, 'c-' + id, i === 0 ? 'enregistre' : i === 1 && id === 'facture' ? 'similaire à 91 %' : 'moi aussi'); } }
-  add('pA', 'piste', 'A · Conseil (employée)', { home: 'c-facture', tone: '--a' });
-  add('pB', 'piste', 'B · n8n + Outlook', { home: 'c-facture', tone: '--b' });
-  add('pC', 'piste', 'C · Holo (scans → Sage)', { home: 'c-facture', tone: '--c' });
-  add('rB', 'piste', 'B · API + n8n', { home: 'k-rap', tone: '--b' });
-  add('rC', 'piste', 'C · Holo (portail bancaire)', { home: 'k-rap', tone: '--c' });
-  link('c-facture', 'pA', 'piste'); link('c-facture', 'pB', 'piste'); link('c-facture', 'pC', 'piste');
-  link('k-rap', 'rB', 'piste'); link('k-rap', 'rC', 'piste');
+  add('pA', 'piste', 'Conseil : à faire soi-même', { home: 'c-facture', tone: '--db' });
+  add('pB', 'piste', 'Automatisation : n8n + Holo', { home: 'c-facture', tone: '--c' });
+  add('rB', 'piste', 'Automatisation : n8n', { home: 'k-rap', tone: '--b' });
+  link('c-facture', 'pA', 'piste'); link('c-facture', 'pB', 'piste');
+  link('k-rap', 'rB', 'piste');
 
   // Scénario : chaque étape dit ce qui est visible et combien de salariés sont rattachés à chaque cas
   const S = (cap, set) => ({ cap, set });
   const STEPS = [
-    S('La DSI crée le graphe d\'Acme : ses logiciels et son catalogue d\'outils.', (s) => { s.show('acme', 'sage', 'excel', 'sf'); }),
+    S('La DSI crée le graphe de l\'entreprise : ses logiciels et son catalogue d\'outils.', (s) => { s.show('acme', 'sage', 'excel', 'sf'); }),
     S('Une comptable enregistre sa tâche une fois. Twiin la range : Sage 100 › Saisie de factures › « Traiter une facture fournisseur ».', (s) => { s.show('k-saisie', 'c-facture'); s.n.facture = 1; }),
-    S('Le conseil A lui est proposé tout de suite : Sage 100 vérifie déjà la TVA, l\'étape à la calculatrice peut sauter.', (s) => { s.show('pA'); }),
+    S('Un conseil lui est proposé tout de suite, qu\'elle applique elle-même : Sage 100 vérifie déjà la TVA, l\'étape à la calculatrice peut sauter.', (s) => { s.show('pA'); }),
     S('Un commercial et une contrôleuse de gestion enregistrent leurs tâches : de nouvelles branches poussent.', (s) => { s.show('k-rel', 'c-relances', 'k-rap', 'c-hebdo'); s.n.relances = 1; s.n.hebdo = 1; }),
     S('Une deuxième comptable fait presque la même chose. Twiin reconnaît un process similaire à 91 % et la rattache au même cas, sans nouveau nœud.', (s) => { s.n.facture = 2; s.pulse = 'c-facture'; }),
     S('Les autres comptables cliquent « moi aussi » : pas de nouvel enregistrement, pas de nouvelle analyse. Le cas compte 14 personnes et 497 h/mois.', (s) => { s.n.facture = 14; s.pulse = 'c-facture'; }),
@@ -606,7 +604,7 @@ canvas#kg { display: block; width: 100%; min-width: 760px; height: 560px; touch-
     S('Seuil de la DSI : au moins 10 personnes et 30 h/mois. Les factures fournisseurs le franchissent.', (s) => { s.lit.add('c-facture'); s.pulse = 'c-facture'; }),
     S('Aucun rapport ne passe seul, mais les deux cas de la même catégorie le dépassent ensemble : 11 personnes, 32 h/mois.', (s) => { s.lit.add('k-rap'); s.pulse = 'k-rap'; }),
     S('Le reste est sous le seuil : relances et notes de frais écartées. Les commandes PDF restent sous surveillance (65 h/mois, mais 4 personnes).', (s) => { s.drop.add('c-relances'); s.drop.add('c-notes'); s.watch.add('c-commandes'); }),
-    S('Pistes pour la DSI : B avec ses outils, C avec Holo seulement là où il n\'y a ni API ni texte exploitable. 2 groupes retenus, 529 h/mois en jeu.', (s) => { s.show('pB', 'pC', 'rB', 'rC'); }),
+    S('Automatisations proposées à la DSI : n8n seul quand il y a une API (rapports), n8n + Holo en computer use quand il n\'y en a pas (Sage 100). 2 groupes retenus, 529 h/mois en jeu.', (s) => { s.show('pB', 'rB'); }),
   ];
   function state(i) {
     const s = { vis: new Set(), n: {}, lit: new Set(), drop: new Set(), watch: new Set(), pulse: null,
@@ -623,7 +621,8 @@ canvas#kg { display: block; width: 100%; min-width: 760px; height: 560px; touch-
   const live = (e) => vis(e.a) && vis(e.b);
 
   document.getElementById('kglegend').innerHTML = Object.values(KINDS)
-    .map((k) => `<span><i class="sw" style="background:var(${k.color})"></i>${k.label}</span>`).join('') +
+    .filter((k) => k.label !== 'Solution').map((k) => `<span><i class="sw" style="background:var(${k.color})"></i>${k.label}</span>`).join('') +
+    '<span><i class="sw" style="background:var(--db)"></i>conseil</span><span><i class="sw" style="background:var(--b)"></i>automatisation n8n</span><span><i class="sw" style="background:var(--c)"></i>n8n + Holo</span>' +
     '<span><i class="ring" style="border-color:var(--accent)"></i>au-dessus du seuil</span>' +
     '<span><i class="ring" style="border-color:var(--ext)"></i>sous surveillance</span>';
 
@@ -648,7 +647,7 @@ canvas#kg { display: block; width: 100%; min-width: 760px; height: 560px; touch-
       const kids = Object.keys(T).filter((x) => parentOf[x] === sw.id);
       T[sw.id] = { x: COL.sw * W, y: kids.length ? mean(kids) : top + (bottom - top) * (i + 0.5) / 3 }; });
     T.acme = { x: COL.co * W, y: H / 2 };
-    const offs = { pA: -1, pB: 0, pC: 1, rB: -0.5, rC: 0.5 };
+    const offs = { pA: -0.6, pB: 0.6, rB: 0 };
     nodes.filter((m) => m.k === 'piste').forEach((p) => { const h = T[p.home] || { y: H / 2 };
       T[p.id] = { x: COL.piste * W, y: h.y + offs[p.id] * Math.min(34, gap * 0.42) }; });
     nodes.filter((m) => m.k === 'emp').forEach((e) => { const h = T[e.home]; if (!h) return;
@@ -709,6 +708,7 @@ canvas#kg { display: block; width: 100%; min-width: 760px; height: 560px; touch-
         ctx.font = (n.k === 'co' || n.k === 'sw' ? '600 13px ' : '500 12px ') + '"IBM Plex Sans", "Segoe UI", sans-serif';
         ctx.fillStyle = on ? ink : dim;
         ctx.fillText(n.name, lx, n.k === 'piste' ? n.y + 4 : n.y - r - 7);
+        if (n.k === 'co') { ctx.font = '500 11px "IBM Plex Mono", Consolas, monospace'; ctx.fillStyle = dim; ctx.fillText('DSI', lx, n.y + r + 15); }
         if (n.k === 'case' && st.n[n.id.slice(2)]) {
           const id = n.id.slice(2);
           ctx.font = '500 11px "IBM Plex Mono", Consolas, monospace';
@@ -773,7 +773,7 @@ canvas#kg { display: block; width: 100%; min-width: 760px; height: 560px; touch-
       <tr><td>Catégorie</td><td>nouvelle table, proposée par Twiin, validée par la DSI</td><td>à faire</td></tr>
       <tr><td>Cas</td><td><code>taches</code> regroupées par similarité (pgvector)</td><td>à faire : aujourd'hui une tâche = un enregistrement</td></tr>
       <tr><td>« Moi aussi »</td><td>lien salarié ↔ cas, sans nouvel enregistrement ni nouvelle analyse</td><td>à faire</td></tr>
-      <tr><td>Pistes A / B / C</td><td><code>recommendations</code> + <code>tests</code></td><td>en place pour une tâche ; à étendre au cas regroupé</td></tr>
+      <tr><td>Solutions (conseil, automatisation)</td><td><code>recommendations</code> + <code>tests</code></td><td>en place pour une tâche ; à étendre au cas regroupé</td></tr>
     </table></div>
   </section>
 
