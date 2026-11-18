@@ -290,6 +290,10 @@ footer { margin-top: 48px; color: var(--dim); font-size: 13px; }
         « automatisation », réseau fermé sauf les API utiles.</li>
       <li><b>Un n8n par entreprise</b>, hébergé (n8n Cloud ou auto-hébergé en Docker, région UE), où Twiin livre le workflow retenu.</li>
       <li><b>Les clés uniquement côté serveur</b> (coffre de secrets) ; connexion des salariés par SSO (Microsoft, Google) via Supabase Auth.</li>
+      <li><b>Mise en service par la DSI, une fois</b> : une autorisation par éditeur (Microsoft 365 : application Entra ID + consentement
+        administrateur ; Google Workspace : compte de service avec délégation de domaine ; autres : installation « espace de travail »),
+        déduite des audits des postes. Twiin crée ensuite les connexions dans le n8n de l'entreprise ; les salariés ne configurent rien.
+        Une première version existe (page « Mise en service » : couverture, autorisations à donner, logiciels sans API).</li>
       <li><b>Holo hébergé</b> pour les logiciels web sans API ; agent local seulement pour les logiciels de bureau sans API.</li>
       <li><b>Limite connue</b> : sur Mac, l'autorisation d'enregistrer l'écran doit être donnée une fois par l'utilisateur (règle d'Apple).</li>
     </ul>
