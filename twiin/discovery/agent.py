@@ -23,6 +23,7 @@ TOOLS_SPEC = [
     ("type_text", "Click the input field or cell at (x, y), clear it, then type the text.", {"x": "integer", "y": "integer", "text": "string"}),
     ("note", "Write down the values you READ on the current screenshot (exactly as displayed), to use them later on "
              "another page. You only see the current screen: anything not noted is forgotten.", {"text": "string"}),
+    ("wait", "The page is empty or still loading: wait 2 seconds.", {}),
     ("press_key", "Press a keyboard key (Enter, Tab, Escape...).", {"key": "string"}),
     ("scroll", "Scroll the page (direction: up or down).", {"direction": "string"}),
     ("done", "The task is finished, or impossible. Summarize what was done.", {"summary": "string", "success": "boolean"}),
@@ -40,6 +41,16 @@ def _tools():
                                                      "parameters": {"type": "object", "properties": p, "required": list(p)}}})
     return out
 
+
+READY_JS = """() => {
+  if (document.readyState !== 'complete' || !document.body) return false;
+  const cs = getComputedStyle(document.body);
+  if (cs.visibility === 'hidden' || parseFloat(cs.opacity) < 0.9) return false;
+  const sig = document.body.innerText.length + ':' + document.body.scrollHeight;
+  const now = Date.now();
+  if (window.__twSig !== sig) { window.__twSig = sig; window.__twAt = now; return false; }
+  return now - window.__twAt > 300;
+}"""
 
 TEXT_AT = """([x, y]) => {
   const el = document.elementFromPoint(x, y);
@@ -59,7 +70,7 @@ ELEMENT_AT = """([x, y]) => {
 
 def run_agent(url: str, mission: str, out_dir: Path, model: str, max_steps: int = 30,
               init_script: str | None = None, on_event=None, progress_fn=None, done_guard=None,
-              hints: str = "", subtasks: list[dict] | None = None) -> dict:
+              hints: str = "", subtasks: list[dict] | None = None, start_click: str | None = None) -> dict:
     """progress_fn(state) -> texte d'avancement montré à Holo à chaque étape ;
     done_guard(state) -> raison de refuser « fini » (ou None) ; hints : conseils tirés de l'essai précédent."""
     """Rejoue `mission` dans le jumeau servi à `url`. Renvoie stats, issue et état final du jumeau.
@@ -88,6 +99,13 @@ def run_agent(url: str, mission: str, out_dir: Path, model: str, max_steps: int 
         page.on("dialog", lambda d: d.dismiss() if FORBIDDEN.search(d.message) else d.accept())
         page.goto(url)
         page.wait_for_timeout(800)
+        if start_click:  # point de départ imposé (une « brique » du jumeau)
+            try:
+                page.get_by_text(start_click, exact=True).first.click(timeout=3000)
+                page.wait_for_timeout(500)
+            except Exception:  # noqa: BLE001
+                pass
+        path: list[str] = []  # chemin réellement suivi : pages ouvertes et saisies, dans l'ordre
         plan = subtasks or [{"mission": mission, "progress_fn": progress_fn, "done_guard": done_guard, "max_steps": max_steps}]
         step = 0
         sub_results = []
@@ -97,6 +115,11 @@ def run_agent(url: str, mission: str, out_dir: Path, model: str, max_steps: int 
           emit("subtask", text=f"sous-tâche {k}/{len(plan)}")
           for _ in range(sub.get("max_steps", max_steps)):
             step += 1
+            # page stable avant la capture : chargée, visible, et sans changement pendant ~300 ms (4 s au plus)
+            try:
+                page.wait_for_function(READY_JS, timeout=4000)
+            except Exception:  # noqa: BLE001
+                pass
             shot = out_dir / f"{step:02d}.jpg"
             page.screenshot(path=str(shot), type="jpeg", quality=70)
             wait = gap - (time.time() - last_call)
@@ -155,7 +178,13 @@ def run_agent(url: str, mission: str, out_dir: Path, model: str, max_steps: int 
                 summary = (summary + " | " if summary else "") + str(args.get("summary", ""))
                 emit("done", step=step, text=str(args.get("summary", "")))
                 break
+            if name == "wait":
+                page.wait_for_timeout(2000)
+                history.append(f"{step}. wait -> ok")
+                continue
             if name == "note":
+                if not path or path[-1] != "lire":
+                    path.append("lire")
                 notes.append(str(args.get("text", ""))[:300])
                 history.append(f"{step}. note -> saved")
                 emit("note", step=step, text=notes[-1])
@@ -195,6 +224,10 @@ def run_agent(url: str, mission: str, out_dir: Path, model: str, max_steps: int 
                 where = f" on {info['tag']} '{info['text'][:40]}'" if info else ""
                 shown = {k: v for k, v in args.items() if k != "reason"}
                 history.append(f"{step}. {name} {json.dumps(shown, ensure_ascii=False)}{where} -> ok")
+                token = (f"ouvrir « {info['text'][:30]} »" if name == "click" and info and info.get("tag") in ("button", "a", "li")
+                         else "saisir" if name == "type_text" else None)
+                if token and (not path or path[-1] != token):
+                    path.append(token)
             except Exception as e:  # noqa: BLE001
                 stats["errors"] += 1
                 history.append(f"{step}. {name} failed: {str(e)[:100]}")
@@ -210,4 +243,4 @@ def run_agent(url: str, mission: str, out_dir: Path, model: str, max_steps: int 
     stats["holo_seconds"] = round(stats["holo_seconds"], 1)
     stats["seconds"] = round(time.time() - t0, 1)
     return {"outcome": outcome, "claimed_success": claimed_success, "summary": summary, "state": state,
-            "stats": stats, "history": history}
+            "stats": stats, "history": history, "path": path}

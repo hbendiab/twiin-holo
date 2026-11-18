@@ -91,7 +91,8 @@ about the software involved. Produce TWO blocks, in this order, and nothing else
 {
  "mission": "English instruction for a computer-use agent working INSIDE THE TWIN, as the employee would ask a colleague: the goal and where to look, ending with 'then call done'. Do NOT give the values to copy: the agent must READ them in the twin pages (that is what we test). Never ask to buy, send, pay, validate or delete.",
  "expected": {"rows": [{"<column>": "<exact expected value>"}]},
- "fidelite": "low | medium | high : how close the twin is to the real tools, given what the screenshots show"
+ "fidelite": "low | medium | high : how close the twin is to the real tools, given what the screenshots show",
+ "routes": [{"nom": "short French name", "strategie": "English: a DIFFERENT way to reach the same final result (other starting point, other order, other navigation), 1-3 sentences"}]  // exactly 3, truly different
 }
 ```
 
@@ -411,26 +412,67 @@ def row_guard(expected: dict, i: int):
     return guard
 
 
-def run_iteration(spec, url, out, model, variant, hints="") -> tuple[dict, float, list[str]]:
-    """Une sous-tâche (un sous-agent Holo, historique neuf) par ligne du tableau, dans la même page."""
+ROUTES_PROMPT = """A computer-use agent must reach the result below inside a test web page. Propose exactly 3 TRULY DIFFERENT
+routes to reach the same final result (like a GPS proposing 3 itineraries): different starting point, different order,
+different navigation (search page links vs tabs, item by item vs column by column...). Never buy, send, pay or delete.
+Return ONLY JSON: {"routes": [{"nom": "short French name", "strategie": "English, 1-3 sentences"}]}"""
+
+
+def ensure_routes(spec: dict, spec_path: Path) -> list[dict]:
+    if len(spec.get("routes") or []) >= 2:
+        return spec["routes"][:3]
+    r = hf_client().chat.completions.create(
+        model=HF_MODEL, max_tokens=1200, temperature=0.4,
+        messages=[{"role": "system", "content": ROUTES_PROMPT}, {"role": "user", "content": "TASK:\n" + spec["mission"]}],
+        extra_body={"reasoning_effort": "low"})
+    raw = (r.choices[0].message.content or "").strip()
+    raw = fenced(raw, "json") or raw[raw.find("{"): raw.rfind("}") + 1]
+    spec["routes"] = json.loads(raw)["routes"][:3]
+    spec_path.write_text(json.dumps(spec, ensure_ascii=False, indent=1), encoding="utf-8")
+    return spec["routes"]
+
+
+def run_iteration(spec, url, out, model, variant, hints="", route: dict | None = None,
+                  start: str | None = None, known: list[str] | None = None) -> tuple[dict, float, list[str]]:
+    """Un essai dans le jumeau. Exploration : seuls A (départ `start`) et B (résultat attendu) sont donnés ;
+    `known` = chemins déjà découverts, à NE PAS refaire."""
     exp = spec.get("expected")
-    n, cols = _columns(exp)
-    per_row = int(os.environ.get("DISCOVERY_STEPS_PER_ROW", "16"))
-    subtasks = [{
-        "mission": (spec["mission"] + GUIDE +
-                    f"\n\n## YOUR SUB-TASK NOW\nFill ONLY row {i} of the table ({', '.join(cols)}), for item number {i} of the "
-                    f"task (in the order of the task). Rows 1 to {i - 1} are already done: do not change them. "
-                    f"Open the right page, read the values, then fill row {i}, then call done."
-                    + (f"\n\n## Advice from the previous attempt\n{hints}" if hints else "")),
-        "progress_fn": lambda s, i=i: progress_text(exp, s).split("\n")[i] if len(progress_text(exp, s).split("\n")) > i else "",
-        "done_guard": row_guard(exp, i),
-        "max_steps": per_row,
-    } for i in range(1, n + 1)] if n else None
-    res = run_agent(url, spec["mission"] + GUIDE, out, model, max_steps=int(os.environ.get("DISCOVERY_MAX_STEPS", "40")),
+    mission = spec["mission"] + GUIDE
+    if route:
+        mission += f"\n\n## YOUR ROUTE (imposed, follow it)\n{route['strategie']}"
+    if start:
+        mission += (f"\n\n## Your starting point\nYou start on « {start} ». From there, find YOUR OWN way to the result: "
+                    "any order and any navigation are allowed, as long as the final table is right.")
+    if known:
+        mission += ("\n\n## Ways already found by other agents (find a DIFFERENT way: other order, other pages, "
+                    "other navigation)\n" + "\n".join(f"- {k}" for k in known))
+    res = run_agent(url, mission, out, model, max_steps=int(os.environ.get("DISCOVERY_MAX_STEPS", "40")),
                     init_script=VARIANTS[variant], progress_fn=lambda s: progress_text(exp, s),
-                    done_guard=done_guard(exp), hints=hints, subtasks=subtasks)
+                    done_guard=done_guard(exp), hints=hints, start_click=start)
     sc, errs = score(exp, res["state"])
     return res, sc, errs
+
+
+BRICKS_JS = """() => [...document.querySelectorAll('body *')]
+  .filter((e) => { const r = e.getBoundingClientRect(); const t = (e.innerText || '').trim();
+                   const clickable = /^(BUTTON|A)$/.test(e.tagName) || e.getAttribute('role') === 'tab' || e.onclick
+                     || getComputedStyle(e).cursor === 'pointer';
+                   return clickable && r.top < 140 && r.width > 0 && r.height > 0 && t && t.length < 30 && t.split(String.fromCharCode(10)).length === 1
+                     && !/acheter|panier|payer|envoyer|valider|supprimer/i.test(t); })
+  .map((e) => e.innerText.trim()).filter((t, i, a) => a.indexOf(t) === i)"""
+
+
+def list_bricks(url: str) -> list[str]:
+    """Les briques de départ possibles : les onglets / liens de navigation visibles en haut du jumeau."""
+    from playwright.sync_api import sync_playwright
+    with sync_playwright() as pw:
+        b = pw.chromium.launch()
+        pg = b.new_page(viewport={"width": 1280, "height": 800})
+        pg.goto(url)
+        pg.wait_for_timeout(600)
+        bricks = pg.evaluate(BRICKS_JS) or []
+        b.close()
+    return bricks[:8]
 
 
 def summary_of(model, variant, res, sc, errs, it):
@@ -443,39 +485,72 @@ def summary_of(model, variant, res, sc, errs, it):
 # ---------------------------------------------------------------- phase 2 : casse (3 itérations au plus)
 
 def casse(session_dir: Path) -> None:
-    """Itération 1 = le test dev (déjà fait pendant la question). Puis au plus 2 itérations :
-    si l'essai précédent a réussi, on durcit (popup, puis lenteur) ; sinon on réessaie la même chose avec des conseils.
-    Pas de casse ? Tant mieux : on s'arrête là."""
+    """Exploration façon GPS : même point A, même point B, plusieurs sous-agents EN MÊME TEMPS, chacun partant
+    d'une brique différente du jumeau et trouvant son propre chemin. Chaque chemin suivi est une solution découverte.
+    Vague suivante : on donne les chemins déjà trouvés et on en demande d'autres. Arrêt dès qu'une vague ne trouve
+    rien de nouveau, ou après DISCOVERY_WAVES vagues. Enfin, la meilleure solution passe un test de « trafic »."""
+    import random
+    from concurrent.futures import ThreadPoolExecutor
     st = State(session_dir)
     tid = st.data["task_id"]
     spec = json.loads((session_dir / "twin" / "spec.json").read_text(encoding="utf-8"))
     sb = Supa()
     sb.update("taches", f"id=eq.{tid}", {"status": "confirmed"})
-    results = list(st.data.get("iterations") or [])
-    total = int(os.environ.get("DISCOVERY_ITERATIONS", "3"))
-    harder = ["popup", "lent", "zoom"]
     url, srv = serve(session_dir / "twin")
+    width = int(os.environ.get("DISCOVERY_AGENTS", "3"))
+    waves = int(os.environ.get("DISCOVERY_WAVES", "3"))
+    results = list(st.data.get("iterations") or [])
+    solutions: dict[str, dict] = {}  # signature du chemin -> meilleur essai
+    lock = threading.Lock()
+    for r in results:
+        if r.get("path"):
+            solutions.setdefault(" → ".join(r["path"]), r)
+
+    def one(start, known, it, variant="base"):
+        try:
+            res, sc, errs = run_iteration(spec, url, session_dir / "runs" / f"it{it}-{slug_route({'nom': start or 'libre'})}",
+                                          CASSE_MODEL, variant, start=start, known=known)
+            r = summary_of(CASSE_MODEL, variant, res, sc, errs, it)
+            r["path"] = res.get("path") or []
+        except Exception as e:  # noqa: BLE001
+            r = {"iteration": it, "model": CASSE_MODEL, "variant": variant, "success_rate": 0.0, "false_success": False,
+                 "seconds": 0, "calls": 0, "errors": [str(e)[:200]], "path": []}
+        r["start"] = start
+        r["route"] = " → ".join(r["path"]) or "(aucun chemin)"
+        try:
+            record_test(sb, tid, f"départ {start} / {variant}", {"stats": {"model": CASSE_MODEL, "calls": r["calls"],
+                        "seconds": r["seconds"]}, "history": [r["route"]], "summary": "", "claimed_success": r.get("claimed_success")},
+                        r["success_rate"], r["errors"], f"exploration {it}")
+        except Exception as e:  # noqa: BLE001
+            print("essai non enregistré :", e, flush=True)
+        with lock:
+            results.append(r)
+            new = r["path"] and r["route"] not in solutions
+            if r["path"] and (new or r["success_rate"] > solutions[r["route"]]["success_rate"]):
+                solutions[r["route"]] = r
+            st.set(phase="casse", iterations=results, solutions=list(solutions.values()),
+                   progress={"done": len(results), "total": len(results) + 1},
+                   message=f"départ « {start} » : {round(r['success_rate'] * 100)} %{' (nouveau chemin)' if new else ''}")
+        return r
+
     try:
-        while len(results) < total:
-            last = results[-1] if results else None
-            if last and last["success_rate"] >= 0.9:
-                done_variants = {r["variant"] for r in results if r["success_rate"] >= 0.9}
-                variant = next((v for v in harder if v not in done_variants), "zoom")
-                hints = ""
-            else:
-                variant = last["variant"] if last else "base"
-                hints = hints_from(last["errors"]) if last else ""
-            it = len(results) + 1
-            st.set(phase="casse", message=f"Itération {it} : {variant} avec {CASSE_MODEL}", iterations=results,
-                   progress={"done": len(results), "total": total})
-            try:
-                res, sc, errs = run_iteration(spec, url, session_dir / "runs" / f"it{it}-{variant}", CASSE_MODEL, variant, hints)
-            except Exception as e:  # noqa: BLE001
-                results.append({"iteration": it, "model": CASSE_MODEL, "variant": variant, "success_rate": 0.0,
-                                "false_success": False, "seconds": 0, "calls": 0, "errors": [str(e)[:200]]})
-                continue
-            record_test(sb, tid, variant, res, sc, errs, f"itération {it}")
-            results.append(summary_of(CASSE_MODEL, variant, res, sc, errs, it))
+        bricks = list_bricks(url) or [None]
+        st.set(phase="casse", message=f"Exploration : {len(bricks)} points de départ possibles", progress={"done": 0, "total": width})
+        for wave in range(1, waves + 1):
+            starts = [bricks[(i + (wave - 1) * width) % len(bricks)] for i in range(width)]
+            known = [k for k in solutions if k != "(aucun chemin)"]
+            before = set(solutions)
+            base = len(results)
+            with ThreadPoolExecutor(max_workers=width) as pool:
+                list(pool.map(lambda a: one(a[1], known, base + a[0] + 1), enumerate(starts)))
+            if set(solutions) == before:
+                break  # plus aucun chemin nouveau : l'exploration est finie
+        # test de « trafic » sur la meilleure solution (popup + lenteur, en parallèle)
+        best = max(solutions.values(), key=lambda r: (r["success_rate"], -r["seconds"]), default=None)
+        if best and best["success_rate"] >= 0.9:
+            base = len(results)
+            with ThreadPoolExecutor(max_workers=2) as pool:
+                list(pool.map(lambda a: one(best["start"], [], base + a[0] + 1, a[1]), enumerate(["popup", "lent"])))
     finally:
         srv.shutdown()
     sb.update("taches", f"id=eq.{tid}", {"status": "tested"})
@@ -484,39 +559,48 @@ def casse(session_dir: Path) -> None:
         sb.insert("recommendations", {
             "task_id": tid, "kind": solution["kind"], "confidence": solution["confidence"], "summary": solution["texte"],
             "reasons": solution["raisons"], "model": solution.get("modele"),
-            "plan": [{"position": 1, "item_type": "plan_step", "method": "holo" if solution["kind"] == "automate" else "manual",
-                      "description": solution["texte"]}],
+            "plan": [{"position": i + 1, "item_type": "plan_step", "method": "holo", "description": c["chemin"]}
+                     for i, c in enumerate(solution.get("catalogue", [])[:5])],
             "deliverable_type": "n8n_workflow" if solution["kind"] == "automate" else "video_tuto",
         })
     except Exception as e:  # noqa: BLE001
         print("recommandation non enregistrée :", e, flush=True)
-    st.set(phase="done", message="Itérations terminées", iterations=results, solution=solution,
-           progress={"done": len(results), "total": total})
+    st.set(phase="done", message=f"Exploration terminée : {len(solutions)} chemin(s) trouvé(s)", iterations=results,
+           solutions=list(solutions.values()), solution=solution, progress={"done": len(results), "total": len(results)})
+
+
+def slug_route(route: dict) -> str:
+    return re.sub(r"[^a-z0-9]+", "-", unicodedata.normalize("NFKD", route["nom"]).encode("ascii", "ignore").decode().lower())[:30]
 
 
 def propose(results: list[dict]) -> dict:
-    """Automatiser si la dernière itération réussit et qu'au moins 2 itérations sur 3 réussissent ; sinon accélérer."""
-    ok = [r for r in results if r.get("success_rate", 0) >= 0.9]
-    last = results[-1] if results else None
-    model = last["model"] if last else CASSE_MODEL
-    secs = round(sum(r.get("seconds", 0) for r in results) / max(1, len(results)))
-    faux = sum(1 for r in results if r.get("false_success"))
-    raisons = [f"{len(ok)}/{len(results)} itérations réussies avec {model} "
-               f"(dernière : {round((last or {}).get('success_rate', 0) * 100)} %)",
-               f"durée moyenne {secs} s par exécution"]
-    survived = [r["variant"] for r in ok if r["variant"] != "base"]
-    if survived:
-        raisons.append("résiste à : " + ", ".join(survived))
-    if faux:
-        raisons.append(f"{faux} faux « réussi » détecté(s) : la vérification automatique reste indispensable")
-    if last and last["success_rate"] >= 0.9 and len(ok) >= min(2, len(results)):
-        return {"kind": "automate", "confidence": "high" if len(ok) == len(results) else "medium", "modele": model,
-                "texte": f"Automatiser la tâche avec Holo ({model}) et une vérification du résultat à chaque exécution.",
-                "raisons": raisons, "iterations": results}
-    return {"kind": "accelerate", "confidence": "medium" if (last or {}).get("success_rate", 0) >= 0.6 else "low", "modele": model,
-            "texte": "L'automatisation n'est pas encore assez fiable : Twiin propose d'accélérer la tâche (tuto + raccourcis) "
+    """Catalogue des chemins découverts (le meilleur essai de chacun), classés par réussite puis rapidité.
+    La meilleure solution doit aussi tenir sous « trafic » (popup, lenteur) pour être recommandée avec confiance."""
+    explo = [r for r in results if r.get("variant", "base") == "base" and r.get("path")]
+    best_by: dict[str, dict] = {}
+    for r in explo:
+        k = r["route"]
+        if k not in best_by or (r["success_rate"], -r["seconds"]) > (best_by[k]["success_rate"], -best_by[k]["seconds"]):
+            best_by[k] = r
+    ranked = sorted(best_by.values(), key=lambda r: (-r["success_rate"], r["seconds"]))
+    model = ranked[0]["model"] if ranked else CASSE_MODEL
+    catalogue = [{"chemin": r["route"], "depart": r.get("start"), "reussite": round(r["success_rate"] * 100),
+                  "duree_s": round(r["seconds"]), "etapes": r["calls"]} for r in ranked]
+    traffic = [r for r in results if r.get("variant") in ("popup", "lent")]
+    tient = bool(traffic) and all(r["success_rate"] >= 0.9 for r in traffic)
+    raisons = [f"{len(catalogue)} chemin(s) différent(s) découvert(s) sur {len(results)} essai(s)"]
+    raisons += [f"{c['reussite']} %, {c['duree_s']} s, {c['etapes']} étapes : {c['chemin']}" for c in catalogue[:3]]
+    if traffic:
+        raisons.append("le meilleur chemin " + ("tient" if tient else "ne tient pas toujours") + " avec popup et lenteur : "
+                       + ", ".join(f"{r['variant']} {round(r['success_rate'] * 100)} %" for r in traffic))
+    if ranked and ranked[0]["success_rate"] >= 0.9:
+        return {"kind": "automate", "confidence": "high" if tient else "medium", "modele": model,
+                "texte": f"Automatiser avec Holo ({model}) en suivant le meilleur chemin découvert, avec une vérification "
+                         "du résultat à chaque exécution.", "raisons": raisons, "catalogue": catalogue}
+    return {"kind": "accelerate", "confidence": "low", "modele": model,
+            "texte": "Aucun chemin n'est encore assez fiable : Twiin propose d'accélérer la tâche (tuto + raccourcis) "
                      "et réessaiera l'automatisation après correction des points fragiles.",
-            "raisons": raisons, "iterations": results}
+            "raisons": raisons, "catalogue": catalogue}
 
 
 def answer(session_dir: Path) -> None:
