@@ -409,8 +409,7 @@ app.post('/api/generate-workflows', async (req, res) => {
     }
     if (!dir) return res.status(400).json({ error: 'Enregistrement introuvable.' });
     const result = await analyzeSessionDir(dir);
-    startDiscovery(dir);
-    res.json(result);
+    res.json({ ...result, _discovery: startDiscovery(dir) });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: err.message });
@@ -438,14 +437,16 @@ function runDiscovery(cmd, dir) {
   discovery = { dir, proc };
 }
 function startDiscovery(dir) {
-  if ((process.env.DISCOVERY || 'on') === 'off') return;
+  if ((process.env.DISCOVERY || 'on') === 'off') return false;
   const missing = ['SUPABASE_URL', 'SUPABASE_PUBLISHABLE_KEY', 'SUPABASE_EMAIL', 'SUPABASE_PASSWORD', 'HAI_API_KEY'].filter((k) => !process.env[k]);
-  if (missing.length) return console.warn(`[découverte] désactivée, variables manquantes : ${missing.join(', ')}`);
+  if (missing.length) { console.warn(`[découverte] désactivée, variables manquantes : ${missing.join(', ')}`); return false; }
   const st = discoveryState(dir);
-  if (st && !['error', 'corrected'].includes(st.phase)) return console.log(`[découverte] déjà faite pour ${path.basename(dir)} (${st.phase})`);
-  if (discovery.proc) return console.warn('[découverte] une découverte tourne déjà');
+  if (discovery.proc) { console.warn('[découverte] une découverte tourne déjà'); return true; }
+  // Réanalyser = refaire la découverte (sauf si la casse a déjà été validée et lancée)
+  if (st && ['answered', 'casse'].includes(st.phase)) { console.log(`[découverte] casse en cours pour ${path.basename(dir)}`); return true; }
   try { fs.rmSync(path.join(dir, 'discovery.json'), { force: true }); } catch {}
   runDiscovery('discover', dir);
+  return true;
 }
 // La page ne reçoit que l'avancement et la question, jamais le détail interne.
 app.get('/api/discovery', (req, res) => {
@@ -479,8 +480,7 @@ app.post('/api/reanalyze', async (req, res) => {
       if (recorderSession?.proc && recorderSession.id === dirs.at(-1)) recorderSession.proc.kill('SIGTERM');
       console.log(`Relance sur ${dirs.at(-1)}`);
       const result = await analyzeSessionDir(path.join(SESSIONS_DIR, dirs.at(-1)));
-      startDiscovery(path.join(SESSIONS_DIR, dirs.at(-1)));
-      return res.json(result);
+      return res.json({ ...result, _discovery: startDiscovery(path.join(SESSIONS_DIR, dirs.at(-1))) });
     }
     if (!fs.existsSync(LAST_RUN_PATH)) return res.status(404).json({ error: 'Aucun enregistrement à relancer.' });
     const last = JSON.parse(fs.readFileSync(LAST_RUN_PATH, 'utf8'));

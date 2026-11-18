@@ -28,6 +28,7 @@
       const r = await fetch('/api/discovery/answer', { method: 'POST', headers: { 'Content-Type': 'application/json' },
                                                        body: JSON.stringify({ ok, correction }) });
       if (!r.ok) throw new Error((await r.json()).error || r.statusText);
+      if (ok && window.twiinShowResults) window.twiinShowResults();
       box.innerHTML = ok
         ? '<h3>Merci !</h3><p>Twiin prépare la meilleure solution pour cette tâche. Vous serez prévenu dès qu\'elle est prête.</p>'
         : '<h3>Merci pour la précision</h3><p>Twiin reprend son analyse avec votre correction.</p>';

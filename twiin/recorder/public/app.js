@@ -454,6 +454,14 @@ async function analyzeRequest(url, body, message, nScreens) {
     });
     const data = await res.json();
     if (data.error) throw new Error(data.error);
+    if (data._discovery) {
+      // Les étapes et conseils restent cachés tant que l'employé n'a pas confirmé que Twiin a bien compris.
+      window.__pendingWorkflows = data.workflows || [];
+      resultsEl.innerHTML = '';
+      endAnalysisPanel(true, 'Twiin étudie ta tâche en détail pour bien la comprendre (quelques minutes). Il te posera une question juste après.');
+      statusEl.textContent = 'Twiin étudie ta tâche…';
+      return;
+    }
     renderWorkflows(data.workflows || []);
     const m = data._meta || {};
     const n = data.workflows?.length ?? 0;
@@ -482,6 +490,15 @@ function setStep(n) {
   });
 }
 setStep(1);
+
+// Appelé par discovery.js quand l'employé confirme « Oui, c'est bien ça ».
+window.twiinShowResults = async () => {
+  let wfs = window.__pendingWorkflows;
+  if (!wfs) { try { wfs = (await (await fetch('/api/candidates')).json()).workflows || []; } catch { wfs = []; } }
+  window.__pendingWorkflows = null;
+  renderWorkflows(wfs);
+  statusEl.textContent = 'Voici les étapes comprises par Twiin.';
+};
 
 function renderWorkflows(workflows, { example = false } = {}) {
   if (workflows.length) setStep(2);
