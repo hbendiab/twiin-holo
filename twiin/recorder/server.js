@@ -577,6 +577,8 @@ function startDiscovery(dir) {
   runDiscovery('discover', dir);
   return true;
 }
+// Au démarrage : si une découverte tourne encore (serveur relancé pendant la casse), on la reprend pour la page.
+setTimeout(() => { try { const d = latestSessionDir(); if (d && workerBusy(discoveryState(d))) discovery.dir = d; } catch { /* rien */ } }, 0);
 // La page ne reçoit que l'avancement et la question, jamais le détail interne.
 app.get('/api/discovery', (req, res) => {
   const dir = discovery.dir; // seulement la découverte lancée depuis ce serveur (jamais un ancien résultat)
