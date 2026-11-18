@@ -328,7 +328,54 @@ def casse(session_dir: Path) -> None:
     finally:
         srv.shutdown()
     sb.update("taches", f"id=eq.{tid}", {"status": "tested"})
-    st.set(phase="done", message="Casse terminée", casse=results)
+    solution = propose(results)
+    try:
+        sb.insert("recommendations", {
+            "task_id": tid, "kind": solution["kind"], "confidence": solution["confidence"], "summary": solution["texte"],
+            "reasons": solution["raisons"], "model": solution.get("modele"),
+            "plan": [{"position": 1, "item_type": "plan_step", "method": "holo" if solution["kind"] == "automate" else "manual",
+                      "description": solution["texte"]}],
+            "deliverable_type": "n8n_workflow" if solution["kind"] == "automate" else "video_tuto",
+        })
+    except Exception as e:  # noqa: BLE001
+        print("recommandation non enregistrée :", e, flush=True)
+    st.set(phase="done", message="Casse terminée", casse=results, solution=solution)
+
+
+def propose(results: list[dict]) -> dict:
+    """Choisit la solution à partir des essais : le modèle le plus fiable sous perturbations, sinon accélérer (tuto)."""
+    by_model: dict[str, list[dict]] = {}
+    for r in results:
+        if "success_rate" in r:
+            by_model.setdefault(r["model"], []).append(r)
+    ranking = []
+    for m, rs in by_model.items():
+        avg = sum(r["success_rate"] for r in rs) / len(rs)
+        full = sum(1 for r in rs if r["success_rate"] >= 1)
+        faux = sum(1 for r in rs if r["false_success"])
+        secs = sum(r["seconds"] for r in rs) / len(rs)
+        ranking.append({"modele": m, "moyenne": round(avg, 3), "reussites": full, "essais": len(rs), "faux_reussis": faux,
+                        "duree_moy_s": round(secs), "gratuit": m == "holo3-1-35b-a3b"})
+    ranking.sort(key=lambda r: (-r["moyenne"], r["faux_reussis"], not r["gratuit"], r["duree_moy_s"]))
+    if not ranking:
+        return {"kind": "accelerate", "confidence": "low", "texte": "Aucun essai exploitable : Twiin propose un tuto pour accélérer la tâche.",
+                "raisons": ["les essais automatiques ont échoué"], "classement": []}
+    best = ranking[0]
+    fragile = [r["variant"] for r in results if r.get("model") == best["modele"] and r.get("success_rate", 0) < 1]
+    raisons = [f"{best['reussites']}/{best['essais']} essais parfaits avec {best['modele']} (moyenne {round(best['moyenne'] * 100)} %)",
+               f"durée moyenne {best['duree_moy_s']} s par exécution"]
+    if fragile:
+        raisons.append("fragile face à : " + ", ".join(fragile))
+    if best["faux_reussis"]:
+        raisons.append(f"{best['faux_reussis']} faux « réussi » : une vérification automatique est indispensable")
+    if best["moyenne"] >= 0.9 and best["reussites"] >= max(1, best["essais"] - 1):
+        return {"kind": "automate", "confidence": "high" if not fragile else "medium", "modele": best["modele"],
+                "texte": f"Automatiser la tâche avec Holo ({best['modele']}{', gratuit' if best['gratuit'] else ''}) "
+                         "et une vérification du résultat à chaque exécution.", "raisons": raisons, "classement": ranking}
+    return {"kind": "accelerate", "confidence": "medium" if best["moyenne"] >= 0.6 else "low", "modele": best["modele"],
+            "texte": "L'automatisation n'est pas encore assez fiable : Twiin propose d'accélérer la tâche (tuto + raccourcis) "
+                     "et de réessayer l'automatisation après correction des points fragiles.",
+            "raisons": raisons, "classement": ranking}
 
 
 def answer(session_dir: Path) -> None:

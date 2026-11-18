@@ -64,10 +64,25 @@
     box.hidden = false;
   }
 
+  function showSolution(s) {
+    shownFor = 'solution';
+    box.innerHTML = `
+      <h3>${s.kind === 'automate' ? '⚡ Twiin peut automatiser cette tâche' : '🎬 Twiin propose d\'accélérer cette tâche'}</h3>
+      <p>${esc(s.texte)}</p>
+      <ul>${(s.raisons || []).map((r) => `<li>${esc(r)}</li>`).join('')}</ul>
+      <div class="dc-row"><button class="primary dc-ok">Compris</button></div>`;
+    box.querySelector('.dc-ok').onclick = () => { box.hidden = true; };
+    box.hidden = false;
+  }
+
   async function poll() {
     try {
       const d = await (await fetch('/api/discovery')).json();
       if (d.phase === 'awaiting_confirmation' && d.question) show(d.question);
+      if (d.phase === 'done' && shownFor !== 'solution') {
+        const s = d.solution || (await (await fetch('/api/discovery/internal')).json()).solution;
+        if (s) showSolution(s);
+      }
     } catch { /* serveur indisponible : on réessaie */ }
     setTimeout(poll, 4000);
   }
