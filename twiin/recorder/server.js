@@ -5,6 +5,7 @@ import { jsonrepair } from 'jsonrepair';                // réparation locale de
 import fs from 'fs';
 import path from 'path';
 import { spawn } from 'child_process';
+const spawnMac = (args) => { try { const c = spawn('osascript', args); c.on('error', () => {}); return c; } catch { return null; } }; // Windows : osascript absent
 import { fileURLToPath } from 'url';
 
 // recorder/ sits one level below the repo root, alongside the twiin/ Python package
@@ -29,7 +30,9 @@ const MAX_FRAMES = parseInt(process.env.HF_MAX_FRAMES || '24', 10);      // imag
 const OCR_MAX_CHARS = parseInt(process.env.OCR_MAX_CHARS || '40000', 10); // texte OCR envoyé au modèle, au plus
 const OCR_MIN_CONF = 0.5;                                                  // lignes OCR moins sûres : ignorées
 const PYTHON = fs.existsSync(path.join(REPO_ROOT, '.venv', 'bin', 'python'))
-  ? path.join(REPO_ROOT, '.venv', 'bin', 'python') : 'python3';
+  ? path.join(REPO_ROOT, '.venv', 'bin', 'python')
+  : fs.existsSync(path.join(REPO_ROOT, '..', '.venv', 'Scripts', 'python.exe'))
+    ? path.join(REPO_ROOT, '..', '.venv', 'Scripts', 'python.exe') : 'python3';
 const LAST_RUN_PATH = path.join(REPO_ROOT, 'workflows', 'last_run.json'); // OCR + usage du dernier enregistrement (local)
 
 // Prix du modèle par fournisseur ($ / million de tokens), lus une fois au démarrage pour estimer le coût.
@@ -49,6 +52,8 @@ function runOcr(frames) {
     let out = '', err = '';
     py.stdout.on('data', (d) => (out += d));
     py.stderr.on('data', (d) => (err += d));
+    py.on('error', (e) => { console.error('OCR indisponible :', e.message); resolve([]); });
+    py.stdin.on('error', () => {});
     py.on('close', (code) => {
       if (code !== 0) { console.error('OCR échoué :', err.slice(0, 500)); return resolve([]); }
       try { resolve(JSON.parse(out)); } catch { resolve([]); }
@@ -291,6 +296,8 @@ app.post('/api/actions/start', (req, res) => {
     if (recorderSession?.proc) recorderSession.proc.kill('SIGTERM');
     const { id, dir } = newSessionDir();
     const proc = spawn(PYTHON, [path.join(path.dirname(fileURLToPath(import.meta.url)), 'actions.py'), '--out', path.join(dir, 'actions.jsonl')]);
+    proc.on('error', (e) => console.warn('[journal] indisponible :', e.message));
+    proc.stdin.on('error', () => {});
     proc.stderr.on('data', (d) => console.warn('[journal]', String(d).trim().slice(0, 300)));
     proc.on('close', (code) => console.log(`Journal d'actions arrêté (code ${code})`));
     recorderSession = { id, dir, proc, startedAt: req.body?.startedAt || Date.now() };
@@ -401,7 +408,9 @@ app.post('/api/generate-workflows', async (req, res) => {
       fs.writeFileSync(path.join(dir, 'frames.json'), JSON.stringify({ frames, startedAt, screens: shared || [] }));
     }
     if (!dir) return res.status(400).json({ error: 'Enregistrement introuvable.' });
-    res.json(await analyzeSessionDir(dir));
+    const result = await analyzeSessionDir(dir);
+    startDiscovery(dir);
+    res.json(result);
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: err.message });
@@ -411,6 +420,57 @@ app.post('/api/generate-workflows', async (req, res) => {
 });
 
 // Relance l'analyse du dernier enregistrement : avec ses images si elles ont été gardées, sinon avec son texte OCR seul.
+
+// --- Découverte de la tâche + environnement de test interne (côté serveur uniquement) -------------------------
+// À la fin de l'analyse, un worker Python (discovery/) envoie la tâche dans Supabase, construit un JUMEAU interne,
+// le teste avec Holo, puis pose UNE question à l'employé : « Ai-je bien compris votre problème ? ».
+// Le jumeau, les essais et la casse ne sont jamais montrés sur la page. Désactiver : DISCOVERY=off.
+let discovery = { dir: null, proc: null };
+const discoveryState = (dir) => {
+  try { return JSON.parse(fs.readFileSync(path.join(dir, 'discovery.json'), 'utf8')); } catch { return null; }
+};
+function runDiscovery(cmd, dir) {
+  const proc = spawn(PYTHON, ['-u', '-m', 'discovery.discovery', cmd, dir], { cwd: REPO_ROOT, env: { ...process.env, PYTHONUTF8: '1' } });
+  proc.on('error', (e) => console.warn('[découverte] impossible de lancer le worker :', e.message));
+  proc.stdout.on('data', (d) => console.log(String(d).trim()));
+  proc.stderr.on('data', (d) => console.warn('[découverte]', String(d).trim().slice(0, 400)));
+  proc.on('close', (code) => { console.log(`[découverte] ${cmd} terminé (code ${code})`); discovery.proc = null; });
+  discovery = { dir, proc };
+}
+function startDiscovery(dir) {
+  if ((process.env.DISCOVERY || 'on') === 'off') return;
+  const missing = ['SUPABASE_URL', 'SUPABASE_PUBLISHABLE_KEY', 'SUPABASE_EMAIL', 'SUPABASE_PASSWORD', 'HAI_API_KEY'].filter((k) => !process.env[k]);
+  if (missing.length) return console.warn(`[découverte] désactivée, variables manquantes : ${missing.join(', ')}`);
+  const st = discoveryState(dir);
+  if (st && !['error', 'corrected'].includes(st.phase)) return console.log(`[découverte] déjà faite pour ${path.basename(dir)} (${st.phase})`);
+  if (discovery.proc) return console.warn('[découverte] une découverte tourne déjà');
+  try { fs.rmSync(path.join(dir, 'discovery.json'), { force: true }); } catch {}
+  runDiscovery('discover', dir);
+}
+// La page ne reçoit que l'avancement et la question, jamais le détail interne.
+app.get('/api/discovery', (req, res) => {
+  const dir = discovery.dir || latestSessionDir();
+  const st = dir ? discoveryState(dir) : null;
+  if (!st) return res.json({ phase: 'idle' });
+  res.json({ phase: st.phase, question: st.phase === 'awaiting_confirmation' ? st.question : null });
+});
+app.post('/api/discovery/answer', (req, res) => {
+  const dir = discovery.dir || latestSessionDir();
+  const st = dir ? discoveryState(dir) : null;
+  if (!st || st.phase !== 'awaiting_confirmation') return res.status(409).json({ error: 'Aucune question en attente.' });
+  if (discovery.proc) return res.status(409).json({ error: 'Traitement en cours.' });
+  st.answer = { ok: !!req.body?.ok, correction: String(req.body?.correction || '').slice(0, 2000) };
+  st.phase = 'answered';
+  fs.writeFileSync(path.join(dir, 'discovery.json'), JSON.stringify(st, null, 1));
+  runDiscovery('answer', dir);
+  res.json({ ok: true });
+});
+// Détail interne (équipe Twiin seulement, non relié à la page) : jumeau, test dev, casse.
+app.get('/api/discovery/internal', (req, res) => {
+  const dir = discovery.dir || latestSessionDir();
+  res.json(dir ? discoveryState(dir) || {} : {});
+});
+
 app.post('/api/reanalyze', async (req, res) => {
   try {
     const hasFrames = (d) => ['frames.jsonl', 'frames.json'].some((f) => fs.existsSync(path.join(SESSIONS_DIR, d, f)));
@@ -418,7 +478,9 @@ app.post('/api/reanalyze', async (req, res) => {
     if (dirs.length) {
       if (recorderSession?.proc && recorderSession.id === dirs.at(-1)) recorderSession.proc.kill('SIGTERM');
       console.log(`Relance sur ${dirs.at(-1)}`);
-      return res.json(await analyzeSessionDir(path.join(SESSIONS_DIR, dirs.at(-1))));
+      const result = await analyzeSessionDir(path.join(SESSIONS_DIR, dirs.at(-1)));
+      startDiscovery(path.join(SESSIONS_DIR, dirs.at(-1)));
+      return res.json(result);
     }
     if (!fs.existsSync(LAST_RUN_PATH)) return res.status(404).json({ error: 'Aucun enregistrement à relancer.' });
     const last = JSON.parse(fs.readFileSync(LAST_RUN_PATH, 'utf8'));
@@ -699,7 +761,7 @@ app.post('/api/n8n/create', async (req, res) => {
     const proc = spawn(PYTHON, ['-u', N8N_GEN, planFile, '--events', events], { cwd: REPO_ROOT });
     proc.stderr.on('data', (d) => process.stderr.write(`[n8n] ${d}`));
     n8nRun = { proc, events, running: true };
-    proc.on('close', () => { n8nRun.running = false; spawn('osascript', ['-e', 'tell application "Google Chrome" to activate']); });
+    proc.on('close', () => { n8nRun.running = false; spawnMac( ['-e', 'tell application "Google Chrome" to activate']); });
     console.log(`Automatisation n8n : ${plan.name} (${plan.blocks.length} blocs)`);
     res.json({ plan, file: path.basename(planFile) });
   } catch (err) {
@@ -755,7 +817,7 @@ app.post('/api/replay', (req, res) => {
     const events = path.join(dir, `${new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)}-events.jsonl`);
     fs.writeFileSync(events, '');
     // VS Code masqué pendant le rejeu (Holo ne doit pas lire la conversation ni s'y perdre)
-    spawn('osascript', ['-e', 'tell application "System Events" to set visible of process "Code" to false']);
+    spawnMac( ['-e', 'tell application "System Events" to set visible of process "Code" to false']);
     const proc = spawn(PYTHON, ['-u', RUN_LIVE, id, '--no-open', '--events', events], { cwd: REPO_ROOT });
     proc.stdout.on('data', (d) => process.stdout.write(`[rejeu] ${d}`));
     proc.stderr.on('data', (d) => process.stderr.write(`[rejeu] ${d}`));
@@ -763,7 +825,7 @@ app.post('/api/replay', (req, res) => {
     proc.on('close', (code) => {
       replay.running = false;
       console.log(`Rejeu terminé (code ${code})`);
-      spawn('osascript', ['-e', 'tell application "Google Chrome" to activate']); // retour sur la page ImproveMe
+      spawnMac( ['-e', 'tell application "Google Chrome" to activate']); // retour sur la page ImproveMe
     });
     console.log(`Rejeu lancé : ${id} (${steps.length} étape(s))`);
     res.json({ id, steps: steps.length });
@@ -794,7 +856,7 @@ app.post('/api/holo/run', async (req, res) => {
     fs.mkdirSync(dir, { recursive: true });
     const events = path.join(dir, `${new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)}-n8n-events.jsonl`);
     fs.writeFileSync(events, '');
-    spawn('osascript', ['-e', 'tell application "System Events" to set visible of process "Code" to false']);
+    spawnMac( ['-e', 'tell application "System Events" to set visible of process "Code" to false']);
     const t0 = Date.now();
     const proc = spawn(PYTHON, ['-u', RUN_LIVE, id, '--no-open', '--events', events], { cwd: REPO_ROOT });
     proc.stdout.on('data', (d) => process.stdout.write(`[n8n→holo] ${d}`));
