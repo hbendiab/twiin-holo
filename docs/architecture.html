@@ -126,7 +126,7 @@ footer { margin-top: 48px; color: var(--dim); font-size: 13px; }
         <li><b>Observer</b> : le salarié fait sa tâche une fois devant Twiin.</li>
         <li><b>Comprendre</b> : Twiin résume la tâche et demande « Ai-je bien compris ? ».</li>
         <li><b>Tester</b> : Twiin rejoue la tâche sur une copie de test, de plusieurs façons, sans toucher aux vrais outils.</li>
-        <li><b>Proposer</b> : un conseil pour aller plus vite, ou une automatisation prête à l'emploi.</li>
+        <li><b>Proposer</b> : un conseil pour aller plus vite, ou une automatisation prête à l'emploi. L'automatisation tourne en arrière-plan : le salarié continue à travailler pendant ce temps.</li>
       </ol></div>
     <div class="brief-item"><p class="brief-k">Où on en est</p>
       <p>Le parcours complet fonctionne sur un ordinateur (Mac ou Windows) et a été testé sur deux tâches réelles :
@@ -383,7 +383,7 @@ footer { margin-top: 48px; color: var(--dim); font-size: 13px; }
 
       <details class="step">
         <summary><span class="num">9</span><h3>Livrer et exécuter l'automatisation</h3><span class="state s-ok">en place</span>
-          <span class="what">« Créer cette automatisation » construit le workflow à partir de la solution testée, sans jamais prendre l'écran du salarié.</span></summary>
+          <span class="what">« Créer cette automatisation » construit le workflow à partir de la solution testée. Même quand Holo doit utiliser un logiciel par l'écran (n8n + Holo, en computer use), il le fait dans un navigateur invisible, en arrière-plan : la souris, le clavier et l'écran restent au salarié, qui continue à travailler pendant que l'automatisation tourne.</span></summary>
         <div class="step-body tbl"><table>
           <tr><th>Brique</th><th>Technologie</th><th>Pourquoi</th><th>Où</th></tr>
           <tr><td>Choix du modèle</td><td>« lecture web → Excel » ou « document → saisie web »</td><td>la livraison suit la tâche réelle, avec les vraies adresses lues à l'écran</td><td><span class="chip c-srv">serveur</span></td></tr>
@@ -445,7 +445,7 @@ footer { margin-top: 48px; color: var(--dim); font-size: 13px; }
           <dt>Outils</dt><dd>QONTA, un logiciel comptable de démonstration qui imite un vieux logiciel de cabinet <b>sans API</b> : seul l'écran permet d'y entrer des données</dd>
           <dt>Difficulté</dt><dd>listes à suggestions (fournisseur), listes déroulantes (taux de TVA), plusieurs lignes par facture</dd>
         </dl>
-        <p class="res"><b>Résultat :</b> la réussite des essais dans la copie de test est passée de 57&nbsp;% à 100&nbsp;%. En réel, Holo saisit une facture complète en 79 s, toutes les valeurs sont justes et vérifiées une par une.</p>
+        <p class="res"><b>Résultat :</b> la réussite des essais dans la copie de test est passée de 57&nbsp;% à 100&nbsp;%. En réel, Holo saisit une facture complète en 79 s, en arrière-plan pendant que la comptable continue à travailler, toutes les valeurs sont justes et vérifiées une par une.</p>
       </article>
     </div>
   </section>
