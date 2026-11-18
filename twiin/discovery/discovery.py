@@ -507,12 +507,9 @@ def parallel_wave(spec, url, session_dir: Path, model: str, first_it: int, brick
     plans = []
     if r0:
         plans.append({"route": r0, "label": "chemin de l'employé", "start": None})
-    for b in bricks:
-        if len(plans) >= width:
-            break
-        plans.append({"route": None, "label": f"départ « {b} »", "start": b})
+    # même point A pour tous (l'écran de départ du jumeau) : seuls le parcours et l'ordre diffèrent
     while len(plans) < width:
-        plans.append({"route": None, "label": "libre", "start": None})
+        plans.append({"route": None, "label": f"parcours {len(plans) + 1}", "start": None})
 
     def one(i, plan):
         it = first_it + i
