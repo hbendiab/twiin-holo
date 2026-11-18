@@ -4,7 +4,9 @@ import OpenAI from 'openai';
 import { jsonrepair } from 'jsonrepair';                // réparation locale des JSON mal formés               // <-- remplace @anthropic-ai/sdk (Hugging Face est compatible OpenAI)
 import fs from 'fs';
 import path from 'path';
-import { spawn } from 'child_process';
+import { spawn as spawnRaw } from 'child_process';
+// Windows : aucun programme lancé par Twiin n'ouvre de fenêtre (console Python, PowerShell…)
+const spawn = (cmd, args, opts = {}) => spawnRaw(cmd, args, { windowsHide: true, ...opts });
 const spawnMac = (args) => { try { const c = spawnMac(args); c.on('error', () => {}); return c; } catch { return null; } }; // Windows : osascript absent
 import { fileURLToPath } from 'url';
 import crypto from 'crypto';
@@ -549,7 +551,7 @@ function startDiscovery(dir) {
 }
 // La page ne reçoit que l'avancement et la question, jamais le détail interne.
 app.get('/api/discovery', (req, res) => {
-  const dir = discovery.dir || latestSessionDir();
+  const dir = discovery.dir; // seulement la découverte lancée depuis ce serveur (jamais un ancien résultat)
   const st = dir ? discoveryState(dir) : null;
   if (!st) return res.json({ phase: 'idle' });
   res.json({ phase: st.phase, question: st.phase === 'awaiting_confirmation' ? st.question : null,

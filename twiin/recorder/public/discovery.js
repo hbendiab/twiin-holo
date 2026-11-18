@@ -40,7 +40,8 @@
   const card = box.querySelector('.dc-card');
   const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   let view = null;       // ce qui est affiché : 'loading-1', 'question', 'loading-2', 'solution', 'closed'
-  let closedFor = null;  // ne pas rouvrir une solution déjà fermée
+  let closedFor = null;  // ne pas rouvrir une solution déjà fermée (même après rechargement)
+  try { closedFor = localStorage.getItem('twiin-solution-vue'); } catch { /* stockage bloqué */ }
 
   // Étapes de chargement : [libellé, phases pendant lesquelles l'étape est en cours]
   const BEFORE = [
@@ -116,7 +117,8 @@
       <p>${esc(s.texte)}</p>
       <ul>${(s.raisons || []).map((r) => `<li>${esc(r)}</li>`).join('')}</ul>
       <div class="dc-row"><button class="primary dc-ok">Compris</button></div>`;
-    card.querySelector('.dc-ok').onclick = () => { box.hidden = true; view = 'closed'; closedFor = JSON.stringify(s); };
+    card.querySelector('.dc-ok').onclick = () => { box.hidden = true; view = 'closed'; closedFor = JSON.stringify(s);
+      try { localStorage.setItem('twiin-solution-vue', closedFor); } catch { /* stockage bloqué */ } };
     box.hidden = false;
   }
 
