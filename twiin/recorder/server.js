@@ -29,10 +29,16 @@ const HF_MODEL = process.env.HF_MODEL || 'Qwen/Qwen3.8-27B'; // généraliste vi
 const MAX_FRAMES = parseInt(process.env.HF_MAX_FRAMES || '24', 10);      // images envoyées au modèle (coût)
 const OCR_MAX_CHARS = parseInt(process.env.OCR_MAX_CHARS || '40000', 10); // texte OCR envoyé au modèle, au plus
 const OCR_MIN_CONF = 0.5;                                                  // lignes OCR moins sûres : ignorées
-const PYTHON = fs.existsSync(path.join(REPO_ROOT, '.venv', 'bin', 'python'))
-  ? path.join(REPO_ROOT, '.venv', 'bin', 'python')
-  : fs.existsSync(path.join(REPO_ROOT, '..', '.venv', 'Scripts', 'python.exe'))
-    ? path.join(REPO_ROOT, '..', '.venv', 'Scripts', 'python.exe') : 'python3';
+// Python : premier venv trouvé (twiin/.venv ou .venv à la racine du dépôt), sous macOS/Linux (bin/) ou Windows (Scripts/).
+const IS_WIN = process.platform === 'win32';
+const PYTHON = [path.join(REPO_ROOT, '.venv'), path.join(REPO_ROOT, '..', '.venv')]
+  .map((v) => path.join(v, IS_WIN ? 'Scripts' : 'bin', IS_WIN ? 'python.exe' : 'python'))
+  .find((p) => fs.existsSync(p)) || (IS_WIN ? 'python' : 'python3');
+process.env.PYTHONUTF8 = '1';          // Windows : les scripts Python lisent et écrivent en UTF-8 (accents, « »)
+process.env.PYTHONIOENCODING = 'utf-8';
+// Scripts propres au système : macOS (Vision, Quartz) ou Windows (Windows.Media.Ocr, UI Automation)
+const OCR_SCRIPT = IS_WIN ? 'ocr_win.py' : 'ocr.py';
+const ACTIONS_SCRIPT = IS_WIN ? 'actions_win.py' : 'actions.py';
 const LAST_RUN_PATH = path.join(REPO_ROOT, 'workflows', 'last_run.json'); // OCR + usage du dernier enregistrement (local)
 
 // Prix du modèle par fournisseur ($ / million de tokens), lus une fois au démarrage pour estimer le coût.
@@ -48,7 +54,7 @@ fetch('https://router.huggingface.co/v1/models', { headers: { Authorization: `Be
 // OCR local (framework Vision de macOS) sur toutes les images gardées : rien ne sort du Mac.
 function runOcr(frames) {
   return new Promise((resolve) => {
-    const py = spawn(PYTHON, [path.join(path.dirname(fileURLToPath(import.meta.url)), 'ocr.py')]);
+    const py = spawn(PYTHON, [path.join(path.dirname(fileURLToPath(import.meta.url)), OCR_SCRIPT)]);
     let out = '', err = '';
     py.stdout.on('data', (d) => (out += d));
     py.stderr.on('data', (d) => (err += d));
@@ -295,7 +301,7 @@ app.post('/api/actions/start', (req, res) => {
   try {
     if (recorderSession?.proc) recorderSession.proc.kill('SIGTERM');
     const { id, dir } = newSessionDir();
-    const proc = spawn(PYTHON, [path.join(path.dirname(fileURLToPath(import.meta.url)), process.platform === 'win32' ? 'actions_win.py' : 'actions.py'), '--out', path.join(dir, 'actions.jsonl')]);
+    const proc = spawn(PYTHON, [path.join(path.dirname(fileURLToPath(import.meta.url)), ACTIONS_SCRIPT), '--out', path.join(dir, 'actions.jsonl')]);
     proc.on('error', (e) => console.warn('[journal] indisponible :', e.message));
     proc.stdin.on('error', () => {});
     proc.stderr.on('data', (d) => console.warn('[journal]', String(d).trim().slice(0, 300)));
