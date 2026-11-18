@@ -131,16 +131,26 @@ function select(id) {
     </div>
     <div class="actions">
       <button class="primary" id="runBtn" type="button" ${a.running ? 'disabled' : ''}>${a.running ? 'En cours…' : 'Lancer maintenant'}</button>
+      <button class="danger" id="stopBtn" type="button" ${a.running ? '' : 'hidden'}>Arrêter l'automatisation</button>
       ${a.sheet ? `<a class="btn" href="${a.sheet.url}" target="_blank" rel="noopener">${iconsHtml('Google Sheets', 1)}Ouvrir le résultat</a>` : ''}
       <a class="btn" href="${a.n8n_url}" target="_blank" rel="noopener">${iconsHtml('n8n', 1)}Voir dans n8n (avancé)</a>
     </div>
-    ${holo ? '<p class="note warn">Les blocs Holo utilisent la souris et le clavier de ton Mac pendant l\'exécution : ne touche à rien (double Échap pour arrêter).</p>' : ''}
+    ${holo ? '<p class="note warn">Les blocs Holo utilisent la souris et le clavier de ton ordinateur pendant l\'exécution : ne touche à rien. Pour reprendre la main : bouton « Arrêter l\'automatisation », ou deux fois Échap rapidement.</p>' : ''}
     <div class="msg" id="msg"></div>
 
     <div class="section"><h3>Quand elle tourne</h3>
       <div class="freq">
-        <select id="freq">${[['manual', 'Manuellement (en pause)'], ['daily', 'Chaque jour à 9 h'], ['weekly', 'Chaque lundi à 9 h'], ['monthly', 'Le 1er du mois à 9 h']]
-          .map(([k, l]) => `<option value="${k}" ${a.freq === k ? 'selected' : ''}>${l}</option>`).join('')}</select>
+        <select id="sType" aria-label="Type de planification">
+          ${[['manual', 'Manuellement (en pause)'], ['daily', 'Chaque jour'], ['weekly', 'Certains jours de la semaine'], ['monthly', 'Un jour précis du mois']]
+            .map(([k, l]) => `<option value="${k}" ${(a.schedule?.type || 'manual') === k ? 'selected' : ''}>${l}</option>`).join('')}
+        </select>
+        <span id="sDays" class="freq">${[[1, 'Lun'], [2, 'Mar'], [3, 'Mer'], [4, 'Jeu'], [5, 'Ven'], [6, 'Sam'], [0, 'Dim']]
+          .map(([d, l]) => `<label class="meta"><input type="checkbox" value="${d}" ${(a.schedule?.days || [1]).includes(d) ? 'checked' : ''}> ${l}</label>`).join(' ')}</span>
+        <label class="meta" id="sDom">le <select id="sMonthday">${Array.from({ length: 31 }, (_, i) => i + 1)
+          .map((d) => `<option value="${d}" ${(a.schedule?.monthday || 1) === d ? 'selected' : ''}>${d === 1 ? '1er' : d}</option>`).join('')}</select></label>
+        <label class="meta" id="sAt">à <select id="sHour">${Array.from({ length: 24 }, (_, h) => h)
+          .map((h) => `<option value="${h}" ${(a.schedule?.hour ?? 9) === h ? 'selected' : ''}>${String(h).padStart(2, '0')} h</option>`).join('')}</select>
+          <select id="sMinute">${[0, 15, 30, 45].map((m) => `<option value="${m}" ${(a.schedule?.minute || 0) === m ? 'selected' : ''}>${String(m).padStart(2, '0')}</option>`).join('')}</select></label>
         <button id="saveFreq" type="button">Enregistrer</button>
       </div>
       <p class="note">Une fréquence active l'automatisation dans n8n (heure de Paris). « Manuellement » la met en pause : tu la lances toi-même.</p>
@@ -169,13 +179,34 @@ function select(id) {
     const d = await r.json();
     if (d.error) { msg.textContent = d.error; return; }
     msg.textContent = 'Lancée. Le résultat apparaît dans l\'historique à la fin.';
+    document.getElementById('runBtn').disabled = true;
+    document.getElementById('stopBtn').hidden = false;
     watch(id);
+  };
+  const sType = document.getElementById('sType');
+  const showSched = () => {
+    const t = sType.value;
+    document.getElementById('sDays').hidden = t !== 'weekly';
+    document.getElementById('sDom').hidden = t !== 'monthly';
+    document.getElementById('sAt').hidden = t === 'manual';
+  };
+  sType.onchange = showSched;
+  showSched();
+  document.getElementById('stopBtn').onclick = async (ev) => {
+    ev.target.disabled = true;
+    const d = await (await fetch(`/api/automations/${encodeURIComponent(id)}/stop`, { method: 'POST' })).json().catch(() => ({}));
+    document.getElementById('msg').textContent = `Arrêtée${d.stopped?.length ? ` (${d.stopped.join(', ')})` : ''}. Tu as repris la main.`;
+    clearInterval(poll);
+    setTimeout(() => select(id), 1500);
   };
   document.getElementById('saveFreq').onclick = async (ev) => {
     const msg = document.getElementById('msg');
     ev.target.disabled = true;
+    const schedule = { type: sType.value, hour: +document.getElementById('sHour').value, minute: +document.getElementById('sMinute').value,
+                       monthday: +document.getElementById('sMonthday').value,
+                       days: [...document.querySelectorAll('#sDays input:checked')].map((c) => +c.value) };
     const r = await fetch(`/api/automations/${encodeURIComponent(id)}/schedule`, { method: 'POST', headers: { 'Content-Type': 'application/json' },
-                                                                         body: JSON.stringify({ freq: document.getElementById('freq').value }) });
+                                                                         body: JSON.stringify({ schedule }) });
     const d = await r.json();
     ev.target.disabled = false;
     if (d.error) { msg.textContent = `Réglage impossible : ${d.error}`; return; }

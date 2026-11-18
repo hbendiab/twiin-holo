@@ -75,11 +75,32 @@ def main():
 
         multiscreen.on_switch(_switch)
         print(f"🖥  {len(multiscreen.displays())} écran(s) détecté(s) · commandes et fichiers bloqués · double Échap = arrêt", flush=True)
+
+        # Arrêt d'urgence : deux appuis sur Échap en moins d'une seconde coupent tout, souris et clavier rendus.
+        def _emergency():
+            import os as _os
+            from pynput import keyboard as _kb
+            last = [0.0]
+
+            def on_press(key):
+                if key == _kb.Key.esc:
+                    now = time.time()
+                    if now - last[0] < 1.0:
+                        print("⛔ Double Échap : rejeu arrêté par l'utilisateur", flush=True)
+                        ev("end", ok=False, status="arrêté (double Échap)")
+                        _os._exit(130)
+                    last[0] = now
+            _kb.Listener(on_press=on_press, daemon=True).start()
+        try:
+            _emergency()
+        except Exception as e:  # noqa: BLE001
+            print(f"(arrêt d'urgence indisponible : {e})", flush=True)
         first = ("Rules for this whole task: work ONLY through what is visible on screen, with the mouse and keyboard. "
                  "Do not run terminal commands and do not read or write files. If the app you need is not visible, "
-                 "bring it to the front (for example with the Dock or Cmd+Tab). Never report a result you did not "
-                 "see on screen during this task. Ignore the « Twiin · Enregistrement » recorder page (localhost:3000) if it is open in a browser: "
-                 "it is not part of the task, never click on it.\n\nTask: " + first)
+                 "bring it to the front (Dock or Cmd+Tab on Mac, taskbar or Alt+Tab on Windows). Never report a result you did not "
+                 "see on screen during this task. Ignore the « Twiin » page (localhost:3000) if it is open in a browser: "
+                 "it is not part of the task, never click on it, never type in its address bar and never close it. "
+                 "To visit a website, FIRST open a NEW browser tab (Ctrl+T on Windows, Cmd+T on Mac) and work in that new tab.\n\nTask: " + first)
 
     t0 = time.time()
     client = agent.client

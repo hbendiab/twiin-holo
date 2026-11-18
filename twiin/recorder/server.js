@@ -8,6 +8,14 @@ import path from 'path';
 import { spawn as spawnRaw } from 'child_process';
 // Windows : aucun programme lancé par Twiin n'ouvre de fenêtre (console Python, PowerShell…)
 const spawn = (cmd, args, opts = {}) => spawnRaw(cmd, args, { windowsHide: true, ...opts });
+// Arrête un programme et tous ceux qu'il a lancés (Holo, navigateur…). Sous Windows, kill() ne suffit pas.
+function killTree(proc) {
+  if (!proc || proc.exitCode !== null) return;
+  if (process.platform === 'win32') spawnRaw('taskkill', ['/PID', String(proc.pid), '/T', '/F'], { windowsHide: true });
+  else { try { process.kill(-proc.pid, 'SIGTERM'); } catch { proc.kill('SIGTERM'); } }
+}
+// Holo plus rapide pour les rejeux et les blocs Holo de n8n : holo4 (pas de limite de 10 requêtes/minute du modèle gratuit).
+process.env.HOLO_MODEL ||= 'holo4-35b-a3b';
 const spawnMac = (args) => { try { const c = spawnMac(args); c.on('error', () => {}); return c; } catch { return null; } }; // Windows : osascript absent
 import { fileURLToPath } from 'url';
 import crypto from 'crypto';
@@ -1100,7 +1108,7 @@ app.get('/api/replay/events', (req, res) => {
 });
 
 app.post('/api/replay/stop', (req, res) => {
-  if (replay?.running) replay.proc.kill('SIGTERM');
+  if (replay?.running) killTree(replay.proc);
   res.json({ ok: true });
 });
 
@@ -1444,6 +1452,36 @@ async function n8nApi(pathname, opts = {}) {
 }
 const FREQS = { manual: null, daily: '0 9 * * *', weekly: '0 9 * * 1', monthly: '0 9 1 * *' };
 const FREQ_LABEL = { manual: 'Manuelle', daily: 'Chaque jour à 9 h', weekly: 'Chaque lundi à 9 h', monthly: 'Le 1er du mois à 9 h' };
+const DAYS = ['dimanche', 'lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi'];
+// Planification lisible <-> expression cron (minute heure jour-du-mois mois jour-de-semaine), heure de Paris.
+function scheduleToCron(sc) {
+  const m = [0, 15, 30, 45].includes(+sc.minute) ? +sc.minute : 0;
+  const h = Math.min(Math.max(parseInt(sc.hour, 10) || 0, 0), 23);
+  if (sc.type === 'daily') return `${m} ${h} * * *`;
+  if (sc.type === 'weekly') {
+    const days = [...new Set((sc.days || []).map(Number).filter((d) => d >= 0 && d <= 6))].sort();
+    if (!days.length) throw new Error('Choisis au moins un jour de la semaine.');
+    return `${m} ${h} * * ${days.join(',')}`;
+  }
+  if (sc.type === 'monthly') return `${m} ${h} ${Math.min(Math.max(parseInt(sc.monthday, 10) || 1, 1), 31)} * *`;
+  return null;
+}
+function cronToSchedule(cron) {
+  const p = String(cron || '').trim().split(/\s+/);
+  if (p.length !== 5) return { type: 'manual' };
+  const [m, h, dom, , dow] = p;
+  const base = { minute: +m || 0, hour: +h || 0 };
+  if (dom !== '*') return { type: 'monthly', monthday: +dom, ...base };
+  if (dow !== '*') return { type: 'weekly', days: dow.split(',').map(Number), ...base };
+  return { type: 'daily', ...base };
+}
+function scheduleLabel(sc) {
+  if (!sc || sc.type === 'manual') return 'Manuelle';
+  const at = `à ${sc.hour} h${sc.minute ? String(sc.minute).padStart(2, '0') : ''}`;
+  if (sc.type === 'daily') return `Chaque jour ${at}`;
+  if (sc.type === 'weekly') return `Chaque ${sc.days.map((d) => DAYS[d]).join(', ')} ${at}`;
+  return `Le ${sc.monthday === 1 ? '1er' : sc.monthday} du mois ${at}` + (sc.monthday > 28 ? ' (seulement les mois qui ont ce jour)' : '');
+}
 const BLOCK_KIND = (n) => (/api\/holo\/run/.test(n.parameters?.url || '') ? 'holo' : n.type.endsWith('.googleSheets') ? 'sheets'
   : n.type.endsWith('.code') ? (/Vérification|rules/.test(n.parameters?.jsCode || '') ? 'verify' : 'code') : n.type.endsWith('.httpRequest') ? 'http' : 'other');
 let automationRun = null; // { id, proc, startedAt }
@@ -1452,6 +1490,7 @@ async function automationSummary(w) {
   const sched = w.nodes.find((n) => n.type.endsWith('.scheduleTrigger'));
   const cron = sched && !sched.disabled ? sched.parameters?.rule?.interval?.[0]?.expression : null;
   const freq = Object.keys(FREQS).find((k) => FREQS[k] && FREQS[k] === cron) || (cron ? 'custom' : 'manual');
+  const schedule = cron ? cronToSchedule(cron) : { type: 'manual' };
   const sheetNode = w.nodes.find((n) => n.type.endsWith('.googleSheets'));
   const sheetId = sheetNode?.parameters?.documentId?.value;
   const gid = sheetNode?.parameters?.sheetName?.value;
@@ -1460,7 +1499,7 @@ async function automationSummary(w) {
   const done = execs.filter((e) => e.stoppedAt);
   const dur = done.map((e) => (new Date(e.stoppedAt) - new Date(e.startedAt)) / 1000);
   return {
-    id: w.id, name: w.name.replace(/^Twiin — /, ''), active: w.active, freq, freq_label: FREQ_LABEL[freq] || cron, cron,
+    id: w.id, name: w.name.replace(/^Twiin — /, ''), active: w.active, freq, freq_label: cron ? scheduleLabel(schedule) : 'Manuelle', cron, schedule,
     blocks: w.nodes.filter((n) => !/(webhook|scheduleTrigger|manualTrigger)$/i.test(n.type)).map((n) => ({ name: n.name, kind: BLOCK_KIND(n) })),
     sheet: sheetId ? { id: sheetId, url: `https://docs.google.com/spreadsheets/d/${sheetId}/edit${gid ? `#gid=${gid}` : ''}` } : null,
     executions: execs.map((e) => ({ id: e.id, status: e.status, mode: e.mode, startedAt: e.startedAt, stoppedAt: e.stoppedAt,
@@ -1494,28 +1533,57 @@ app.get('/api/automations/:id', async (req, res) => {
 // Fréquence : on règle le déclencheur planifié du workflow, puis on l'active (ou on le met en pause si « manuelle »).
 app.post('/api/automations/:id/schedule', async (req, res) => {
   try {
-    const freq = req.body?.freq;
-    if (!(freq in FREQS)) return res.status(400).json({ error: 'Fréquence inconnue.' });
+    // Nouveau format : { schedule: { type: manual|daily|weekly|monthly, days, monthday, hour, minute } } ; l'ancien « freq » reste accepté
+    const sc = req.body?.schedule || (req.body?.freq in FREQS ? cronToSchedule(FREQS[req.body.freq] || '') : null);
+    if (!sc) return res.status(400).json({ error: 'Planification inconnue.' });
+    const cron = sc.type === 'manual' ? null : scheduleToCron(sc);
     const id = encodeURIComponent(req.params.id);
     const w = await n8nApi(`/workflows/${id}`);
-    const sched = w.nodes.find((n) => n.type.endsWith('.scheduleTrigger'));
-    if (!sched && freq !== 'manual') throw new Error('Cette automatisation n\'a pas de déclencheur planifié.');
+    let sched = w.nodes.find((n) => n.type.endsWith('.scheduleTrigger'));
+    if (!sched && cron) { // pas de déclencheur planifié : on en ajoute un, branché comme le déclencheur manuel
+      const start = w.nodes.find((n) => /(webhook|manualTrigger)$/i.test(n.type));
+      sched = { id: crypto.randomUUID(), name: 'Planification', type: 'n8n-nodes-base.scheduleTrigger', typeVersion: 1.2,
+                position: [(start?.position?.[0] ?? 0), (start?.position?.[1] ?? 0) + 200], parameters: {} };
+      w.nodes.push(sched);
+      if (start && w.connections[start.name]) w.connections[sched.name] = JSON.parse(JSON.stringify(w.connections[start.name]));
+    }
     if (sched) {
-      sched.disabled = freq === 'manual';
-      if (FREQS[freq]) sched.parameters = { rule: { interval: [{ field: 'cronExpression', expression: FREQS[freq] }] } };
+      sched.disabled = !cron;
+      if (cron) sched.parameters = { rule: { interval: [{ field: 'cronExpression', expression: cron }] } };
     }
     const keep = ['executionOrder', 'timezone', 'saveDataErrorExecution', 'saveDataSuccessExecution', 'saveManualExecutions',
                   'saveExecutionProgress', 'executionTimeout', 'errorWorkflow', 'callerPolicy'];
-    const settings = Object.fromEntries(Object.entries(w.settings || {}).filter(([k]) => keep.includes(k)));
+    const settings = { timezone: 'Europe/Paris', ...Object.fromEntries(Object.entries(w.settings || {}).filter(([k]) => keep.includes(k))) };
     await n8nApi(`/workflows/${id}`, { method: 'PUT', body: JSON.stringify({ name: w.name, nodes: w.nodes, connections: w.connections, settings }) });
-    await n8nApi(`/workflows/${id}/${freq === 'manual' ? 'deactivate' : 'activate'}`, { method: 'POST' });
-    console.log(`Automatisation ${w.id} : ${FREQ_LABEL[freq]}`);
-    await sb(`automations?n8n_id=eq.${encodeURIComponent(w.id)}`, { method: 'PATCH', prefer: 'return=minimal', body: { freq, active: freq !== 'manual' } });
+    await n8nApi(`/workflows/${id}/${cron ? 'activate' : 'deactivate'}`, { method: 'POST' });
+    console.log(`Automatisation ${w.id} : ${scheduleLabel(sc)}`);
+    const freq = cron ? (Object.keys(FREQS).find((k) => FREQS[k] === cron) || 'custom') : 'manual';
+    await sb(`automations?n8n_id=eq.${encodeURIComponent(w.id)}`, { method: 'PATCH', prefer: 'return=minimal', body: { freq, active: !!cron } });
     res.json(await automationSummary(await n8nApi(`/workflows/${id}`)));
   } catch (e) {
     console.error(e.message);
     res.status(500).json({ error: e.message });
   }
+});
+
+// Arrêter : l'exécution en cours (Twiin), le rejeu Holo qu'elle a lancé (souris et clavier rendus) et l'exécution dans n8n.
+app.post('/api/automations/:id/stop', async (req, res) => {
+  const id = req.params.id;
+  const stopped = [];
+  if (automationRun) { killTree(automationRun.proc); automationRun = null; stopped.push('lancement'); }
+  if (replay?.running) { killTree(replay.proc); replay.running = false; stopped.push('Holo'); }
+  try {
+    const execs = (await n8nApi(`/executions?workflowId=${encodeURIComponent(id)}&status=running&limit=20`)).data || [];
+    for (const e of execs) { try { await n8nApi(`/executions/${e.id}/stop`, { method: 'POST' }); stopped.push(`n8n #${e.id}`); } catch { /* déjà fini */ } }
+  } catch { /* n8n injoignable : Holo est quand même arrêté */ }
+  console.log(`Automatisation ${id} arrêtée : ${stopped.join(', ') || 'rien ne tournait'}`);
+  res.json({ ok: true, stopped });
+});
+// Arrêt d'urgence : tout ce qui pilote la souris et le clavier (rejeu Holo, automatisation lancée depuis Twiin).
+app.post('/api/stop-all', (req, res) => {
+  if (automationRun) { killTree(automationRun.proc); automationRun = null; }
+  if (replay?.running) { killTree(replay.proc); replay.running = false; }
+  res.json({ ok: true });
 });
 
 // Lancer maintenant (une exécution de test, comme à la création). Les blocs Holo prennent la souris du Mac.
@@ -1527,7 +1595,7 @@ app.post('/api/automations/:id/run', async (req, res) => {
   const proc = spawn(PYTHON, ['-u', N8N_GEN, '--run', id], { cwd: REPO_ROOT });
   proc.stderr.on('data', (d) => process.stderr.write(`[n8n] ${d}`));
   automationRun = { id, proc, startedAt: Date.now() };
-  proc.on('close', (code) => { console.log(`Automatisation ${id} lancée à la main : ${code === 0 ? 'succès' : 'échec'}`); automationRun = null; });
+  proc.on('close', (code) => { console.log(`Automatisation ${id} lancée à la main : ${code === 0 ? 'succès' : 'échec'}`); if (automationRun?.proc === proc) automationRun = null; });
   res.json({ ok: true });
 });
 
