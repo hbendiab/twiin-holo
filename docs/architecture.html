@@ -92,6 +92,16 @@ canvas#g { display: block; width: 100%; height: 480px; touch-action: none; }
 .horizon { border: 2px solid var(--accent); background: var(--accent-soft); border-radius: 14px; padding: 18px 20px; display: grid; gap: 6px; }
 .horizon-k { font: 600 12px var(--f-mono); letter-spacing: .08em; text-transform: uppercase; color: var(--accent); }
 .horizon-t { font: 700 1.6rem/1.2 var(--f-display); text-wrap: balance; }
+.cases { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 12px; }
+.case-card { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 16px 18px; display: grid; gap: 8px; align-content: start; min-width: 0; }
+.case-card .tagline { font: 500 12px var(--f-mono); color: var(--accent); }
+.case-card dl { margin: 0; display: grid; grid-template-columns: max-content 1fr; gap: 4px 12px; font-size: 14px; }
+.case-card dt { color: var(--dim); }
+.case-card dd { margin: 0; }
+.case-card .res { border-top: 1px solid var(--line); padding-top: 8px; font-size: 14px; }
+.lex { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 8px 18px; }
+.lex div { font-size: 14px; }
+.lex b { font-family: var(--f-display); }
 footer { margin-top: 48px; color: var(--dim); font-size: 13px; }
 @media (max-width: 560px) { h1 { font-size: 1.75rem; } canvas#g { height: 400px; } .state { margin-left: 0; } }
 </style>
@@ -106,9 +116,23 @@ footer { margin-top: 48px; color: var(--dim); font-size: 13px; }
   </header>
 
   <nav class="toc" aria-label="Sommaire">
-    <a href="#schema">Schéma</a><a href="#etapes">Étape par étape</a><a href="#stack">Toute la stack</a>
-    <a href="#chiffres">Chiffres</a><a href="#final">Vision long terme</a><a href="#graphe">Graphe de savoir-faire</a>
+    <a href="#lexique">Lexique</a><a href="#schema">Schéma</a><a href="#etapes">Étape par étape</a><a href="#stack">Toute la stack</a>
+    <a href="#cas">Cas testés</a><a href="#chiffres">Chiffres</a><a href="#final">Vision long terme</a><a href="#graphe">Graphe de savoir-faire</a>
   </nav>
+
+  <section class="block" id="lexique">
+    <h2>Les mots du projet</h2>
+    <div class="lex">
+      <div><b>Twiin</b> : notre outil. Il observe une tâche faite une fois par un salarié et propose de l'accélérer ou de l'automatiser.</div>
+      <div><b>Holo</b> : agent d'IA de la société H Company qui utilise un écran comme un humain (« computer use » : il voit, clique, tape).</div>
+      <div><b>n8n</b> : outil d'automatisation standard, où une tâche devient une suite de blocs que l'entreprise peut lire et modifier.</div>
+      <div><b>Jumeau</b> : copie de test de la tâche, générée automatiquement, avec de fausses données. Les essais s'y font, jamais sur les vrais outils.</div>
+      <div><b>Qwen</b> : modèle d'IA qui lit les captures d'écran et le texte pour comprendre la tâche.</div>
+      <div><b>Supabase</b> : la base de données de Twiin (tâches, essais, recommandations), cloisonnée par entreprise.</div>
+      <div><b>API</b> : porte d'accès prévue pour les programmes. Sans API, il ne reste que l'écran, d'où Holo.</div>
+      <div><b>DSI</b> : direction informatique de l'entreprise cliente, qui autorise les outils une fois pour tous.</div>
+    </div>
+  </section>
 
   <section class="block" id="schema">
     <h2>Le schéma d'aujourd'hui</h2>
@@ -346,7 +370,7 @@ footer { margin-top: 48px; color: var(--dim); font-size: 13px; }
           <tr><td>Choix du modèle</td><td><code>build_automation.py</code> : « lecture web → Excel » ou « document → saisie web »</td><td>la livraison suit la tâche réelle, avec les vraies adresses lues à l'écran</td><td><span class="chip c-srv">serveur</span></td></tr>
           <tr><td>Lire le web</td><td>Holo dans un navigateur invisible (<code>web_read.py</code>)</td><td>la souris et le clavier restent au salarié</td><td><span class="chip c-srv">serveur</span></td></tr>
           <tr><td>Lire un document</td><td>pypdf + Qwen (<code>source_read.py</code>), lignes de tableau et destinataire</td><td>une facture PDF devient des champs à saisir ; un document déjà saisi n'est pas repris</td><td><span class="chip c-post">poste</span></td></tr>
-          <tr><td>Saisir sans API</td><td>Holo invisible (<code>web_fill.py</code>), enregistrement en brouillon</td><td>logiciels métier sans API (ex. QONTA : facture saisie en 79 s, valeurs exactes)</td><td><span class="chip c-srv">serveur</span></td></tr>
+          <tr><td>Saisir sans API</td><td>Holo invisible (<code>web_fill.py</code>), enregistrement en brouillon</td><td>logiciels métier sans API (cas saisie comptable : facture saisie en 79 s, valeurs exactes)</td><td><span class="chip c-srv">serveur</span></td></tr>
           <tr><td>Connexion</td><td>coffre local, rempli par Twiin lui-même</td><td>Holo ne voit jamais un mot de passe</td><td><span class="chip c-post">poste</span></td></tr>
           <tr><td>Contrôle</td><td>vérification champ par champ + messages d'erreur du logiciel</td><td>une saisie refusée ou fausse n'est jamais comptée comme réussie</td><td><span class="chip c-srv">serveur</span></td></tr>
           <tr><td>Écrire dans Excel</td><td>openpyxl, par le fichier (<code>excel_write.py</code>)</td><td>pas besoin d'ouvrir Excel</td><td><span class="chip c-post">poste</span></td></tr>
@@ -378,15 +402,44 @@ footer { margin-top: 48px; color: var(--dim); font-size: 13px; }
     </table></div>
   </section>
 
+  <section class="block" id="cas">
+    <h2>Les cas d'usage testés</h2>
+    <p class="sub">Deux tâches de bureau réelles, choisies parmi les cas d'usage du hackathon, ont servi à tester Twiin de bout en bout sur un PC Windows.</p>
+    <div class="cases">
+      <article class="case-card">
+        <p class="tagline">Cas « comparatif d'achat »</p>
+        <h3>Comparer un casque audio sur 3 sites et remplir un tableau Excel</h3>
+        <dl>
+          <dt>Qui</dt><dd>un acheteur ou un assistant</dd>
+          <dt>À la main</dt><dd>ouvrir 3 sites marchands, relever le prix et le lien du même casque, les recopier dans le fichier Excel « Comparatif »</dd>
+          <dt>Outils</dt><dd>navigateur web, Excel</dd>
+          <dt>Difficulté</dt><dd>sites différents, fenêtres de cookies, prix qui changent</dd>
+        </dl>
+        <p class="res"><b>Résultat :</b> Twiin recommande d'automatiser. L'automatisation lit les 3 sites dans un navigateur invisible et écrit les 3 lignes dans Excel en 51 s, sans toucher à l'écran du salarié.</p>
+      </article>
+      <article class="case-card">
+        <p class="tagline">Cas « saisie comptable »</p>
+        <h3>Saisir une facture fournisseur reçue en PDF dans le logiciel comptable</h3>
+        <dl>
+          <dt>Qui</dt><dd>un ou une comptable</dd>
+          <dt>À la main</dt><dd>lire la facture PDF (fournisseur, référence, date, lignes, TVA), ouvrir le dossier du client, tout ressaisir, enregistrer en brouillon</dd>
+          <dt>Outils</dt><dd>QONTA, un logiciel comptable de démonstration qui imite un vieux logiciel de cabinet <b>sans API</b> : seul l'écran permet d'y entrer des données</dd>
+          <dt>Difficulté</dt><dd>listes à suggestions (fournisseur), listes déroulantes (taux de TVA), plusieurs lignes par facture</dd>
+        </dl>
+        <p class="res"><b>Résultat :</b> la réussite des essais dans la copie de test est passée de 57&nbsp;% à 100&nbsp;%. En réel, Holo saisit une facture complète en 79 s, toutes les valeurs sont justes et vérifiées une par une.</p>
+      </article>
+    </div>
+  </section>
+
   <section class="block" id="chiffres">
     <h2>Chiffres mesurés</h2>
     <div class="facts">
-      <div class="fact"><b>4 à 30 s</b><span>pour poser la question au salarié</span></div>
-      <div class="fact"><b>30 → 100 %</b><span>fiabilité de Holo avant / après mémoire et guidage</span></div>
-      <div class="fact"><b>2,5 s</b><span>automatisation n8n native du comparatif, sans Holo (93 %)</span></div>
-      <div class="fact"><b>57 → 100 %</b><span>facture QONTA dans le jumeau, après la gestion des suggestions</span></div>
-      <div class="fact"><b>79 s</b><span>facture PDF saisie en brouillon dans QONTA par Holo invisible, valeurs exactes</span></div>
-      <div class="fact"><b>51 s</b><span>comparatif de bout en bout : 3 sites lus, 3 lignes écrites dans Excel</span></div>
+      <div class="fact"><b>4 à 30 s</b><span>pour que Twiin pose sa question au salarié après l'enregistrement</span></div>
+      <div class="fact"><b>30 → 100 %</b><span>taux de réussite de Holo, avant puis après lui avoir donné une mémoire de travail et un guidage</span></div>
+      <div class="fact"><b>2,5 s</b><span>cas comparatif : automatisation n8n sans Holo, 93 % des valeurs justes</span></div>
+      <div class="fact"><b>51 s</b><span>cas comparatif, en réel : 3 sites lus, 3 lignes écrites dans Excel</span></div>
+      <div class="fact"><b>57 → 100 %</b><span>cas saisie comptable : réussite des essais dans la copie de test, avant puis après correction</span></div>
+      <div class="fact"><b>79 s</b><span>cas saisie comptable, en réel : une facture PDF saisie par Holo, valeurs exactes</span></div>
     </div>
   </section>
 
