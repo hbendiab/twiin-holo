@@ -319,11 +319,16 @@ def discover(session_dir: Path) -> None:
     # 5. itération 1 (test « dev ») : le jumeau est-il rejouable ? Guidée comme les suivantes.
     url, srv = serve(twin_dir)
     try:
-        res, sc, errs = run_iteration(spec, url, session_dir / "runs" / "it1-base", DEV_MODEL, "base")
+        r0 = route_zero(session_dir)
+        res, sc, errs = run_iteration(spec, url, session_dir / "runs" / "it1-base", DEV_MODEL, "base", route=r0)
     finally:
         srv.shutdown()
-    record_test(sb, tid, "base", res, sc, errs, "itération 1 (dev)")
+    record_test(sb, tid, "base", res, sc, errs, "itération 1 (chemin de l'employé)" if r0 else "itération 1 (dev)")
     first = summary_of(DEV_MODEL, "base", res, sc, errs, 1)
+    first["path"] = res.get("path") or []
+    first["route"] = " → ".join(first["path"]) or "(aucun chemin)"
+    first["start"] = None
+    first["label"] = "chemin de l'employé" if r0 else "libre"
     dev = {"model": DEV_MODEL, "success_rate": round(sc, 3), "claimed_success": res["claimed_success"],
            "seconds": res["stats"]["seconds"], "calls": res["stats"]["calls"], "errors": errs}
     st.set(iterations=[first])
@@ -432,6 +437,43 @@ def ensure_routes(spec: dict, spec_path: Path) -> list[dict]:
     return spec["routes"]
 
 
+def route_zero(session_dir: Path) -> dict | None:
+    """Chemin n°0 = le chemin réel de l'employé, tiré du journal d'actions (aucun appel à une IA, coût nul)."""
+    p = session_dir / "actions.jsonl"
+    if not p.exists():
+        return None
+    steps, last = [], None
+    for line in p.read_text(encoding="utf-8").splitlines():
+        try:
+            e = json.loads(line)
+        except ValueError:
+            continue
+        win = e.get("window") or ""
+        if re.search(r"improveme|Twiin|localhost:3000", win, re.I) or e.get("type") in ("start", "stop", "error"):
+            continue
+        where = (win or e.get("app") or "").split(" - ")[0][:40]
+        if e["type"] == "click":
+            t = f"in « {where} », click {e.get('element') or 'an element'}"
+        elif e["type"] == "typing":
+            t = f"type in {e.get('element') or 'the field'}"
+        elif e["type"] == "key":
+            t = f"press {({'Entrée': 'Enter', 'Échap': 'Escape'}).get(e.get('keys'), e.get('keys'))}"
+        elif e["type"] == "shortcut":
+            t = f"shortcut {e.get('keys')}"
+        elif e["type"] == "app":
+            t = f"switch to « {where} »"
+        else:
+            continue
+        if t != last:
+            steps.append(t)
+            last = t
+    if len(steps) < 3:
+        return None
+    return {"nom": "chemin de l'employé",
+            "strategie": "Follow the employee's own way, as recorded on their computer (names can differ a little in the "
+                         "test page; the values must still be read on screen):\n" + "\n".join(f"- {x}" for x in steps[:40])}
+
+
 def run_iteration(spec, url, out, model, variant, hints="", route: dict | None = None,
                   start: str | None = None, known: list[str] | None = None) -> tuple[dict, float, list[str]]:
     """Un essai dans le jumeau. Exploration : seuls A (départ `start`) et B (résultat attendu) sont donnés ;
@@ -485,11 +527,10 @@ def summary_of(model, variant, res, sc, errs, it):
 # ---------------------------------------------------------------- phase 2 : casse (3 itérations au plus)
 
 def casse(session_dir: Path) -> None:
-    """Exploration façon GPS : même point A, même point B, plusieurs sous-agents EN MÊME TEMPS, chacun partant
-    d'une brique différente du jumeau et trouvant son propre chemin. Chaque chemin suivi est une solution découverte.
-    Vague suivante : on donne les chemins déjà trouvés et on en demande d'autres. Arrêt dès qu'une vague ne trouve
-    rien de nouveau, ou après DISCOVERY_WAVES vagues. Enfin, la meilleure solution passe un test de « trafic »."""
-    import random
+    """1 itération = 1 solution, l'une après l'autre (un agent seul va ~2 fois plus vite que trois en parallèle).
+    L'itération 1 (chemin de l'employé, ou libre) a déjà tourné pendant la question. Chaque itération suivante part
+    d'une autre brique du jumeau et connaît les chemins déjà essayés. Arrêt dès qu'un chemin atteint 100 % ou après
+    DISCOVERY_ITERATIONS itérations ; puis le meilleur chemin passe le test de trafic (popup + lenteur, en parallèle)."""
     from concurrent.futures import ThreadPoolExecutor
     st = State(session_dir)
     tid = st.data["task_id"]
@@ -497,63 +538,46 @@ def casse(session_dir: Path) -> None:
     sb = Supa()
     sb.update("taches", f"id=eq.{tid}", {"status": "confirmed"})
     url, srv = serve(session_dir / "twin")
-    width = int(os.environ.get("DISCOVERY_AGENTS", "3"))
-    waves = int(os.environ.get("DISCOVERY_WAVES", "2"))
+    max_it = int(os.environ.get("DISCOVERY_ITERATIONS", "3"))
     results = list(st.data.get("iterations") or [])
-    solutions: dict[str, dict] = {}  # signature du chemin -> meilleur essai
-    lock = threading.Lock()
-    for r in results:
-        if r.get("path"):
-            solutions.setdefault(" → ".join(r["path"]), r)
+    r0 = route_zero(session_dir)
 
-    def one(start, known, it, variant="base"):
+    def one(it, start=None, known=None, variant="base", route=None, label=None):
         try:
-            res, sc, errs = run_iteration(spec, url, session_dir / "runs" / f"it{it}-{slug_route({'nom': start or 'libre'})}",
-                                          CASSE_MODEL, variant, start=start, known=known)
+            res, sc, errs = run_iteration(spec, url, session_dir / "runs" / f"it{it}-{variant}", CASSE_MODEL, variant,
+                                          route=route, start=start, known=known)
             r = summary_of(CASSE_MODEL, variant, res, sc, errs, it)
             r["path"] = res.get("path") or []
+            record_test(sb, tid, f"{label or start or 'libre'} / {variant}", res, sc, errs, f"itération {it}")
         except Exception as e:  # noqa: BLE001
             r = {"iteration": it, "model": CASSE_MODEL, "variant": variant, "success_rate": 0.0, "false_success": False,
                  "seconds": 0, "calls": 0, "errors": [str(e)[:200]], "path": []}
-        r["start"] = start
-        r["route"] = " → ".join(r["path"]) or "(aucun chemin)"
-        try:
-            record_test(sb, tid, f"départ {start} / {variant}", {"stats": {"model": CASSE_MODEL, "calls": r["calls"],
-                        "seconds": r["seconds"]}, "history": [r["route"]], "summary": "", "claimed_success": r.get("claimed_success")},
-                        r["success_rate"], r["errors"], f"exploration {it}")
-        except Exception as e:  # noqa: BLE001
-            print("essai non enregistré :", e, flush=True)
-        with lock:
-            results.append(r)
-            new = r["path"] and r["route"] not in solutions
-            if r["path"] and (new or r["success_rate"] > solutions[r["route"]]["success_rate"]):
-                solutions[r["route"]] = r
-            st.set(phase="casse", iterations=results, solutions=list(solutions.values()),
-                   progress={"done": len(results), "total": len(results) + 1},
-                   message=f"départ « {start} » : {round(r['success_rate'] * 100)} %{' (nouveau chemin)' if new else ''}")
+        r.update(start=start, label=label or (f"départ « {start} »" if start else "libre"),
+                 route=" → ".join(r["path"]) or "(aucun chemin)")
         return r
+
+    def progress(msg):
+        st.set(phase="casse", iterations=results, message=msg,
+               progress={"done": len(results), "total": max_it + 2})
 
     try:
         bricks = list_bricks(url) or [None]
-        st.set(phase="casse", message=f"Exploration : {len(bricks)} points de départ possibles", progress={"done": 0, "total": width})
-        for wave in range(1, waves + 1):
-            starts = [bricks[(i + (wave - 1) * width) % len(bricks)] for i in range(width)]
-            known = [k for k in solutions if k != "(aucun chemin)"]
-            before = set(solutions)
-            base = len(results)
-            with ThreadPoolExecutor(max_workers=width) as pool:
-                list(pool.map(lambda a: one(a[1], known, base + a[0] + 1), enumerate(starts)))
-            if set(solutions) == before:
-                break  # plus aucun chemin nouveau : l'exploration est finie
-            if os.environ.get("DISCOVERY_FULL_CATALOGUE") != "1" and any(
-                    r["success_rate"] >= 1 for r in results[base:]):
-                break  # un chemin parfait trouvé : on passe directement au test de trafic (rapidité d'abord)
-        # test de « trafic » sur la meilleure solution (popup + lenteur, en parallèle)
-        best = max(solutions.values(), key=lambda r: (r["success_rate"], -r["seconds"]), default=None)
+        k = 0
+        while len(results) < max_it and not any(r["success_rate"] >= 1 for r in results):
+            start = bricks[k % len(bricks)]
+            k += 1
+            known = sorted({r["route"] for r in results if r.get("path")})
+            progress(f"Itération {len(results) + 1} : départ « {start} »")
+            results.append(one(len(results) + 1, start=start, known=known))
+            progress(f"Itération {len(results)} : {round(results[-1]['success_rate'] * 100)} %")
+        best = max(results, key=lambda r: (r["success_rate"], -r["seconds"]), default=None)
         if best and best["success_rate"] >= 0.9:
+            progress("Test du meilleur chemin avec popup et lenteur")
             base = len(results)
+            route = r0 if best.get("label") == "chemin de l'employé" else None
             with ThreadPoolExecutor(max_workers=2) as pool:
-                list(pool.map(lambda a: one(best["start"], [], base + a[0] + 1, a[1]), enumerate(["popup", "lent"])))
+                results += list(pool.map(lambda a: one(base + a[0] + 1, start=best.get("start"), variant=a[1], route=route,
+                                                       label=best.get("label")), enumerate(["popup", "lent"])))
     finally:
         srv.shutdown()
     sb.update("taches", f"id=eq.{tid}", {"status": "tested"})
@@ -568,8 +592,8 @@ def casse(session_dir: Path) -> None:
         })
     except Exception as e:  # noqa: BLE001
         print("recommandation non enregistrée :", e, flush=True)
-    st.set(phase="done", message=f"Exploration terminée : {len(solutions)} chemin(s) trouvé(s)", iterations=results,
-           solutions=list(solutions.values()), solution=solution, progress={"done": len(results), "total": len(results)})
+    st.set(phase="done", message="Casse terminée", iterations=results, solution=solution,
+           progress={"done": len(results), "total": len(results)})
 
 
 def slug_route(route: dict) -> str:
@@ -587,7 +611,8 @@ def propose(results: list[dict]) -> dict:
             best_by[k] = r
     ranked = sorted(best_by.values(), key=lambda r: (-r["success_rate"], r["seconds"]))
     model = ranked[0]["model"] if ranked else CASSE_MODEL
-    catalogue = [{"chemin": r["route"], "depart": r.get("start"), "reussite": round(r["success_rate"] * 100),
+    catalogue = [{"chemin": f"{r.get('label') or 'libre'} : {r['route']}", "depart": r.get("start"),
+                  "reussite": round(r["success_rate"] * 100),
                   "duree_s": round(r["seconds"]), "etapes": r["calls"]} for r in ranked]
     traffic = [r for r in results if r.get("variant") in ("popup", "lent")]
     tient = bool(traffic) and all(r["success_rate"] >= 0.9 for r in traffic)

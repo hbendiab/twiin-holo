@@ -295,7 +295,7 @@ app.post('/api/actions/start', (req, res) => {
   try {
     if (recorderSession?.proc) recorderSession.proc.kill('SIGTERM');
     const { id, dir } = newSessionDir();
-    const proc = spawn(PYTHON, [path.join(path.dirname(fileURLToPath(import.meta.url)), 'actions.py'), '--out', path.join(dir, 'actions.jsonl')]);
+    const proc = spawn(PYTHON, [path.join(path.dirname(fileURLToPath(import.meta.url)), process.platform === 'win32' ? 'actions_win.py' : 'actions.py'), '--out', path.join(dir, 'actions.jsonl')]);
     proc.on('error', (e) => console.warn('[journal] indisponible :', e.message));
     proc.stdin.on('error', () => {});
     proc.stderr.on('data', (d) => console.warn('[journal]', String(d).trim().slice(0, 300)));
