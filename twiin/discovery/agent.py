@@ -21,6 +21,8 @@ FORBIDDEN = re.compile(r"\b(valider|validate|payer|pay|acheter|buy|commander|ord
 TOOLS_SPEC = [
     ("click", "Click on the element at (x, y).", {"x": "integer", "y": "integer"}),
     ("type_text", "Click the input field or cell at (x, y), clear it, then type the text.", {"x": "integer", "y": "integer", "text": "string"}),
+    ("note", "Write down the values you READ on the current screenshot (exactly as displayed), to use them later on "
+             "another page. You only see the current screen: anything not noted is forgotten.", {"text": "string"}),
     ("press_key", "Press a keyboard key (Enter, Tab, Escape...).", {"key": "string"}),
     ("scroll", "Scroll the page (direction: up or down).", {"direction": "string"}),
     ("done", "The task is finished, or impossible. Summarize what was done.", {"summary": "string", "success": "boolean"}),
@@ -57,10 +59,12 @@ ELEMENT_AT = """([x, y]) => {
 
 def run_agent(url: str, mission: str, out_dir: Path, model: str, max_steps: int = 30,
               init_script: str | None = None, on_event=None, progress_fn=None, done_guard=None,
-              hints: str = "") -> dict:
+              hints: str = "", subtasks: list[dict] | None = None) -> dict:
     """progress_fn(state) -> texte d'avancement montré à Holo à chaque étape ;
     done_guard(state) -> raison de refuser « fini » (ou None) ; hints : conseils tirés de l'essai précédent."""
-    """Rejoue `mission` dans le jumeau servi à `url`. Renvoie stats, issue et état final du jumeau."""
+    """Rejoue `mission` dans le jumeau servi à `url`. Renvoie stats, issue et état final du jumeau.
+    subtasks : [{mission, progress_fn, done_guard, max_steps}] exécutées l'une après l'autre dans la MÊME page,
+    chacune avec un historique neuf (un « sous-agent » par sous-tâche)."""
     from playwright.sync_api import sync_playwright
     out_dir.mkdir(parents=True, exist_ok=True)
     client = OpenAI(base_url=HOLO_BASE_URL, api_key=os.environ["HAI_API_KEY"])
@@ -73,6 +77,7 @@ def run_agent(url: str, mission: str, out_dir: Path, model: str, max_steps: int 
     gap = FREE_GAP if model in FREE_MODELS else 0.5
     refusals = 0
     clipboard = ""
+    notes: list[str] = []  # mémoire de travail de Holo : il ne voit que l'écran courant
     read_state = "() => (window.__twinState ? window.__twinState() : null)"
     with sync_playwright() as pw:
         browser = pw.chromium.launch()
@@ -83,7 +88,15 @@ def run_agent(url: str, mission: str, out_dir: Path, model: str, max_steps: int 
         page.on("dialog", lambda d: d.dismiss() if FORBIDDEN.search(d.message) else d.accept())
         page.goto(url)
         page.wait_for_timeout(800)
-        for step in range(1, max_steps + 1):
+        plan = subtasks or [{"mission": mission, "progress_fn": progress_fn, "done_guard": done_guard, "max_steps": max_steps}]
+        step = 0
+        sub_results = []
+        for k, sub in enumerate(plan, 1):
+          mission, progress_fn, done_guard = sub["mission"], sub.get("progress_fn"), sub.get("done_guard")
+          history, refusals, sub_done = [], 0, None
+          emit("subtask", text=f"sous-tâche {k}/{len(plan)}")
+          for _ in range(sub.get("max_steps", max_steps)):
+            step += 1
             shot = out_dir / f"{step:02d}.jpg"
             page.screenshot(path=str(shot), type="jpeg", quality=70)
             wait = gap - (time.time() - last_call)
@@ -95,7 +108,8 @@ def run_agent(url: str, mission: str, out_dir: Path, model: str, max_steps: int 
                     progress = "\n\n## Progress of the table (checked by the system)\n" + progress_fn(page.evaluate(read_state))
                 except Exception:  # noqa: BLE001
                     progress = ""
-            prompt = (mission + (f"\n\n## Advice from the previous attempt\n{hints}" if hints else "") + progress +
+            mem = ("\n\n## Your notes (values you read earlier)\n" + "\n".join(f"- {n}" for n in notes[-12:])) if notes else ""
+            prompt = (mission + (f"\n\n## Advice from the previous attempt\n{hints}" if hints else "") + progress + mem +
                       "\n\n## What you already did\n" + ("\n".join(history[-12:]) or "(nothing yet)") +
                       "\n\nLook at the screenshot and call exactly ONE tool for the next action.")
             uri = "data:image/jpeg;base64," + base64.b64encode(shot.read_bytes()).decode()
@@ -137,9 +151,15 @@ def run_agent(url: str, mission: str, out_dir: Path, model: str, max_steps: int 
                     emit("refused", step=step, text=why)
                     continue
             if name == "done":
-                outcome, claimed_success, summary = "done", bool(args.get("success")), str(args.get("summary", ""))
-                emit("done", step=step, text=summary)
+                sub_done = bool(args.get("success"))
+                summary = (summary + " | " if summary else "") + str(args.get("summary", ""))
+                emit("done", step=step, text=str(args.get("summary", "")))
                 break
+            if name == "note":
+                notes.append(str(args.get("text", ""))[:300])
+                history.append(f"{step}. note -> saved")
+                emit("note", step=step, text=notes[-1])
+                continue
             px = py = None
             info = None
             if "x" in args and "y" in args:
@@ -178,6 +198,9 @@ def run_agent(url: str, mission: str, out_dir: Path, model: str, max_steps: int 
             except Exception as e:  # noqa: BLE001
                 stats["errors"] += 1
                 history.append(f"{step}. {name} failed: {str(e)[:100]}")
+          sub_results.append(sub_done)
+          outcome = "done" if all(r is not None for r in sub_results) else "max_steps"
+          claimed_success = all(bool(r) for r in sub_results)
         try:
             state = page.evaluate(read_state)
         except Exception:  # noqa: BLE001

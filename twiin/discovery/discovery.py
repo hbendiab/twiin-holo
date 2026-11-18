@@ -341,17 +341,19 @@ def discover(session_dir: Path) -> None:
 
 GUIDE = """
 ## How to work (rules checked by the system)
-- Work ONE item at a time: open its page or tab, read the values, then write them in that item's row, then the next item.
+- Work ONE item at a time: open its page or tab, call note with the values you read there (exactly as displayed),
+  then go to the table and type them FROM YOUR NOTES. Never type a value you did not note from the screen.
 - Copy text EXACTLY as displayed. A link is the address shown in the page's address bar, copied completely: never invent a link.
 - A price is the CURRENT price of the product of the page: ignore crossed-out old prices, ads, banners and other products.
-- Fill EVERY column of the row. If an information really does not exist on the page, write "—".
+- Fill every column the task asks for; leave empty the columns the task says to leave empty.
 - Click a cell before typing in it (type_text does it for you). Never use buy / add to cart / send / validate buttons.
 - Call done only when every row and every column is filled."""
 
 
 def _columns(expected: dict) -> tuple[int, list[str]]:
+    """Nombre de lignes et colonnes À REMPLIR (une colonne vide partout dans l'attendu n'est pas exigée)."""
     rows = (expected or {}).get("rows") or []
-    cols = list(rows[0].keys()) if rows else []
+    cols = [c for c in (rows[0].keys() if rows else []) if any(str(r.get(c, "")).strip() for r in rows)]
     return len(rows), cols
 
 
@@ -396,11 +398,38 @@ def hints_from(errs: list[str]) -> str:
     return "\n".join(tips)
 
 
+def row_guard(expected: dict, i: int):
+    """Refuse « fini » tant que la ligne i (1..n) a des cases vides."""
+    _, cols = _columns(expected)
+
+    def guard(state):
+        got = (state or {}).get("rows") or []
+        if len(got) < i:
+            return f"row {i} is still empty"
+        empty = [c for c in cols if not str(got[i - 1].get(c, "")).strip()]
+        return f"row {i} still has empty cells: {', '.join(empty)}" if empty else None
+    return guard
+
+
 def run_iteration(spec, url, out, model, variant, hints="") -> tuple[dict, float, list[str]]:
+    """Une sous-tâche (un sous-agent Holo, historique neuf) par ligne du tableau, dans la même page."""
+    exp = spec.get("expected")
+    n, cols = _columns(exp)
+    per_row = int(os.environ.get("DISCOVERY_STEPS_PER_ROW", "16"))
+    subtasks = [{
+        "mission": (spec["mission"] + GUIDE +
+                    f"\n\n## YOUR SUB-TASK NOW\nFill ONLY row {i} of the table ({', '.join(cols)}), for item number {i} of the "
+                    f"task (in the order of the task). Rows 1 to {i - 1} are already done: do not change them. "
+                    f"Open the right page, read the values, then fill row {i}, then call done."
+                    + (f"\n\n## Advice from the previous attempt\n{hints}" if hints else "")),
+        "progress_fn": lambda s, i=i: progress_text(exp, s).split("\n")[i] if len(progress_text(exp, s).split("\n")) > i else "",
+        "done_guard": row_guard(exp, i),
+        "max_steps": per_row,
+    } for i in range(1, n + 1)] if n else None
     res = run_agent(url, spec["mission"] + GUIDE, out, model, max_steps=int(os.environ.get("DISCOVERY_MAX_STEPS", "40")),
-                    init_script=VARIANTS[variant], progress_fn=lambda s: progress_text(spec.get("expected"), s),
-                    done_guard=done_guard(spec.get("expected")), hints=hints)
-    sc, errs = score(spec.get("expected"), res["state"])
+                    init_script=VARIANTS[variant], progress_fn=lambda s: progress_text(exp, s),
+                    done_guard=done_guard(exp), hints=hints, subtasks=subtasks)
+    sc, errs = score(exp, res["state"])
     return res, sc, errs
 
 
