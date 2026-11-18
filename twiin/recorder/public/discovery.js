@@ -121,7 +121,20 @@
 
   function solution(s) {
     view = 'solution';
-    box.classList.remove('dc-mini');
+    box.hidden = true;
+    // Encart dans la page (en haut des résultats de l'étape Reco), pas une fenêtre par-dessus
+    let host = document.getElementById('dcSolution');
+    if (!host) {
+      host = document.createElement('section');
+      host.id = 'dcSolution';
+      host.className = 'panel';
+      host.style.cssText = 'margin:14px 0;padding:16px 18px;border-radius:14px;border:1px solid var(--accent, #0b57d0)';
+      const results = document.getElementById('results');
+      (results?.parentNode || document.body).insertBefore(host, results || null);
+    }
+    host.dataset.view = '3';
+    host.classList.add('view');
+    const card = host;
     card.innerHTML = `
       <h3>${s.kind === 'automate' ? '⚡ Twiin peut automatiser cette tâche' : '🎬 Twiin propose d\'accélérer cette tâche'}</h3>
       <p>${esc(s.texte)}</p>
@@ -142,9 +155,8 @@
         closedFor = JSON.stringify(s);
       } catch (e) { msg.textContent = `Création impossible : ${e.message}`; create.disabled = false; }
     };
-    card.querySelector('.dc-ok').onclick = () => { box.hidden = true; view = 'closed'; closedFor = JSON.stringify(s);
+    card.querySelector('.dc-ok').onclick = () => { host.remove(); view = 'closed'; closedFor = JSON.stringify(s);
       try { localStorage.setItem('twiin-solution-vue', closedFor); } catch { /* stockage bloqué */ } };
-    box.hidden = false;
   }
 
   async function poll() {

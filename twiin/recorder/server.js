@@ -608,7 +608,10 @@ app.get('/api/discovery/internal', (req, res) => {
 app.post('/api/reanalyze', async (req, res) => {
   try {
     const hasFrames = (d) => ['frames.jsonl', 'frames.json'].some((f) => fs.existsSync(path.join(SESSIONS_DIR, d, f)));
-    const dirs = fs.existsSync(SESSIONS_DIR) ? fs.readdirSync(SESSIONS_DIR).filter(hasFrames).sort() : [];
+    let dirs = fs.existsSync(SESSIONS_DIR) ? fs.readdirSync(SESSIONS_DIR).filter(hasFrames).sort() : [];
+    const wanted = String(req.body?.session || '').split('#')[0].replace(/[^0-9A-Za-z-]/g, '');
+    if (wanted && dirs.includes(wanted)) dirs = [...dirs.filter((d) => d !== wanted), wanted]; // « Réanalyser » une tâche précise
+    else if (wanted) return res.status(404).json({ error: 'Cet enregistrement n\'est plus sur ce poste (images supprimées).' });
     if (dirs.length) {
       if (recorderSession?.proc && recorderSession.id === dirs.at(-1)) recorderSession.proc.kill('SIGTERM');
       console.log(`Relance sur ${dirs.at(-1)}`);
@@ -660,8 +663,9 @@ Write the steps in English (the agent works best in English) and the "changes" i
 app.get('/api/candidates', async (req, res) => {
   if (sbUser()) { // connecté : SES dernières tâches analysées
     const me = sbUser()?.id;
-    const rows = await sb(`taches?select=*&source=eq.analyse&recorded_by=eq.${me}&order=created_at.desc&limit=5`);
+    const rows = await sb(`taches?select=*&source=eq.analyse&recorded_by=eq.${me}&order=created_at.desc&limit=20`);
     return res.json({ workflows: (rows || []).map((t) => ({ task_id: t.id, name: t.title, summary: t.summary, why_daily: t.why,
+      created_at: t.created_at, status: t.status, has_images: fs.existsSync(path.join(SESSIONS_DIR, String(t.source_session_id || '').split('#')[0])),
       steps: (t.steps || []).map((x) => (typeof x === 'string' ? x : x.instruction || '')),
       session: String(t.source_session_id || '').split('#')[0] })) });
   }

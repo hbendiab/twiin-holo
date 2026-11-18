@@ -527,9 +527,9 @@ function routeFromHash() {
   if (k >= 0) setStep(k + 1, { scroll: false });
 }
 window.addEventListener('hashchange', routeFromHash);
-{ // au chargement : la page demandée dans l'adresse (/#tester…), sinon l'audit
+{ // au chargement : la page demandée dans l'adresse (/#audit…), sinon l'enregistrement d'une tâche (l'audit reste accessible)
   const k = hashView();
-  setStep(k >= 0 ? k + 1 : 1, { scroll: false });
+  setStep(k >= 0 ? k + 1 : 2, { scroll: false });
 }
 
 // Appelé par discovery.js quand l'employé confirme « Oui, c'est bien ça ».
@@ -1396,8 +1396,28 @@ Promise.all([fetch('/api/candidates').then((r) => r.json()), fetch('/api/discove
   .then(([d, disc]) => {
     const pending = ['upload', 'twin', 'dev_test', 'awaiting_confirmation'].includes(disc.phase);
     if (pending) statusEl.textContent = 'Twiin étudie ta tâche… une question va bientôt apparaître.';
-    if (d.workflows?.length && !pending) { lastWorkflows = d.workflows; document.getElementById('lastBtn').hidden = false; }
+    if (d.workflows?.length && !pending) { lastWorkflows = [d.workflows[0]]; document.getElementById('lastBtn').hidden = false; }
+    renderMyTasks(d.workflows || []);
   }).catch(() => {});
+
+// « Mes tâches » : chaque tâche analysée, rouvrable, et réanalysable tant que ses images sont sur le poste.
+function renderMyTasks(list) {
+  const box = document.getElementById('myTasks'), ul = document.getElementById('myTasksList');
+  if (!box || !list.length) return;
+  box.hidden = false;
+  ul.innerHTML = list.map((w, i) => `<li style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;justify-content:space-between;
+      border:1px solid var(--panel-border);border-radius:10px;padding:10px 12px">
+    <span style="min-width:0"><b>${escapeHtml(w.name || 'Tâche')}</b><br><span class="meta">${w.created_at ? new Date(w.created_at)
+      .toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' }) : ''} · ${(w.steps || []).length} étape(s)</span></span>
+    <span style="display:flex;gap:8px"><button type="button" data-open="${i}">Rouvrir</button>
+      <button type="button" data-re="${i}" ${w.has_images === false ? 'disabled title="Images de cet enregistrement absentes de ce poste"' : ''}>Réanalyser</button></span></li>`).join('');
+  ul.querySelectorAll('[data-open]').forEach((b) => b.onclick = () => {
+    renderWorkflows([list[+b.dataset.open]]);
+    statusEl.textContent = 'Tâche rouverte : relis les étapes, puis passe à la Reco.';
+  });
+  ul.querySelectorAll('[data-re]').forEach((b) => b.onclick = () =>
+    analyzeRequest('/api/reanalyze', { session: list[+b.dataset.re].session }, `Nouvelle analyse de « ${list[+b.dataset.re].name} »…`));
+}
 
 function escapeHtml(str) {
   const div = document.createElement('div');
