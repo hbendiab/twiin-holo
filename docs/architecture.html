@@ -271,22 +271,58 @@ footer { margin-top: 48px; color: var(--dim); font-size: 13px; }
       <li><b>Isolation par entreprise</b> : chaque salarié se connecte avec son compte ; Supabase ne lui montre que les données de son entreprise (RLS testée).</li>
       <li><b>Tout est mesuré</b> : chaque essai écrit sa durée, son nombre d'appels, sa réussite vérifiée et les faux « réussis » dans <code>tests</code>.</li>
       <li><b>Mac et Windows</b> : le même code détecte le système ; <code>scripts/doctor.py</code> vérifie un poste sans afficher aucun secret.</li>
-      <li><b>À trancher en équipe</b> : deux schémas Supabase coexistent dans le code (Alexis : <code>dictionnaire, taches, tests, recommendations</code>, en service ; Hanine : <code>profiles, audits, tasks, tutos, automations…</code>, préparé, pas appliqué). Ils définissent tous deux <code>recommendations</code>.</li>
+      <li><b>À trancher en équipe</b> : un seul projet Supabase, mais deux jeux de tables dans le code. Celles d'Alexis (<code>dictionnaire, taches, tests, recommendations</code>) sont en service ; celles de Hanine (<code>profiles, audits, tasks, tutos, automations, automation_runs, back_log</code>) sont préparées, pas appliquées. <code>recommendations</code> existe déjà avec d'autres colonnes, et <code>tasks</code> double <code>taches</code>.</li>
       <li><b>Secrets</b> : jamais dans le dépôt. Aujourd'hui dans un fichier <code>.env</code> local (environnement de l'équipe) ; demain uniquement côté serveur.</li>
     </ul>
   </div>
 
-  <h2>Cible : ce qui change pour un salarié quelconque</h2>
+  <h2>Version finale visée</h2>
   <div class="target">
-    <p>Aujourd'hui, tout tourne sur le poste de l'équipe. La cible garde les mêmes briques, réparties pour que le salarié n'ait rien à configurer.</p>
+    <p>En version finale, le salarié n'installe et ne configure rien : il se connecte avec le compte de son entreprise
+      et utilise Twiin. Tout le calcul tourne dans le cloud, dans des environnements jetables.</p>
     <ul>
-      <li><b>Un petit capteur sur le poste</b> (captures, OCR, journal d'actions), déployé par la DSI, avec son propre Python et navigateur.</li>
-      <li><b>Le reste en ligne</b> : analyse, jumeau, itérations et n8n dans des conteneurs jetables, jamais sur le poste.</li>
-      <li><b>Aucune clé côté salarié</b> : connexion avec le compte de l'entreprise (SSO) ; les clés Hugging Face, H et n8n restent sur le serveur.</li>
-      <li><b>Un n8n par entreprise</b>, hébergé, au lieu d'un n8n local.</li>
+      <li><b>Sur le poste, seulement un petit capteur</b> (captures, OCR, journal d'actions), déployé par la DSI, avec son propre
+        Python et navigateur. Il ne contient aucune clé.</li>
+      <li><b>Une application web Twiin hébergée</b> (UE) : parcours employé, page Back pour l'équipe.</li>
+      <li><b>Des workers dans le cloud</b>, un conteneur jetable par tâche : jumeau, 3 itérations « conseil », 2 itérations
+        « automatisation », réseau fermé sauf les API utiles.</li>
+      <li><b>Un n8n par entreprise</b>, hébergé (n8n Cloud ou auto-hébergé en Docker, région UE), où Twiin livre le workflow retenu.</li>
+      <li><b>Les clés uniquement côté serveur</b> (coffre de secrets) ; connexion des salariés par SSO (Microsoft, Google) via Supabase Auth.</li>
+      <li><b>Holo hébergé</b> pour les logiciels web sans API ; agent local seulement pour les logiciels de bureau sans API.</li>
       <li><b>Limite connue</b> : sur Mac, l'autorisation d'enregistrer l'écran doit être donnée une fois par l'utilisateur (règle d'Apple).</li>
     </ul>
   </div>
+
+  <h2>Aujourd'hui (démo du 20/11) et version finale : les différences</h2>
+  <p class="lede">Ce qui tourne aujourd'hui en local pour tester vite, ce qui changera, et pourquoi on ne l'a pas encore fait.</p>
+  <div class="tbl" style="margin-top:14px"><table>
+    <tr><th>Brique</th><th>Aujourd'hui</th><th>Version finale</th><th>Pourquoi la différence</th></tr>
+    <tr><td>n8n</td><td>n8n 2.48 en local sur le PC de test ; workflows de test créés, exécutés une fois puis supprimés ; démarré par Twiin</td>
+      <td>un n8n hébergé par entreprise ; workflows livrés inactifs, activés par l'utilisateur</td>
+      <td>en local, on itère sans compte ni coût ; l'instance en ligne existante était trop ancienne pour le pilotage par MCP</td></tr>
+    <tr><td>Workers (découverte, itérations)</td><td>processus Python lancés par le serveur local, détachés</td>
+      <td>conteneurs jetables (Cloud Run, Kubernetes) ; un par tâche</td>
+      <td>mêmes scripts : seul l'endroit où ils tournent change ; l'isolation réseau devient obligatoire avec de vrais clients</td></tr>
+    <tr><td>Jumeau</td><td>page web servie en local, ouverte par un Chromium sans fenêtre</td>
+      <td>servi dans le conteneur de la tâche, détruit à la fin</td><td>pas besoin d'infrastructure pour le tester</td></tr>
+    <tr><td>Page Twiin</td><td>serveur Node sur <code>localhost:3000</code>, sur le poste qui enregistre</td>
+      <td>application web hébergée + capteur local</td><td>le serveur et la capture sont encore au même endroit</td></tr>
+    <tr><td>Capture (écran, OCR, journal)</td><td>partage d'écran Chrome + scripts Python Mac / Windows lancés par le serveur</td>
+      <td>capteur installé par la DSI, mêmes scripts embarqués</td><td>l'empaquetage (installeur signé) prend du temps, pas utile pour la démo</td></tr>
+    <tr><td>Clés (HF, H, n8n, Supabase)</td><td>fichier <code>.env</code> local, non versionné</td>
+      <td>coffre de secrets côté serveur ; rien sur le poste</td><td>en local, l'équipe garde la main sur ses propres clés</td></tr>
+    <tr><td>Comptes</td><td>comptes Supabase créés à la main par l'admin, rattachés à une entreprise</td>
+      <td>SSO de l'entreprise, rattachement automatique</td><td>pas de SSO à configurer pour une démo</td></tr>
+    <tr><td>Holo</td><td>API H, holo3 gratuit ou holo4 ; blocs Holo de n8n via un pont local</td>
+      <td>Holo hébergé (navigateur dans le cloud) pour le web ; agent local seulement pour le bureau</td>
+      <td>le pont local suffit pour montrer le principe</td></tr>
+    <tr><td>Captures d'écran</td><td>restent sur le poste (texte et chiffres seulement dans Supabase)</td>
+      <td>idem, ou stockage chiffré avec durée de conservation (RGPD)</td><td>choix prudent tant que la politique de conservation n'est pas écrite</td></tr>
+    <tr><td>Tuto vidéo</td><td>Remotion en local</td><td>rendu dans le cloud</td><td>rendu long, à déporter quand il y aura du volume</td></tr>
+    <tr><td>Catalogue des outils</td><td>7 outils publics collectés par script ; audit des outils internes en cours (Camil)</td>
+      <td>catalogue enrichi automatiquement par l'audit (agent qui explore chaque outil interne)</td><td>l'audit est encore un prototype</td></tr>
+    <tr><td>Suivi</td><td>page Back + table <code>tests</code></td><td>+ alertes, coûts par entreprise, tableaux de bord</td><td>pas nécessaire pour une démo</td></tr>
+  </table></div>
 
   <footer>Code : dépôt twiin-holo, dossiers <code>twiin/recorder</code>, <code>twiin/discovery</code>, <code>supabase/</code>. Page tenue à jour au fil des tests.</footer>
 </div>
