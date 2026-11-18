@@ -568,256 +568,195 @@ footer { margin-top: 48px; color: var(--dim); font-size: 13px; }
       catégories proposées, et reçoit les solutions : un conseil que le salarié applique lui-même, ou une automatisation (n8n, ou n8n + Holo en computer use quand le logiciel n'a pas d'API).
       Exemple ci-dessous avec une entreprise fictive.</p>
     <style>
-.graph { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; overflow: hidden; min-width: 0; }
+.graph { --a: #2b62d6; --b: #7546cf; --c: #bf2d6c; background: var(--panel); border: 1px solid var(--line); border-radius: 14px; overflow: hidden; min-width: 0; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .graph { --a: #7fa5ff; --b: #b596ff; --c: #f173aa; } }
+:root[data-theme="dark"] .graph { --a: #7fa5ff; --b: #b596ff; --c: #f173aa; }
 .graph-top { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; padding: 12px 14px; border-bottom: 1px solid var(--line); }
 .graph-top .legend { flex: 1 1 360px; }
 .gbtn { font: 500 13px var(--f-body); color: var(--ink); background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 6px 12px; cursor: pointer; }
 .gbtn:hover, .gbtn:focus-visible { border-color: var(--accent); color: var(--accent); outline: none; }
-.gbtn.primary { background: var(--ink); color: var(--bg); border-color: var(--ink); }
-.gprog { display: flex; gap: 3px; padding: 0 14px 10px; }
-.gprog button { flex: 1; height: 6px; padding: 0; border: 0; border-radius: 3px; background: var(--line); cursor: pointer; min-width: 0; }
-.gprog button.done { background: var(--dim); }
-.gprog button.cur { background: var(--accent); }
-.gcap { display: flex; gap: 12px; align-items: baseline; padding: 12px 14px 4px; min-height: 3.4em; }
-.gcap .no { font: 12px var(--f-mono); color: var(--dim); white-space: nowrap; }
-.gcap .tx { font-size: 15px; font-weight: 500; text-wrap: balance; }
 .gscroll { overflow-x: auto; }
-canvas#kg { display: block; width: 100%; min-width: 760px; height: 560px; touch-action: none; }
-.gfoot { display: flex; flex-wrap: wrap; gap: 8px 18px; padding: 10px 14px 12px; border-top: 1px solid var(--line); font-size: 13px; color: var(--dim); }
-.gfoot .rule b { font: 500 12px var(--f-mono); color: var(--accent); background: var(--accent-soft); border-radius: 6px; padding: 1px 7px; }
-.gfoot .hov { flex: 1 1 280px; color: var(--ink); }
-.ring { width: 11px; height: 11px; border-radius: 50%; display: inline-block; border: 2px solid; }
+canvas#kg { display: block; width: 100%; min-width: 760px; height: 500px; touch-action: none; }
+.gcap { padding: 10px 14px 12px; border-top: 1px solid var(--line); font-size: 14px; color: var(--dim); min-height: 3.2em; }
+.gcap b { color: var(--ink); }
+
 </style>
 <div class="graph">
   <div class="graph-top">
     <div class="legend" id="kglegend"></div>
-    <button type="button" class="gbtn primary" id="kgplay">Lecture</button>
-    <button type="button" class="gbtn" id="kgreplay">Rejouer</button>
+    <button type="button" class="gbtn" id="kgplay">Voir le graphe se construire</button>
+    <button type="button" class="gbtn" id="kgpause" aria-pressed="false">Pause</button>
   </div>
-  <div class="gcap" aria-live="polite"><span class="no" id="kgno"></span><span class="tx" id="kgcap"></span></div>
-  <div class="gprog" id="kgprog" aria-label="Étapes du scénario"></div>
-  <div class="gscroll"><canvas id="kg" aria-label="Graphe animé : entreprise, logiciels, catégories, cas, salariés et solutions (conseil ou automatisation) d'une entreprise fictive"></canvas></div>
-  <div class="gfoot">
-    <span class="rule">Seuil fixé par la DSI : <b>≥ 10 personnes</b> et <b>≥ 30 h/mois</b></span>
-    <span class="hov" id="kghover">Survolez un point pour voir ses liens.</span>
-  </div>
+  <div class="gscroll"><canvas id="kg" aria-label="Graphe animé : entreprise, logiciels, catégories, cas, salariés et solutions d'une entreprise fictive"></canvas></div>
+  <p class="gcap" id="kgcap"><b>Survolez un point</b> pour voir ses liens. Les points lumineux qui circulent sont les échanges : les tâches qui remontent vers leur cas, les solutions qui repartent.</p>
 </div>
 <script>
 (() => {
-  const cv = document.getElementById('kg'), ctx = cv.getContext('2d');
+  const cv = document.getElementById('kg'), ctx = cv.getContext('2d'), cap = document.getElementById('kgcap');
   const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   const css = (v) => getComputedStyle(cv).getPropertyValue(v).trim();
-  // Colonnes de l'arbre : entreprise › logiciel › catégorie › cas › solutions ; les salariés gravitent autour de leur cas
-  const COL = { co: 0.04, sw: 0.2, cat: 0.38, case: 0.57, piste: 0.76 };
   const KINDS = {
-    co:    { label: 'Entreprise', color: '--ink', r: 15 },
-    sw:    { label: 'Logiciel', color: '--ext', r: 11 },
-    cat:   { label: 'Catégorie', color: '--srv', r: 9 },
-    case:  { label: 'Cas (tâches similaires regroupées)', color: '--accent', r: 10 },
-    emp:   { label: 'Salarié', color: '--post', r: 3.6 },
-    piste: { label: 'Solution', color: '--db', r: 8 },
+    co:   { label: 'Entreprise (DSI)', color: '--ink', r: 15 },
+    sw:   { label: 'Logiciel', color: '--ext', r: 10 },
+    cat:  { label: 'Catégorie', color: '--srv', r: 8 },
+    case: { label: 'Cas', color: '--a', r: 11 },
+    emp:  { label: 'Salarié', color: '--post', r: 5 },
+    sol:  { label: 'Solution', color: '--db', r: 11 },
   };
-  const SEUIL_N = 10, SEUIL_H = 30;
-  const nodes = [], edges = [], byId = {};
-  const add = (id, k, name, extra = {}) => { const n = { id, k, name, x: 0, y: 0, vx: 0, vy: 0, ...extra }; nodes.push(n); byId[id] = n; return n; };
-  const link = (a, b, rel) => edges.push({ a: byId[a], b: byId[b], rel });
-  add('acme', 'co', 'Entreprise');
-  add('sage', 'sw', 'Sage 100'); add('excel', 'sw', 'Excel'); add('sf', 'sw', 'Salesforce');
-  add('k-saisie', 'cat', 'Saisie de factures'); add('k-rap', 'cat', 'Automatisation de rapports');
-  add('k-rec', 'cat', 'Réception de données'); add('k-ndf', 'cat', 'Notes de frais'); add('k-rel', 'cat', 'Relances commerciales');
-  const CASES = {
-    facture: ['k-saisie', 'Traiter une facture fournisseur', 14, 497, 'Comptabilité'],
-    hebdo: ['k-rap', 'Rapport hebdo des ventes', 6, 21, 'Contrôle de gestion'],
-    treso: ['k-rap', 'Rapport mensuel de trésorerie', 5, 11, 'Trésorerie'],
-    commandes: ['k-rec', 'Saisir les commandes PDF', 4, 65, 'ADV'],
-    notes: ['k-ndf', 'Vérifier les notes de frais', 2, 7, 'Assistants'],
-    relances: ['k-rel', 'Relancer les devis', 3, 28, 'Commerciaux'],
-  };
-  [['sage', 'k-saisie'], ['excel', 'k-rap'], ['excel', 'k-rec'], ['excel', 'k-ndf'], ['sf', 'k-rel']].forEach(([s, c]) => link(s, c, 'range'));
-  ['sage', 'excel', 'sf'].forEach((s) => link('acme', s, 'utilise'));
-  for (const id in CASES) { const [cat, name, n, h, role] = CASES[id];
-    add('c-' + id, 'case', name, { N: n, H: h, role }); link(cat, 'c-' + id, 'contient');
-    for (let i = 0; i < n; i++) { add(`e-${id}-${i}`, 'emp', `${role} ${i + 1}`, { home: 'c-' + id }); link(`e-${id}-${i}`, 'c-' + id, i === 0 ? 'enregistre' : i === 1 && id === 'facture' ? 'similaire à 91 %' : 'moi aussi'); } }
-  add('pA', 'piste', 'Conseil : à faire soi-même', { home: 'c-facture', tone: '--db' });
-  add('pB', 'piste', 'Automatisation : n8n + Holo', { home: 'c-facture', tone: '--c' });
-  add('rB', 'piste', 'Automatisation : n8n', { home: 'k-rap', tone: '--b' });
-  link('c-facture', 'pA', 'piste'); link('c-facture', 'pB', 'piste');
-  link('k-rap', 'rB', 'piste');
-
-  // Scénario : chaque étape dit ce qui est visible et combien de salariés sont rattachés à chaque cas
-  const S = (cap, set) => ({ cap, set });
-  const STEPS = [
-    S('La DSI crée le graphe de l\'entreprise : ses logiciels et son catalogue d\'outils.', (s) => { s.show('acme', 'sage', 'excel', 'sf'); }),
-    S('Une comptable enregistre sa tâche une fois. Twiin la range : Sage 100 › Saisie de factures › « Traiter une facture fournisseur ».', (s) => { s.show('k-saisie', 'c-facture'); s.n.facture = 1; }),
-    S('Un conseil lui est proposé tout de suite, qu\'elle applique elle-même : Sage 100 vérifie déjà la TVA, l\'étape à la calculatrice peut sauter.', (s) => { s.show('pA'); }),
-    S('Un commercial et une contrôleuse de gestion enregistrent leurs tâches : de nouvelles branches poussent.', (s) => { s.show('k-rel', 'c-relances', 'k-rap', 'c-hebdo'); s.n.relances = 1; s.n.hebdo = 1; }),
-    S('Une deuxième comptable fait presque la même chose. Twiin reconnaît un process similaire à 91 % et la rattache au même cas, sans nouveau nœud.', (s) => { s.n.facture = 2; s.pulse = 'c-facture'; }),
-    S('Les autres comptables cliquent « moi aussi » : pas de nouvel enregistrement, pas de nouvelle analyse. Le cas compte 14 personnes et 497 h/mois.', (s) => { s.n.facture = 14; s.pulse = 'c-facture'; }),
-    S('D\'autres tâches arrivent, et les « moi aussi » s\'accumulent sur chaque cas.', (s) => { s.show('c-treso', 'k-rec', 'c-commandes', 'k-ndf', 'c-notes'); Object.assign(s.n, { hebdo: 6, treso: 5, commandes: 4, notes: 2, relances: 3 }); }),
-    S('Seuil de la DSI : au moins 10 personnes et 30 h/mois. Les factures fournisseurs le franchissent.', (s) => { s.lit.add('c-facture'); s.pulse = 'c-facture'; }),
-    S('Aucun rapport ne passe seul, mais les deux cas de la même catégorie le dépassent ensemble : 11 personnes, 32 h/mois.', (s) => { s.lit.add('k-rap'); s.pulse = 'k-rap'; }),
-    S('Le reste est sous le seuil : relances et notes de frais écartées. Les commandes PDF restent sous surveillance (65 h/mois, mais 4 personnes).', (s) => { s.drop.add('c-relances'); s.drop.add('c-notes'); s.watch.add('c-commandes'); }),
-    S('Automatisations proposées à la DSI : n8n seul quand il y a une API (rapports), n8n + Holo en computer use quand il n\'y en a pas (Sage 100). 2 groupes retenus, 529 h/mois en jeu.', (s) => { s.show('pB', 'rB'); }),
+  // Données fictives. ph = étape où le nœud apparaît.
+  const N = [
+    ['co', 'Entreprise', 0],
+    ['sw', 'Sage 100', 1], ['sw', 'Excel', 1], ['sw', 'Salesforce', 1],
+    ['cat', 'Saisie de factures', 2], ['cat', 'Rapports', 2], ['cat', 'Relances commerciales', 2],
+    ['case', 'Traiter une facture fournisseur', 2], ['case', 'Rapport hebdo', 2],
+    ['case', 'Rapport trésorerie', 2], ['case', 'Relancer les devis', 2],
+    ['emp', 'Comptable 1', 2], ['emp', 'Contrôleuse de gestion', 2], ['emp', 'Trésorière', 2], ['emp', 'Commercial', 2],
+    ['emp', 'Comptable 2', 3], ['emp', 'Comptable 3', 3], ['emp', 'Comptable 4', 3],
+    ['sol', 'Conseil : à faire soi-même', 5], ['sol', 'Automatisation : n8n + Holo', 5], ['sol', 'Automatisation : n8n', 5],
   ];
-  function state(i) {
-    const s = { vis: new Set(), n: {}, lit: new Set(), drop: new Set(), watch: new Set(), pulse: null,
-      show(...ids) { ids.forEach((x) => this.vis.add(x)); } };
-    for (const id in CASES) s.n[id] = 0;
-    for (let k = 0; k <= i; k++) { s.pulse = null; STEPS[k].set(s); }
-    for (const id in CASES) for (let j = 0; j < s.n[id]; j++) s.vis.add(`e-${id}-${j}`);
-    return s;
-  }
-  let cur = STEPS.length - 1, st = state(cur), playing = false, timer = null, changedAt = 0, hover = null;
+  const nodes = N.map(([k, name, ph], i) => ({ id: i, k, name, ph, x: 0, y: 0, vx: 0, vy: 0 }));
+  const by = (name) => nodes.find((n) => n.name === name).id;
+  const E = [
+    ['Entreprise', 'Sage 100', 'utilise'], ['Entreprise', 'Excel', 'utilise'], ['Entreprise', 'Salesforce', 'utilise'],
+    ['Sage 100', 'Saisie de factures', 'contient'], ['Excel', 'Rapports', 'contient'], ['Salesforce', 'Relances commerciales', 'contient'],
+    ['Saisie de factures', 'Traiter une facture fournisseur', 'contient'], ['Rapports', 'Rapport hebdo', 'contient'],
+    ['Rapports', 'Rapport trésorerie', 'contient'], ['Relances commerciales', 'Relancer les devis', 'contient'],
+    ['Comptable 1', 'Traiter une facture fournisseur', 'enregistre'], ['Contrôleuse de gestion', 'Rapport hebdo', 'enregistre'],
+    ['Trésorière', 'Rapport trésorerie', 'enregistre'], ['Commercial', 'Relancer les devis', 'enregistre'],
+    ['Comptable 2', 'Traiter une facture fournisseur', 'similaire à 91 %'], ['Comptable 3', 'Traiter une facture fournisseur', 'moi aussi'],
+    ['Comptable 4', 'Traiter une facture fournisseur', 'moi aussi'],
+    ['Traiter une facture fournisseur', 'Conseil : à faire soi-même', 'propose'],
+    ['Traiter une facture fournisseur', 'Automatisation : n8n + Holo', 'propose'],
+    ['Rapports', 'Automatisation : n8n', 'propose'],
+  ];
+  const edges = E.map(([a, b, rel]) => ({ a: nodes[by(a)], b: nodes[by(b)], rel }));
+  edges.forEach((e) => { e.ph = Math.max(e.a.ph, e.b.ph); });
+  const tone = (n) => n.name.startsWith('Conseil') ? '--db' : n.name.endsWith('Holo') ? '--c' : n.name.endsWith('n8n') ? '--b' : KINDS[n.k].color;
+  const LIT = new Set(['Traiter une facture fournisseur', 'Rapports']);
+  const DROP = new Set(['Relancer les devis', 'Relances commerciales']);
+  const PHASES = [
+    'La DSI de l\'entreprise ouvre son graphe.',
+    '<b>Audit des postes</b> : les logiciels de l\'entreprise apparaissent.',
+    '<b>Enregistrements</b> : chaque tâche est rangée sous logiciel › catégorie › cas, et reliée au salarié qui l\'a faite.',
+    '<b>Tâches similaires regroupées</b> : une deuxième comptable fait presque la même chose (similaire à 91 %), d\'autres cliquent « moi aussi ». Un seul cas, plus de personnes et d\'heures : la recommandation est mieux notée.',
+    '<b>Seuil de la DSI</b> (≥ 10 personnes et ≥ 30 h/mois) : les factures et les rapports le franchissent, les relances restent en dessous.',
+    '<b>Solutions</b> : un conseil que la comptable applique elle-même, et des automatisations, avec n8n seul quand il y a une API, avec n8n + Holo (computer use) quand il n\'y en a pas.',
+  ];
+  const LAST = PHASES.length - 1;
+  let W = 0, H = 0, phase = LAST, phaseT = 0, building = false, paused = false, hover = null;
   const t0 = performance.now();
-  let W = 0, H = 0;
-  const vis = (n) => st.vis.has(n.id);
-  const live = (e) => vis(e.a) && vis(e.b);
-
-  document.getElementById('kglegend').innerHTML = Object.values(KINDS)
-    .filter((k) => k.label !== 'Solution').map((k) => `<span><i class="sw" style="background:var(${k.color})"></i>${k.label}</span>`).join('') +
-    '<span><i class="sw" style="background:var(--db)"></i>conseil</span><span><i class="sw" style="background:var(--b)"></i>automatisation n8n</span><span><i class="sw" style="background:var(--c)"></i>n8n + Holo</span>' +
-    '<span><i class="ring" style="border-color:var(--accent)"></i>au-dessus du seuil</span>' +
-    '<span><i class="ring" style="border-color:var(--ext)"></i>sous surveillance</span>';
+  document.getElementById('kglegend').innerHTML = Object.entries(KINDS).filter(([k]) => k !== 'sol')
+    .map(([, k]) => `<span><i class="sw" style="background:var(${k.color})"></i>${k.label}</span>`).join('') +
+    '<span><i class="sw" style="background:var(--db)"></i>Conseil</span><span><i class="sw" style="background:var(--b)"></i>n8n</span><span><i class="sw" style="background:var(--c)"></i>n8n + Holo</span>';
 
   function size() {
     const dpr = Math.min(window.devicePixelRatio || 1, 2);
     W = cv.clientWidth; H = cv.clientHeight;
     cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr); ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   }
-  // Disposition en arbre : chaque cas visible a sa ligne ; une catégorie se place au milieu de ses cas, un logiciel au
-  // milieu de ses catégories. Les salariés forment une grappe à droite de leur cas. Les nœuds glissent vers leur place.
-  const parentOf = {}; edges.forEach((e) => { if (e.rel === 'range' || e.rel === 'contient' || e.rel === 'utilise') parentOf[e.b.id] = e.a.id; });
-  function layout() {
-    const T = {}, top = 46, bottom = H - 34;
-    const cases = Object.keys(CASES).filter((id) => vis(byId['c-' + id]));
-    const n = Math.max(cases.length, 1), gap = (bottom - top) / n;
-    cases.forEach((id, i) => { T['c-' + id] = { x: COL.case * W, y: top + gap * (i + 0.5) }; });
-    const mean = (ids) => ids.reduce((s2, x) => s2 + T[x].y, 0) / ids.length;
-    nodes.filter((m) => m.k === 'cat' && vis(m)).forEach((c) => {
-      const kids = Object.keys(T).filter((x) => parentOf[x] === c.id);
-      T[c.id] = { x: COL.cat * W, y: kids.length ? mean(kids) : H / 2 }; });
-    nodes.filter((m) => m.k === 'sw' && vis(m)).forEach((sw, i) => {
-      const kids = Object.keys(T).filter((x) => parentOf[x] === sw.id);
-      T[sw.id] = { x: COL.sw * W, y: kids.length ? mean(kids) : top + (bottom - top) * (i + 0.5) / 3 }; });
-    T.acme = { x: COL.co * W, y: H / 2 };
-    const offs = { pA: -0.6, pB: 0.6, rB: 0 };
-    nodes.filter((m) => m.k === 'piste').forEach((p) => { const h = T[p.home] || { y: H / 2 };
-      T[p.id] = { x: COL.piste * W, y: h.y + offs[p.id] * Math.min(34, gap * 0.42) }; });
-    nodes.filter((m) => m.k === 'emp').forEach((e) => { const h = T[e.home]; if (!h) return;
-      const i = +e.id.split('-').pop(), cols = 7;
-      T[e.id] = { x: h.x + 34 + (i % cols) * 10, y: h.y - 5 + Math.floor(i / cols) * 10 }; });
-    return T;
+  function seed() {
+    nodes.forEach((n, i) => { const a = i * 2.399, r = 30 + 16 * Math.sqrt(i);
+      n.x = W / 2 + Math.cos(a) * r; n.y = H / 2 + Math.sin(a) * r * 0.7; n.vx = n.vy = 0; });
   }
-  let TARGET = {};
-  function seed() { TARGET = layout(); nodes.forEach((m) => { const t = TARGET[m.id]; if (t) { m.x = t.x; m.y = t.y; } }); }
+  const visible = (n) => n.ph <= phase;
+  const live = (e) => e.ph <= phase;
   function step() {
-    TARGET = layout();
-    for (const m of nodes) { const t = TARGET[m.id]; if (!t) continue;
-      if (!m.placed) { const p = TARGET[m.home] || TARGET[parentOf[m.id]] || t; m.x = p.x; m.y = p.y; m.placed = true; }
-      m.x += (t.x - m.x) * 0.09; m.y += (t.y - m.y) * 0.09; }
+    const vis = nodes.filter(visible), k = Math.min(1, W / 700);
+    for (const a of vis) {
+      for (const b of vis) { if (a === b) continue;
+        const dx = a.x - b.x, dy = a.y - b.y, d2 = dx * dx + dy * dy + 1, f = 60 * k / d2;
+        a.vx += dx * f; a.vy += dy * f; }
+      a.vx += (W / 2 - a.x) * 0.002; a.vy += (H / 2 - a.y) * 0.003;
+    }
+    for (const e of edges) { if (!live(e)) continue;
+      const L = (e.a.k === 'emp' ? 46 : e.rel === 'propose' ? 92 : 82) * (0.6 + 0.4 * k);
+      const dx = e.b.x - e.a.x, dy = e.b.y - e.a.y, d = Math.hypot(dx, dy) || 1, f = (d - L) * 0.015;
+      e.a.vx += dx / d * f; e.a.vy += dy / d * f; e.b.vx -= dx / d * f; e.b.vy -= dy / d * f; }
+    for (const n of vis) { n.vx *= 0.8; n.vy *= 0.8; n.x += n.vx; n.y += n.vy;
+      const r = KINDS[n.k].r + 8; n.x = Math.max(r + 50, Math.min(W - r - 50, n.x)); n.y = Math.max(r + 20, Math.min(H - r - 14, n.y)); }
   }
   function linked(n) { const s = new Set([n]); edges.forEach((e) => { if (!live(e)) return; if (e.a === n) s.add(e.b); if (e.b === n) s.add(e.a); }); return s; }
-  function caseHours(id) { const [, , N, Hh] = CASES[id]; return Math.round(st.n[id] * Hh / N); }
   function draw(now) {
     ctx.clearRect(0, 0, W, H);
     const ink = css('--ink'), dim = css('--dim'), line = css('--line'), panel = css('--panel'), acc = css('--accent');
     const hl = hover ? linked(hover) : null;
-    const fresh = Math.min(1, (now - changedAt) / 700);
     for (const e of edges) { if (!live(e)) continue;
-      const on = !hl || (hl.has(e.a) && hl.has(e.b));
-      const sim = e.rel === 'similaire à 91 %';
-      const dropped = st.drop.has(e.b.id) || st.drop.has(e.a.id);
-      const hot = st.lit.has(e.b.id) || st.lit.has(e.a.id) && e.rel !== 'contient';
-      ctx.strokeStyle = sim ? css('--srv') : e.rel === 'piste' ? css(e.b.tone) : hot && e.a.k !== 'emp' ? acc : on ? dim : line;
-      ctx.globalAlpha = (on ? (e.a.k === 'emp' ? 0.3 : 0.6) : 0.12) * (dropped ? 0.4 : 1);
-      ctx.lineWidth = sim ? 1.6 : e.rel === 'piste' ? 1.6 : 1;
-      ctx.setLineDash(sim ? [4, 3] : e.rel === 'piste' ? [6, 4] : []);
-      ctx.beginPath(); ctx.moveTo(e.a.x, e.a.y);
-      const mx = (e.a.x + e.b.x) / 2; ctx.bezierCurveTo(mx, e.a.y, mx, e.b.y, e.b.x, e.b.y); ctx.stroke(); ctx.setLineDash([]);
-      if (!reduce && on && !dropped && (e.rel === 'enregistre' || e.rel === 'range' || e.rel === 'piste' || sim)) { // ce qui circule : la tâche qui remonte, la piste qui part
-        const p = ((now - t0) * 0.00045 + (e.a.x * 0.013) % 1) % 1, q = p * p * (3 - 2 * p);
-        const fx = e.a.x, fy = e.a.y, tx = e.b.x, ty = e.b.y, mx2 = (fx + tx) / 2;
-        const x = (1 - q) ** 3 * fx + 3 * (1 - q) ** 2 * q * mx2 + 3 * (1 - q) * q * q * mx2 + q ** 3 * tx;
-        const y = (1 - q) ** 3 * fy + 3 * (1 - q) ** 2 * q * fy + 3 * (1 - q) * q * q * ty + q ** 3 * ty;
-        ctx.globalAlpha = 0.9; ctx.fillStyle = e.rel === 'piste' ? css(e.b.tone) : sim ? css('--srv') : acc;
-        ctx.beginPath(); ctx.arc(x, y, 2.3, 0, Math.PI * 2); ctx.fill(); }
+      const on = !hl || (hl.has(e.a) && hl.has(e.b)), sim = e.rel === 'similaire à 91 %';
+      const dropped = phase >= 4 && (DROP.has(e.a.name) || DROP.has(e.b.name));
+      ctx.strokeStyle = sim ? css('--srv') : e.rel === 'propose' ? css(tone(e.b)) : on ? dim : line;
+      ctx.globalAlpha = (on ? 0.55 : 0.12) * (dropped ? 0.4 : 1);
+      ctx.lineWidth = sim || e.rel === 'propose' ? 1.6 : 1;
+      ctx.setLineDash(sim ? [5, 4] : e.rel === 'propose' ? [6, 4] : []);
+      ctx.beginPath(); ctx.moveTo(e.a.x, e.a.y); ctx.lineTo(e.b.x, e.b.y); ctx.stroke(); ctx.setLineDash([]);
+      if (!reduce && on && !dropped && e.rel !== 'utilise') { // ce qui circule : les tâches remontent vers leur cas, les solutions repartent
+        const speed = e.a.k === 'emp' ? 0.0007 : 0.00042, p = ((now - t0) * speed + e.a.id * 0.137) % 1;
+        const from = e.rel === 'contient' ? e.b : e.a, to = from === e.a ? e.b : e.a;
+        ctx.globalAlpha = 0.95; ctx.fillStyle = e.rel === 'propose' ? css(tone(e.b)) : css(KINDS[from.k].color);
+        ctx.beginPath(); ctx.arc(from.x + (to.x - from.x) * p, from.y + (to.y - from.y) * p, 2.4, 0, Math.PI * 2); ctx.fill(); }
     }
-    for (const n of nodes) { if (!vis(n)) continue;
+    for (const n of nodes) { if (!visible(n)) continue;
       const K = KINDS[n.k], on = !hl || hl.has(n);
-      const dropped = st.drop.has(n.id) || (n.k === 'emp' && st.drop.has(n.home));
-      const pulse = st.pulse === n.id && !reduce ? 1 + 0.25 * Math.max(0, Math.sin((now - changedAt) / 160)) * (1 - fresh) : 1;
-      let r = K.r * pulse;
-      if (n.k === 'case') r = K.r + Math.min(10, st.n[n.id[0] === 'c' ? n.id.slice(2) : ''] * 0.7);
-      ctx.globalAlpha = (on ? 1 : 0.22) * (dropped ? 0.35 : 1);
-      const lit = st.lit.has(n.id), watch = st.watch.has(n.id);
-      if (lit || watch) { ctx.fillStyle = lit ? acc : css('--ext'); ctx.globalAlpha *= 0.18 + (reduce ? 0 : 0.08 * Math.sin(now / 350));
-        ctx.beginPath(); ctx.arc(n.x, n.y, r + 9, 0, Math.PI * 2); ctx.fill(); ctx.globalAlpha = (on ? 1 : 0.22) * (dropped ? 0.35 : 1); }
-      ctx.fillStyle = n.k === 'piste' ? css(n.tone) : css(K.color);
-      ctx.strokeStyle = lit ? acc : watch ? css('--ext') : panel; ctx.lineWidth = lit || watch ? 2.5 : 1.5;
+      const dropped = phase >= 4 && DROP.has(n.name), lit = phase >= 4 && LIT.has(n.name);
+      const born = building && n.ph === phase ? Math.min(1, (now - phaseT) / 500) : 1;
+      const grow = n.name === 'Traiter une facture fournisseur' && phase >= 3 ? 5 : 0;
+      const r = Math.max(0.1, (K.r + grow) * born * (n.k === 'sol' && !reduce ? 1 + 0.07 * Math.sin(now / 380) : 1));
+      ctx.globalAlpha = (on ? 1 : 0.25) * (dropped ? 0.4 : 1);
+      if (lit || n.k === 'co' || n.k === 'sol') { ctx.fillStyle = lit ? acc : css(tone(n)); ctx.globalAlpha *= lit ? 0.22 : 0.16;
+        ctx.beginPath(); ctx.arc(n.x, n.y, r + (lit ? 10 : 7), 0, Math.PI * 2); ctx.fill(); ctx.globalAlpha = (on ? 1 : 0.25) * (dropped ? 0.4 : 1); }
+      ctx.fillStyle = css(tone(n)); ctx.strokeStyle = lit ? acc : panel; ctx.lineWidth = lit ? 2.5 : 2;
       ctx.beginPath(); ctx.arc(n.x, n.y, r, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
-      if (n.k !== 'emp') {
-        ctx.textAlign = n.k === 'co' ? 'left' : n.k === 'piste' ? 'left' : 'center';
-        const lx = n.k === 'co' ? n.x - 14 : n.k === 'piste' ? n.x + r + 8 : n.x;
-        ctx.font = (n.k === 'co' || n.k === 'sw' ? '600 13px ' : '500 12px ') + '"IBM Plex Sans", "Segoe UI", sans-serif';
-        ctx.fillStyle = on ? ink : dim;
-        ctx.fillText(n.name, lx, n.k === 'piste' ? n.y + 4 : n.y - r - 7);
+      if (n.k !== 'emp' || hover === n) {
+        ctx.font = (n.k === 'co' ? '600 13px ' : '500 12px ') + '"IBM Plex Sans", "Segoe UI", sans-serif';
+        ctx.fillStyle = on ? ink : dim; ctx.textAlign = 'center';
+        const half = ctx.measureText(n.name).width / 2 + 4, lx = Math.max(half, Math.min(W - half, n.x));
+        ctx.fillText(n.name, lx, n.y - r - 7);
         if (n.k === 'co') { ctx.font = '500 11px "IBM Plex Mono", Consolas, monospace'; ctx.fillStyle = dim; ctx.fillText('DSI', lx, n.y + r + 15); }
-        if (n.k === 'case' && st.n[n.id.slice(2)]) {
-          const id = n.id.slice(2);
-          ctx.font = '500 11px "IBM Plex Mono", Consolas, monospace';
-          ctx.fillStyle = lit ? acc : watch ? css('--ext') : dim;
-          ctx.fillText(`${st.n[id]} pers · ${caseHours(id)} h/mois`, n.x, n.y + r + 14);
-        }
-        if (n.id === 'k-rap' && st.lit.has('k-rap')) {
+        if (n.name === 'Traiter une facture fournisseur' && phase >= 3) {
+          ctx.font = '500 11px "IBM Plex Mono", Consolas, monospace'; ctx.fillStyle = lit ? acc : dim;
+          ctx.fillText('14 pers · 497 h/mois', lx, n.y + r + 15); }
+        if (n.name === 'Rapports' && phase >= 4) {
           ctx.font = '500 11px "IBM Plex Mono", Consolas, monospace'; ctx.fillStyle = acc;
-          ctx.fillText('groupe : 11 pers · 32 h/mois', n.x, n.y + r + 14);
-        }
+          ctx.fillText('11 pers · 32 h/mois', lx, n.y + r + 15); }
       }
     }
     ctx.globalAlpha = 1;
   }
-  const prog = document.getElementById('kgprog');
-  STEPS.forEach((_, k) => { const b = document.createElement('button'); b.type = 'button'; b.title = `Étape ${k + 1}`;
-    b.setAttribute('aria-label', `Aller à l'étape ${k + 1}`); b.onclick = () => { pause(); go(k); }; prog.appendChild(b); });
-  function go(i) {
-    cur = i; st = state(i); changedAt = performance.now();
-    document.getElementById('kgcap').textContent = STEPS[i].cap;
-    document.getElementById('kgno').textContent = `Étape ${i + 1}/${STEPS.length}`;
-    [...prog.children].forEach((b, k) => { b.classList.toggle('done', k < i); b.classList.toggle('cur', k === i); });
-    // un nouveau salarié part de son cas
-    nodes.forEach((n) => { if (!vis(n)) n.placed = false; });
-    if (reduce) { settle(); draw(performance.now()); }
+  function loop(now) {
+    if (!paused) {
+      if (building && now - phaseT > 3200) {
+        if (phase < LAST) { phase++; phaseT = now; cap.innerHTML = PHASES[phase]; } else building = false;
+      }
+      step(); draw(now);
+    }
+    requestAnimationFrame(loop);
   }
-  const bPlay = document.getElementById('kgplay');
-  function upd() { bPlay.textContent = playing ? 'Pause' : cur >= STEPS.length - 1 ? 'Revoir' : 'Lecture'; }
-  function tick() { if (cur >= STEPS.length - 1) { playing = false; upd(); return; } go(cur + 1); timer = setTimeout(tick, 3600); }
-  function pause() { playing = false; clearTimeout(timer); upd(); }
-  function replay() { clearTimeout(timer); go(0); playing = true; upd(); timer = setTimeout(tick, 3600); }
-  bPlay.onclick = () => { if (playing) return pause(); if (cur >= STEPS.length - 1) return replay(); playing = true; upd(); tick(); };
-  document.getElementById('kgreplay').onclick = replay;
-  function settle() { for (let i = 0; i < 120; i++) step(); }
-  function loop(now) { step(); draw(now); requestAnimationFrame(loop); }
-  size(); go(cur); seed(); nodes.forEach((n) => { n.placed = vis(n); }); draw(performance.now());
-  window.addEventListener('resize', () => { size(); seed(); draw(performance.now()); });
+  function settle() { for (let i = 0; i < 500; i++) step(); }
+  size(); seed(); settle(); draw(performance.now());
+  window.addEventListener('resize', () => { size(); settle(); draw(performance.now()); });
   if (!reduce) requestAnimationFrame(loop);
 
-  const hov = document.getElementById('kghover');
+  const pb = document.getElementById('kgpause');
+  document.getElementById('kgplay').onclick = () => {
+    paused = false; pb.textContent = 'Pause'; pb.setAttribute('aria-pressed', 'false');
+    if (reduce) { cap.innerHTML = PHASES.join(' '); return; }
+    phase = 0; phaseT = performance.now(); building = true; seed(); cap.innerHTML = PHASES[0];
+  };
+  pb.onclick = () => { paused = !paused; pb.textContent = paused ? 'Reprendre' : 'Pause'; pb.setAttribute('aria-pressed', String(paused)); };
   cv.addEventListener('pointermove', (ev) => {
     const r = cv.getBoundingClientRect(), x = ev.clientX - r.left, y = ev.clientY - r.top;
-    let best = null, bd = 18;
-    for (const n of nodes) { if (!vis(n)) continue; const d = Math.hypot(n.x - x, n.y - y); if (d < bd) { bd = d; best = n; } }
+    let best = null, bd = 22;
+    for (const n of nodes) { if (!visible(n)) continue; const d = Math.hypot(n.x - x, n.y - y); if (d < bd) { bd = d; best = n; } }
     hover = best;
-    if (!best) { hov.textContent = 'Survolez un point pour voir ses liens.'; }
-    else if (best.k === 'emp') { const e = edges.find((x2) => x2.a === best); hov.textContent = `${best.name} : ${e.rel} « ${e.b.name} »`; }
-    else if (best.k === 'case') { const id = best.id.slice(2); hov.textContent = `${best.name} : ${st.n[id]} personnes, ${caseHours(id)} h/mois`; }
-    else { hov.textContent = `${KINDS[best.k].label} · ${best.name}`; }
-    if (reduce) draw(performance.now());
+    if (hover && !building) {
+      const rels = edges.filter((e) => live(e) && (e.a === hover || e.b === hover)).map((e) => `${e.rel} ${(e.a === hover ? e.b : e.a).name}`);
+      cap.innerHTML = `<b>${KINDS[hover.k].label} · ${hover.name}</b> : ${[...new Set(rels)].slice(0, 6).join(' · ')}`;
+    }
+    if (reduce || paused) draw(performance.now());
   });
-  cv.addEventListener('pointerleave', () => { hover = null; hov.textContent = 'Survolez un point pour voir ses liens.'; if (reduce) draw(performance.now()); });
-  // État de repos : le graphe complet ; la lecture rejoue sa construction
-  upd();
+  cv.addEventListener('pointerleave', () => { hover = null; if (reduce || paused) draw(performance.now()); });
 })();
 </script>
+
 
     <div class="frame tbl"><table>
       <tr><th>Dans le graphe</th><th>Dans Supabase</th><th>Aujourd'hui</th></tr>
