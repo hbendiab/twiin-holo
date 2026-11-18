@@ -44,6 +44,11 @@ try:  # sinon, l'environnement LOCAL de n8ncli (n8ncli envs edit LOCAL …) : m�
         ENV["N8N_LOCAL_MCP_TOKEN"] = _l.get("accessToken")
 except (OSError, KeyError, ValueError):
     pass
+if not ENV.get("TWIIN_LOCAL_TOKEN"):  # même jeton que le serveur Twiin (créé par lui, gardé sur le poste)
+    try:
+        ENV["TWIIN_LOCAL_TOKEN"] = (ROOT / "workflows" / "runs" / ".twiin_local_token").read_text(encoding="utf-8").strip()
+    except OSError:
+        pass
 N8N_DB = Path.home() / ".n8n" / "database.sqlite"
 TWIIN_URL = "http://127.0.0.1:3000/api/holo/run"
 SHEETS = {"veille": ENV.get("N8N_SHEET_VEILLE_ID"), "factures": ENV.get("N8N_SHEET_FACTURES_ID")}

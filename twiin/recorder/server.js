@@ -1,4 +1,5 @@
 import dotenv from 'dotenv';
+import os from 'node:os';
 import express from 'express';
 import OpenAI from 'openai';
 import { jsonrepair } from 'jsonrepair';                // réparation locale des JSON mal formés               // <-- remplace @anthropic-ai/sdk (Hugging Face est compatible OpenAI)
@@ -18,6 +19,23 @@ const CANDIDATES_PATH = path.join(REPO_ROOT, 'workflows', 'candidates.json');
 
 // project-wide .env lives at the repo root, same file Holo's pieces read
 dotenv.config({ path: path.join(REPO_ROOT, '.env') });
+// n8n local : sans clé dans le .env, on reprend celles de n8ncli (n8ncli envs edit LOCAL …), comme les scripts Python.
+try {
+  const l = JSON.parse(fs.readFileSync(path.join(os.homedir(), '.n8ncli-global.json'), 'utf8')).environments?.LOCAL || {};
+  process.env.N8N_LOCAL_URL ||= l.instanceUrl || '';
+  process.env.N8N_LOCAL_API_KEY ||= l.apiKey || '';
+  process.env.N8N_LOCAL_MCP_TOKEN ||= l.accessToken || '';
+} catch { /* pas de n8ncli : clés du .env seulement */ }
+if (!process.env.N8N_LOCAL_URL) delete process.env.N8N_LOCAL_URL;
+// Jeton du pont n8n → Holo : généré une fois et gardé sur le poste (dossier ignoré par git) s'il n'est pas dans le .env
+if (!process.env.TWIIN_LOCAL_TOKEN) {
+  const f = path.join(REPO_ROOT, 'workflows', 'runs', '.twiin_local_token');
+  try { process.env.TWIIN_LOCAL_TOKEN = fs.readFileSync(f, 'utf8').trim(); } catch {
+    fs.mkdirSync(path.dirname(f), { recursive: true });
+    process.env.TWIIN_LOCAL_TOKEN = crypto.randomBytes(24).toString('base64url');
+    fs.writeFileSync(f, process.env.TWIIN_LOCAL_TOKEN);
+  }
+}
 
 const app = express();
 app.use(express.json({ limit: '200mb' }));
