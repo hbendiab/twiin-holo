@@ -12,7 +12,6 @@ de n8n (même méthode que automation/n8n_twiin.py), puis supprimé.
 Connexion n8n : environnement LOCAL de n8ncli (~/.n8ncli-global.json), ou N8N_LOCAL_URL / N8N_LOCAL_API_KEY /
 N8N_LOCAL_MCP_TOKEN dans l'environnement. Aucune clé n'est écrite dans le dépôt.
 """
-import functools
 import http.server
 import json
 import os
@@ -118,7 +117,10 @@ class TwinServer:
         self.spec, self.model, self.runs_dir = spec, model, runs_dir
 
     def holo_read(self, body: dict) -> dict:
-        """Bloc Holo du workflow : lire (sans rien saisir) les colonnes demandées pour l'élément n° item."""
+        """Bloc Holo du workflow : lire (sans rien saisir) les colonnes demandées pour l'élément n° item,
+        ou pour TOUS les éléments d'un coup si body["all"]."""
+        if body.get("all"):
+            return self.holo_read_all(body)
         item, cols = int(body.get("item", 1)), list(body.get("columns") or [])
         label = body.get("label") or f"item number {item} of the task (in the order of the task)"
         mission = (self.spec["mission"] + "\n\n## YOUR JOB IN THIS AUTOMATION STEP\nDo NOT fill any table. Only READ, on screen, "
@@ -137,53 +139,130 @@ class TwinServer:
             data = {}
         return {"ok": bool(data), "data": {c: str(data.get(c, "")) for c in cols}, "seconds": res["stats"]["seconds"]}
 
+    def holo_read_all(self, body: dict) -> dict:
+        cols, items = list(body.get("columns") or []), list(body.get("items") or [])
+        mission = (self.spec["mission"] + "\n\n## YOUR JOB IN THIS AUTOMATION STEP\nDo NOT fill any table. Only READ, on screen, "
+                   f"for each of these items: {', '.join(items)}, the values: {', '.join(cols)}. Open each item's page, use note "
+                   "to write the values down, then call done with summary = ONLY a JSON object "
+                   '{"rows": [ {one object per item, keys exactly: ' + json.dumps(cols, ensure_ascii=False) + "} ]}.")
+        res = run_agent(f"{self.base}/index.html", mission, self.runs_dir / "holo-all", self.model, max_steps=40)
+        self.holo_stats["calls"] += res["stats"]["calls"]
+        self.holo_stats["seconds"] += res["stats"]["seconds"]
+        self.holo_stats["blocks"] += 1
+        m = re.search(r"\{.*\}", res.get("summary") or "", re.S)
+        try:
+            rows = json.loads(m.group(0)).get("rows", []) if m else []
+        except ValueError:
+            rows = []
+        return {"ok": bool(rows), "rows": [{c: str(r.get(c, "")) for c in cols} for r in rows if isinstance(r, dict)]}
+
     def close(self):
         self.srv.shutdown()
 
 
 # ---------------------------------------------------------------- workflow n8n
 
-def build_workflow(name: str, hook: str, base: str, n: int, cols: list[str], items: list[str] | None = None) -> dict:
+def _chain(nodes_spec):
     nodes, conns = [], {}
-    def add(node):
+    for i, node in enumerate(nodes_spec):
+        node.setdefault("position", [220 * i, 0])
         nodes.append(node)
-        if len(nodes) > 1:
-            conns[nodes[-2]["name"]] = {"main": [[{"node": node["name"], "type": "main", "index": 0}]]}
-    add({"name": f"POST /{hook}", "type": "n8n-nodes-base.webhook", "typeVersion": 2, "position": [0, 0],
-         "webhookId": hook, "parameters": {"httpMethod": "POST", "path": hook, "responseMode": "onReceived"}})
-    for i in range(1, n + 1):
-        add({"name": f"Holo — lire l'élément {i}", "type": "n8n-nodes-base.httpRequest", "typeVersion": 4.2,
-             "position": [220 * i, 0],
-             "parameters": {"method": "POST", "url": f"{base}/holo", "sendBody": True, "specifyBody": "json",
-                            "jsonBody": json.dumps({"item": i, "columns": cols,
-                                                    "label": f"the item « {items[i - 1]} »" if items and i <= len(items) else None},
-                                                   ensure_ascii=False),
-                            "options": {"timeout": 600000}}})
-    code = ("const rows = [];\n" + "\n".join(
-        f"rows.push($('Holo — lire l\\'élément {i}').first().json.data || {{}});" for i in range(1, n + 1))
-            + "\nreturn [{ json: { rows } }];")
-    add({"name": "Préparer les lignes", "type": "n8n-nodes-base.code", "typeVersion": 2, "position": [220 * (n + 1), 0],
-         "parameters": {"jsCode": code}})
-    add({"name": "Écrire par l'API du tableur", "type": "n8n-nodes-base.httpRequest", "typeVersion": 4.2,
-         "position": [220 * (n + 2), 0],
-         "parameters": {"method": "POST", "url": f"{base}/api/rows", "sendBody": True, "specifyBody": "json",
-                        "jsonBody": "={{ JSON.stringify({ rows: $json.rows }) }}"}})
+        if i:
+            conns[nodes[i - 1]["name"]] = {"main": [[{"node": node["name"], "type": "main", "index": 0}]]}
+    return nodes, conns
+
+
+def _hook(hook):
+    return {"name": f"POST /{hook}", "type": "n8n-nodes-base.webhook", "typeVersion": 2, "webhookId": hook,
+            "parameters": {"httpMethod": "POST", "path": hook, "responseMode": "onReceived"}}
+
+
+def _post(name, url, body_expr):
+    return {"name": name, "type": "n8n-nodes-base.httpRequest", "typeVersion": 4.2,
+            "parameters": {"method": "POST", "url": url, "sendBody": True, "specifyBody": "json", "jsonBody": body_expr,
+                           "options": {"timeout": 600000}}}
+
+
+def _write(base):
+    return _post("Écrire par l'API du tableur", f"{base}/api/rows", "={{ JSON.stringify({ rows: $json.rows }) }}")
+
+
+def build_workflow(variant: str, name: str, hook: str, base: str, cols: list[str], items: list[str], native: dict | None) -> dict:
+    """Quatre constructions possibles, deux par mode :
+      n8n natif   : natif_html (HTTP + nœud HTML à sélecteurs CSS) / natif_code (HTTP + bloc Code qui analyse la page)
+      n8n + Holo  : holo_par_element (un bloc Holo par élément) / holo_un_bloc (un seul bloc Holo pour tout)"""
+    n = len(items)
+    chain = [_hook(hook)]
+    if variant == "holo_par_element":
+        for i, it in enumerate(items, 1):
+            chain.append(_post(f"Holo — lire « {it[:30]} »", f"{base}/holo",
+                               json.dumps({"item": i, "columns": cols, "label": f"the item « {it} »"}, ensure_ascii=False)))
+        code = "const rows = [];\n" + "\n".join(
+            f"rows.push($({json.dumps(c['name'], ensure_ascii=False)}).first().json.data || {{}});" for c in chain[1:]) \
+            + "\nreturn [{ json: { rows } }];"
+        chain.append({"name": "Préparer les lignes", "type": "n8n-nodes-base.code", "typeVersion": 2, "parameters": {"jsCode": code}})
+    elif variant == "holo_un_bloc":
+        chain.append(_post("Holo — lire tous les éléments", f"{base}/holo",
+                           json.dumps({"all": True, "columns": cols, "items": items}, ensure_ascii=False)))
+    else:
+        chain.append({"name": "Lire la page (HTTP)", "type": "n8n-nodes-base.httpRequest", "typeVersion": 4.2,
+                      "parameters": {"method": "GET", "url": f"{base}/index.html",
+                                     "options": {"response": {"response": {"responseFormat": "text", "outputPropertyName": "data"}}}}})
+        if variant == "natif_html":
+            sel = (native or {}).get("selectors") or {}
+            chain.append({"name": "Extraire (sélecteurs CSS)", "type": "n8n-nodes-base.html", "typeVersion": 1.2,
+                          "parameters": {"operation": "extractHtmlContent", "sourceData": "json", "dataPropertyName": "data",
+                                         "extractionValues": {"values": [{"key": k, "cssSelector": v, "returnValue": "text"}
+                                                                         for k, v in sel.items()]},
+                                         "options": {"trimValues": True}}})
+            code = ("const j = $json; const rows = [];\n"
+                    f"for (let i = 1; i <= {n}; i++) {{ const r = {{}}; for (const c of {json.dumps(cols, ensure_ascii=False)}) "
+                    "r[c] = j[`r${i}_${c}`] ?? ''; rows.push(r); }\nreturn [{ json: { rows } }];")
+            chain.append({"name": "Préparer les lignes", "type": "n8n-nodes-base.code", "typeVersion": 2, "parameters": {"jsCode": code}})
+        else:  # natif_code
+            js = (native or {}).get("js") or "return [];"
+            code = ("const html = $json.data || '';\nconst extract = (html) => {\n" + js + "\n};\n"
+                    "return [{ json: { rows: extract(html) } }];")
+            chain.append({"name": "Analyser la page (Code)", "type": "n8n-nodes-base.code", "typeVersion": 2, "parameters": {"jsCode": code}})
+    chain.append(_write(base))
+    nodes, conns = _chain(chain)
     return {"name": name, "nodes": nodes, "connections": conns, "settings": {"executionOrder": "v1", "availableInMCP": True}}
 
 
-def run_automation(spec: dict, twin_dir: Path, runs_dir: Path, model: str, columns: list[str], n: int) -> dict:
-    # éléments à traiter, tels que la tâche les nomme (ex. les 3 sites) : liste du jumeau, sinon 1re colonne attendue
-    rows = (spec.get("expected") or {}).get("rows") or []
-    items = spec.get("items") or ([str(r.get(columns[0], "")) for r in rows] if columns else None)
+NATIVE_PROMPT = """You prepare an n8n automation that reads a web page WITHOUT any computer-use agent: n8n downloads the raw
+HTML (as served, before any JavaScript runs) and extracts values. Items to process (in order): ITEMS. Columns: COLS.
+Return ONLY JSON:
+{"selectors": {"r1_<column>": "CSS selector of the element whose text is that value", ...one key per item i and column},
+ "js": "body of a JavaScript function (html) { ... } that returns an array of row objects keyed by the columns, using only
+        string / regex operations (no DOM available)",
+ "lisible": true if the values are present in the raw HTML, false if they only appear after JavaScript runs}"""
+
+
+def native_plan(spec: dict, html: str, cols: list[str], items: list[str]) -> dict:
+    from discovery.discovery import HF_MODEL, fenced, hf_client
+    prompt = NATIVE_PROMPT.replace("ITEMS", ", ".join(items)).replace("COLS", ", ".join(cols))
+    r = hf_client().chat.completions.create(
+        model=HF_MODEL, max_tokens=6000, temperature=0.1,
+        messages=[{"role": "system", "content": prompt}, {"role": "user", "content": html[:60000]}],
+        extra_body={"reasoning_effort": "low"})
+    raw = (r.choices[0].message.content or "").strip()
+    raw = fenced(raw, "json") or raw[raw.find("{"): raw.rfind("}") + 1]
+    return json.loads(raw)
+
+
+def run_automation(spec: dict, twin_dir: Path, runs_dir: Path, model: str, columns: list[str], n: int,
+                   variant: str = "holo_par_element", native: dict | None = None) -> dict:
     """Crée le workflow dans le n8n local, l'exécute une fois contre le jumeau, puis le supprime. Rend l'état final."""
+    rows = (spec.get("expected") or {}).get("rows") or []
+    items = spec.get("items") or ([str(r.get(columns[0], "")) for r in rows] if columns else [])
+    items = items[:n] if n else items
     conf = n8n_conf()
-    twin = TwinServer(twin_dir, spec, model, runs_dir)
+    twin = TwinServer(twin_dir, spec, model, runs_dir / variant)
     t0 = time.time()
     wid = None
     try:
-        hook = f"twiin-test-{int(t0)}"
-        wf = build_workflow(f"Twiin test — {spec.get('cadrage', {}).get('objectif', 'tâche')[:40]}", hook, twin.base, n,
-                            columns, items)
+        hook = f"twiin-test-{variant}-{int(t0)}"
+        wf = build_workflow(variant, f"Twiin test — {variant}", hook, twin.base, columns, items, native)
         try:
             created = rest(conf, "POST", "/workflows", wf)
         except urllib.error.HTTPError:  # réglage inconnu de cette version : on le retire
@@ -202,9 +281,9 @@ def run_automation(spec: dict, twin_dir: Path, runs_dir: Path, model: str, colum
             status = (det.get("status") or (det.get("execution") or {}).get("status")) if isinstance(det, dict) else None
             if status and status not in ("running", "new", "waiting"):
                 break
-            time.sleep(3)
-        return {"state": {"rows": twin.rows}, "status": status, "workflow_id": wid,
-                "seconds": round(time.time() - t0, 1), "holo": twin.holo_stats}
+            time.sleep(2)
+        return {"state": {"rows": twin.rows}, "status": status, "workflow_id": wid, "variant": variant,
+                "seconds": round(time.time() - t0, 1), "holo": twin.holo_stats, "nodes": [x["name"] for x in wf["nodes"]]}
     finally:
         twin.close()
         if wid:

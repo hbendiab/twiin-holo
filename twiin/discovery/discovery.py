@@ -326,8 +326,8 @@ def discover(session_dir: Path) -> None:
         with ThreadPoolExecutor(max_workers=2) as pool:  # Holo à l'écran ET automatisation n8n, en même temps
             f_wave = pool.submit(parallel_wave, spec, url, session_dir, DEV_MODEL, 1, bricks, [], r0, sb, tid,
                                  int(os.environ.get("DISCOVERY_AGENTS", "3")))
-            f_auto = pool.submit(automation_iteration, spec, twin_dir, session_dir, sb, tid, 100)
-            wave1 = f_wave.result() + [r for r in [f_auto.result()] if r]
+            f_auto = pool.submit(automation_iterations, spec, twin_dir, session_dir, sb, tid, 100, used)
+            wave1 = f_wave.result() + f_auto.result()
     finally:
         srv.shutdown()
     best = max(wave1, key=lambda r: (r["success_rate"], -r["seconds"]))
@@ -500,31 +500,86 @@ def run_iteration(spec, url, out, model, variant, hints="", route: dict | None =
     return res, sc, errs
 
 
-def automation_iteration(spec, twin_dir: Path, session_dir: Path, sb, tid, it: int) -> dict | None:
-    """Solution d'une autre nature : un workflow n8n (blocs Holo pour LIRE les logiciels sans API, API pour ÉCRIRE),
-    exécuté dans le n8n local contre le jumeau. None si n8n n'est pas configuré."""
+CLASSIFY_PROMPT = """For each tool or website used in this task, say how an automation tool (n8n) can access it:
+- "api": an official API or connector exists (spreadsheets, mail, CRM, cloud apps...);
+- "page": no API needed, it is a public web page n8n can download and read (HTTP + HTML);
+- "ecran": neither: desktop software, internal app behind a login, content drawn on screen, anti-bot pages...
+  -> a computer-use agent (Holo) is required.
+Use the dictionary information when given (it is authoritative). Return ONLY JSON:
+{"outils": [{"nom": "...", "acces": "api|page|ecran", "raison": "a few words, in French"}]}"""
+
+
+def classify_tools(spec: dict, used: list[dict]) -> dict:
+    """Avant les itérations : chaque outil est-il accessible par API, par lecture de page, ou seulement à l'écran ?
+    Le mode d'automatisation en découle : « n8n natif » ou « n8n + Holo »."""
+    outils = (spec.get("cadrage") or {}).get("outils") or []
+    dico = "\n".join(f"- {d['name']}: {'API (' + (d.get('connector') or '') + ')' if d.get('has_api') else 'no API'}" for d in used)
+    r = hf_client().chat.completions.create(
+        model=HF_MODEL, max_tokens=1200, temperature=0,
+        messages=[{"role": "system", "content": CLASSIFY_PROMPT},
+                  {"role": "user", "content": f"TOOLS: {', '.join(outils)}\nDICTIONARY:\n{dico or '(none)'}\nTASK: {spec['mission'][:1500]}"}],
+        extra_body={"reasoning_effort": "low"})
+    raw = (r.choices[0].message.content or "").strip()
+    raw = fenced(raw, "json") or raw[raw.find("{"): raw.rfind("}") + 1]
+    res = json.loads(raw)
+    res["mode"] = "n8n + Holo" if any(o.get("acces") == "ecran" for o in res.get("outils", [])) else "n8n natif"
+    return res
+
+
+def automation_iterations(spec, twin_dir: Path, session_dir: Path, sb, tid, first_it: int, used: list[dict]) -> list[dict]:
+    """Les 2 itérations « automatisation » de bout en bout, choisies selon la présence d'API :
+    n8n natif -> natif_html + natif_code ; n8n + Holo -> holo_par_element + holo_un_bloc. En parallèle, dans le n8n local."""
     if os.environ.get("DISCOVERY_N8N", "on") == "off":
-        return None
-    from discovery.automation import run_automation
+        return []
+    from concurrent.futures import ThreadPoolExecutor
+    from discovery.automation import native_plan, run_automation
     n, cols = _columns(spec.get("expected"))
+    rows = (spec.get("expected") or {}).get("rows") or []
+    items = spec.get("items") or [str(r.get(cols[0], "")) for r in rows]
     try:
-        r = run_automation(spec, twin_dir, session_dir / "runs" / "n8n", CASSE_MODEL, cols, n)
+        cls = classify_tools(spec, used)
     except Exception as e:  # noqa: BLE001
-        print("itération n8n impossible :", e, flush=True)
-        return None
-    sc, errs = score(spec.get("expected"), r["state"])
-    out = {"iteration": it, "model": CASSE_MODEL, "variant": "base", "success_rate": round(sc, 3), "false_success": False,
-           "seconds": r["seconds"], "calls": r["holo"]["calls"], "errors": errs[:3], "start": None, "kind": "n8n",
-           "label": "automatisation n8n + Holo", "path": ["n8n", f"Holo lit × {n}", "API écrit"],
-           "route": f"n8n : {n} blocs Holo (lecture) → API du tableur (écriture)", "n8n_status": r["status"]}
-    try:
-        record_test(sb, tid, "automatisation n8n + Holo",
-                    {"stats": {"model": CASSE_MODEL, "calls": out["calls"], "seconds": out["seconds"], "blocked": 0},
-                     "history": [out["route"]], "summary": f"n8n {r['status']}", "claimed_success": r["status"] == "success"},
-                    sc, errs, "automatisation")
-    except Exception as e:  # noqa: BLE001
-        print("essai n8n non enregistré :", e, flush=True)
-    return out
+        cls = {"outils": [], "mode": "n8n + Holo", "erreur": str(e)[:200]}
+    native = None
+    if cls["mode"] == "n8n natif":
+        try:
+            native = native_plan(spec, (twin_dir / "index.html").read_text(encoding="utf-8"), cols, items)
+        except Exception as e:  # noqa: BLE001
+            native = {"lisible": False, "erreur": str(e)[:200]}
+        if native.get("lisible") is False:  # les valeurs n'existent qu'après JavaScript : la lecture de page ne suffit pas
+            cls["mode"] = "n8n + Holo"
+            cls["note"] = "pages non lisibles sans navigateur : Holo nécessaire"
+    variants = ["natif_html", "natif_code"] if cls["mode"] == "n8n natif" else ["holo_par_element", "holo_un_bloc"]
+    labels = {"natif_html": "n8n natif : lecture HTML par sélecteurs", "natif_code": "n8n natif : bloc Code qui analyse la page",
+              "holo_par_element": "n8n + Holo : un bloc Holo par élément", "holo_un_bloc": "n8n + Holo : un seul bloc Holo"}
+
+    def one(i, v):
+        try:
+            r = run_automation(spec, twin_dir, session_dir / "runs" / "n8n", CASSE_MODEL, cols, n, variant=v, native=native)
+        except Exception as e:  # noqa: BLE001
+            return {"iteration": first_it + i, "model": CASSE_MODEL, "variant": "base", "success_rate": 0.0,
+                    "false_success": False, "seconds": 0, "calls": 0, "errors": [str(e)[:200]], "kind": "n8n",
+                    "label": labels[v], "path": [v], "route": labels[v], "start": None}
+        sc, errs = score(spec.get("expected"), r["state"])
+        out = {"iteration": first_it + i, "model": CASSE_MODEL if v.startswith("holo") else "aucun (n8n natif)",
+               "variant": "base", "success_rate": round(sc, 3), "false_success": r["status"] == "success" and sc < 1,
+               "seconds": r["seconds"], "calls": r["holo"]["calls"], "errors": errs[:3], "start": None, "kind": "n8n",
+               "label": labels[v], "path": r["nodes"], "route": " → ".join(r["nodes"][1:]), "n8n_status": r["status"],
+               "mode": cls["mode"]}
+        try:
+            record_test(sb, tid, labels[v], {"stats": {"model": out["model"], "calls": out["calls"], "seconds": out["seconds"],
+                                                       "blocked": 0},
+                                             "history": [out["route"]], "summary": f"n8n {r['status']}",
+                                             "claimed_success": r["status"] == "success"}, sc, errs, "automatisation")
+        except Exception as e:  # noqa: BLE001
+            print("essai n8n non enregistré :", e, flush=True)
+        return out
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        res = list(pool.map(lambda a: one(*a), enumerate(variants)))
+    for r in res:
+        r["classification"] = cls
+    return res
 
 
 def parallel_wave(spec, url, session_dir: Path, model: str, first_it: int, bricks: list, known: list[str],
@@ -686,16 +741,24 @@ def propose(results: list[dict]) -> dict:
                   "duree_s": round(r["seconds"]), "etapes": r["calls"]} for r in ranked]
     traffic = [r for r in results if r.get("variant") in ("popup", "lent")]
     tient = bool(traffic) and all(r["success_rate"] >= 0.9 for r in traffic)
-    raisons = [f"{len(catalogue)} chemin(s) différent(s) découvert(s) sur {len(results)} essai(s)"]
+    cls = next((r.get("classification") for r in results if r.get("classification")), None)
+    raisons = []
+    if cls:
+        raisons.append(f"mode d'automatisation : {cls['mode']} ("
+                       + ", ".join(f"{o['nom']} : {o['acces']}" for o in cls.get("outils", [])) + ")")
+    raisons.append(f"{len(catalogue)} solution(s) différente(s) testée(s) sur {len(results)} essai(s)")
     raisons += [f"{c['reussite']} %, {c['duree_s']} s, {c['etapes']} étapes : {c['chemin']}" for c in catalogue[:3]]
     if traffic:
         raisons.append("le meilleur chemin " + ("tient" if tient else "ne tient pas toujours") + " avec popup et lenteur : "
                        + ", ".join(f"{r['variant']} {round(r['success_rate'] * 100)} %" for r in traffic))
     if ranked and ranked[0]["success_rate"] >= 0.9:
         if ranked[0].get("kind") == "n8n":
+            native = (ranked[0].get("mode") == "n8n natif")
             return {"kind": "automate", "confidence": "high", "modele": model, "livrable": "n8n",
-                    "texte": f"Automatiser avec n8n : des blocs Holo ({model}) lisent les logiciels sans API, l'API écrit "
-                             "le résultat. C'est la solution la plus rapide et la plus fiable trouvée.",
+                    "texte": (f"Automatiser avec n8n natif ({ranked[0]['label']}) : aucun agent Holo nécessaire."
+                              if native else
+                              f"Automatiser avec n8n : des blocs Holo ({model}) lisent seulement ce qui n'a ni API ni page "
+                              "lisible, l'API écrit le résultat.") + " C'est la solution la plus rapide et la plus fiable trouvée.",
                     "raisons": raisons, "catalogue": catalogue}
         return {"kind": "automate", "confidence": "high" if tient else "medium", "modele": model,
                 "texte": f"Automatiser avec Holo ({model}) en suivant le meilleur chemin découvert, avec une vérification "
