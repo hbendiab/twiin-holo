@@ -37,13 +37,23 @@ PORT=3000 node server.js
 ```
 
 Puis ouvre **http://localhost:3000** dans Chrome. Pour voir le parcours sans rien enregistrer : http://localhost:3000/#exemple.
+Les 3 étapes du parcours employé ont chacune leur page : `/#audit`, `/#enregistrer`, `/#reco` ; et trois pages à part :
+**Mes vidéos** (`/videos.html`), **Mes automatisations** (`/automatisations.html`) et **Back** (`/back.html`, réservé à
+l'équipe : coûts, modèles, journaux, scans complets, et l'outil « Tester et casser » par Holo, en préparation par Lucas).
+
+Composants React (sphère de logos de l'audit) : projet Vite + React + Tailwind à la structure shadcn dans
+`twiin/recorder/ui/`, compilé dans `twiin/recorder/public/ui/`. Pour les modifier : `cd twiin/recorder/ui && npm install && npm run build`.
+
+**Raccourci ⌥⌘T** (facultatif) : `scripts/install_hotkey.sh` (depuis `twiin/`). Ensuite, ⌥⌘T depuis n'importe quelle appli
+démarre le serveur s'il est arrêté et ouvre Twiin dans Chrome. macOS demande d'autoriser *Python* dans *Accessibilité*.
+Pour le retirer : `scripts/install_hotkey.sh --remove`.
 
 **Autorisations macOS** (Réglages Système → Confidentialité et sécurité) : *Enregistrement de l'écran* pour Chrome ;
 *Accessibilité* et *Surveillance de l'entrée* pour le Terminal (ou VS Code) qui lance le serveur, sinon le journal des
 clics reste vide. Relance le serveur après les avoir accordées.
 
-Seul `HF_TOKEN` est obligatoire. `HAI_API_KEY` (Holo, ton propre compte H) sert au test facultatif « Faire refaire la
-tâche par Holo » ; `ELEVENLABS_API_KEY` sert aux tutos vidéo ; n8n n'est utile que pour « Créer l'automatisation ».
+Seul `HF_TOKEN` est obligatoire. `HAI_API_KEY` (Holo, ton propre compte H) sert à l'outil « Tester et casser » du Back
+(test par Holo) ; `ELEVENLABS_API_KEY` sert aux tutos vidéo ; n8n n'est utile que pour « Créer l'automatisation ».
 
 ## Les briques (dossier par dossier)
 

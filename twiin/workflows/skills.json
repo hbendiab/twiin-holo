@@ -36,6 +36,26 @@
     ]
   },
   {
+    "id": "search-flights-amsterdam-to-bali-on-google-flights",
+    "name": "Search flights Amsterdam to Bali on Google Flights",
+    "description": "Started a Twiin screen recording, searched for Google Flights in Chrome, changed the destination from Hanoi to Bali, set travel dates to December 10–17, and stopped the recording.",
+    "steps": [
+      "On the Twiin page (localhost:3000), click « Enregistrer ma tâche » to start screen recording",
+      "Switch to Google Chrome and click the address bar",
+      "Type « google flights » in the address bar and press Enter to search",
+      "Click on the Google Flights result link to open the flights page",
+      "On the Google Flights page (showing Amsterdam to Hanoi, wo 8 jun – zo 12 jun), click on the destination field to edit it",
+      "Clear the destination and type « Bali » to replace Hanoi",
+      "Select Bali from the autocomplete suggestions",
+      "Click on the date field to open the calendar",
+      "Click on December 10 (€772) as the departure date",
+      "Click on December 17 as the return date",
+      "Click « Klaar » to confirm the dates",
+      "Wait for flight results to load (showing popular flights: Etihad €799, Etihad €818, Emirates €971)",
+      "Switch back to the Twiin page and click « Terminer et analyser » to stop the recording"
+    ]
+  },
+  {
     "id": "veille-concurrence-l-oreal",
     "name": "Veille concurrence L'Oréal",
     "description": "Rechercher L'Oréal sur LinkedIn, copier les données clés (nom, secteur, taille, abonnés) dans Excel « veille_entreprises », puis noter le descriptif et des observations dans OneNote « Veille concurrence ».",

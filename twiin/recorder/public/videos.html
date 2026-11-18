@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Twiin · Mes vidéos</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Google+Sans+Flex:wght@300;400;500;600;700&display=swap">
+<link rel="stylesheet" href="pages.css">
+<style>
+  .player { display: grid; grid-template-columns: minmax(0, 1.7fr) minmax(0, 1fr); gap: 22px; align-items: start; margin-bottom: 36px; }
+  .player video { width: 100%; border-radius: 14px; background: #000; display: block; aspect-ratio: 16 / 9; }
+  .player h2 { font-size: 22px; font-weight: 500; letter-spacing: -0.02em; margin: 0 0 6px; }
+  .player .intro { font-size: 14px; color: var(--text-dim); margin: 0 0 14px; }
+  .player ol { margin: 0 0 16px; padding-left: 30px; font-size: 14px; display: grid; gap: 8px; max-height: 340px; overflow-y: auto; }
+  .player ol li b { font-weight: 600; }
+  .player ol li span { display: block; font-size: 12.5px; color: var(--text-dim); }
+  .facts { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 14px; }
+  .facts span { font-size: 12px; padding: 3px 10px; border-radius: 999px; background: var(--panel-2); color: var(--text-dim); }
+  h3 { font-size: 15px; font-weight: 600; margin: 0 0 12px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 14px; }
+  .card { text-align: left; padding: 0; border-radius: 14px; overflow: hidden; display: flex; flex-direction: column; gap: 0;
+          background: var(--panel); border: 1px solid var(--panel-border); }
+  .card.on { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent) inset; }
+  .card .thumb { aspect-ratio: 16 / 9; background: var(--panel-2) center / cover no-repeat; position: relative; width: 100%; }
+  .card .thumb em { position: absolute; right: 8px; bottom: 8px; font-style: normal; font-size: 11px; font-weight: 600; color: #fff;
+                    background: rgba(0, 0, 0, .65); padding: 1px 7px; border-radius: 6px; }
+  .card .body { padding: 10px 12px 12px; display: grid; gap: 2px; }
+  .card .body b { font-size: 14px; font-weight: 600; color: var(--text); }
+  @media (max-width: 760px) { .player { grid-template-columns: minmax(0, 1fr); } }
+</style>
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="/"><span id="logoCells"></span><span>Tw<b>ii</b>n</span></a>
+    <nav class="nav"><a href="/">Analyser une tâche</a><a href="/videos.html" aria-current="page">Mes vidéos</a><a href="/automatisations.html">Mes automatisations</a><a href="/back.html" class="nav-back">Back</a></nav>
+    <button id="themeBtn" type="button">Thème sombre</button>
+  </header>
+
+  <h1>Mes tutos vidéo</h1>
+  <p class="lead">Les tutos créés à l'étape 4 « Accélérer » : ta tâche, étape par étape, avec la voix off. Pour en créer un,
+    analyse une tâche puis choisis « Créer le tuto vidéo ».</p>
+
+  <section class="player" id="player" hidden>
+    <video id="video" controls preload="metadata"></video>
+    <div>
+      <h2 id="pTitle"></h2>
+      <div class="facts" id="pFacts"></div>
+      <p class="intro" id="pIntro"></p>
+      <ol id="pSteps"></ol>
+      <div class="actions"><a class="btn primary" id="pDownload" download>Télécharger la vidéo</a></div>
+    </div>
+  </section>
+
+  <section>
+    <h3 id="countTitle"></h3>
+    <div class="grid" id="grid"></div>
+    <div class="panel empty" id="empty" hidden><b>Aucun tuto pour l'instant</b>Analyse une tâche, puis choisis « Créer le tuto vidéo » à l'étape 4.
+      <p><a class="btn primary" href="/">Analyser une tâche</a></p></div>
+  </section>
+
+<script src="/vendor/supabase/supabase.js"></script>
+  <script src="auth.js"></script>
+  <script src="common.js"></script>
+<script>
+let tutos = [];
+function show(name, scroll) {
+  const t = tutos.find((x) => x.name === name) || tutos[0];
+  if (!t) return;
+  document.getElementById('player').hidden = false;
+  const v = document.getElementById('video');
+  if (!v.src.endsWith(t.url)) { v.src = t.url; v.poster = t.thumb || ''; }
+  document.getElementById('pTitle').innerHTML = `${iconsHtml(t.steps.map((s) => s.narration).join(' '), 3)} ${escapeHtml(t.title)}`;
+  document.getElementById('pFacts').innerHTML = [fmtDur(t.seconds), `${t.steps.length} étapes`, fmtDate(t.created), `${t.size_mb} Mo`]
+    .map((x) => `<span>${escapeHtml(x)}</span>`).join('');
+  document.getElementById('pIntro').textContent = t.intro;
+  document.getElementById('pSteps').innerHTML = t.steps.map((s) => `<li><b>${escapeHtml(s.title)}</b>${s.tip ? `<span>Astuce : ${escapeHtml(s.tip)}</span>` : ''}</li>`).join('');
+  const dl = document.getElementById('pDownload');
+  dl.href = t.url; dl.download = `${t.name}.mp4`;
+  document.querySelectorAll('.card').forEach((c) => c.classList.toggle('on', c.dataset.name === t.name));
+  history.replaceState(null, '', `#${t.name}`);
+  if (scroll) document.getElementById('player').scrollIntoView({ behavior: 'smooth' });
+}
+Promise.all([fetch('/api/tutos').then((r) => r.json()), iconsReady]).then(([d]) => {
+  tutos = d.tutos || [];
+  document.getElementById('empty').hidden = tutos.length > 0;
+  document.getElementById('countTitle').textContent = tutos.length ? `${tutos.length} tuto${tutos.length > 1 ? 's' : ''}` : '';
+  document.getElementById('grid').innerHTML = tutos.map((t) => `
+    <button class="card" data-name="${escapeHtml(t.name)}" type="button">
+      <span class="thumb" style="${t.thumb ? `background-image:url('${t.thumb}')` : ''}"><em>${fmtDur(t.seconds)}</em></span>
+      <span class="body"><b>${escapeHtml(t.title)}</b><span class="meta">${t.steps.length} étapes · ${fmtAgo(t.created)}</span></span>
+    </button>`).join('');
+  document.querySelectorAll('.card').forEach((c) => c.addEventListener('click', () => show(c.dataset.name, true)));
+  show(decodeURIComponent(location.hash.slice(1)));
+}).catch(() => { document.getElementById('empty').hidden = false; });
+</script>
+</body>
+</html>
