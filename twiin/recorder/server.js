@@ -536,7 +536,7 @@ const workerBusy = (st) => !!st && (['upload', 'cadrage', 'answered', 'casse'].i
   || (st.phase === 'awaiting_confirmation' && st.work !== 'ready'))
   && Date.now() - Date.parse(st.updated_at || 0) < 15 * 60 * 1000;
 function startDiscovery(dir) {
-  if ((process.env.DISCOVERY || 'on') === 'off') return false;
+  if ((process.env.DISCOVERY || 'off') !== 'on') return false; // opt-in : sans DISCOVERY=on, le parcours de Hanine reste inchangé
   const missing = ['SUPABASE_URL', 'SUPABASE_PUBLISHABLE_KEY', 'SUPABASE_EMAIL', 'SUPABASE_PASSWORD', 'HAI_API_KEY'].filter((k) => !process.env[k]);
   if (missing.length) { console.warn(`[découverte] désactivée, variables manquantes : ${missing.join(', ')}`); return false; }
   const st = discoveryState(dir);
