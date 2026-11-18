@@ -81,6 +81,26 @@ footer { margin-top: 48px; color: var(--dim); font-size: 13px; }
     <span><i class="dot d-ext"></i>service externe (API)</span>
   </div>
 
+  <h2>La stack utilisée</h2>
+  <p class="lede">Toutes les briques techniques de Twiin aujourd'hui, avec leur rôle. Le détail de leur usage suit, étape par étape.</p>
+  <div class="tbl" style="margin-top:14px"><table>
+    <tr><th>Famille</th><th>Technologie</th><th>Rôle dans Twiin</th><th>Où</th></tr>
+    <tr><td>Intelligence artificielle</td><td><b>Hugging Face</b> (routeur) · modèle <b>Qwen3.8-27B</b></td><td>analyse des enregistrements, fiche de cadrage, construction du jumeau, classement des outils</td><td><span class="where w-ext">API</span></td></tr>
+    <tr><td></td><td><b>H Company · Holo</b> (holo3-1-35b-a3b gratuit, holo4-35b-a3b)</td><td>agent « computer use » : parcours dans le jumeau, lecture des logiciels sans API</td><td><span class="where w-ext">API</span></td></tr>
+    <tr><td></td><td><b>ElevenLabs</b> (voix, transcription Scribe)</td><td>audit vocal de l'employé, voix off des tutos</td><td><span class="where w-ext">API</span></td></tr>
+    <tr><td>Automatisation</td><td><b>n8n 2.48</b> (API REST + serveur MCP) · <b>n8ncli</b></td><td>création, test et exécution des automatisations</td><td><span class="where w-cloud">serveur</span></td></tr>
+    <tr><td>Données</td><td><b>Supabase</b> (Postgres, RLS, Auth, Storage)</td><td>tâches, essais, recommandations, catalogue des outils ; connexion de chaque salarié</td><td><span class="where w-ext">API</span></td></tr>
+    <tr><td>Capture sur le poste</td><td>partage d'écran du navigateur (Chrome)</td><td>captures multi-écrans de la tâche</td><td><span class="where w-local">poste</span></td></tr>
+    <tr><td></td><td><b>OCR</b> : Vision (macOS) · Windows.Media.Ocr via winocr (Windows)</td><td>lire le texte des captures, en local</td><td><span class="where w-local">poste</span></td></tr>
+    <tr><td></td><td><b>Journal d'actions</b> : Quartz + Accessibilité (macOS) · pynput + UI Automation (Windows)</td><td>clics et éléments visés, sans jamais les touches tapées</td><td><span class="where w-local">poste</span></td></tr>
+    <tr><td>Serveur et page</td><td><b>Node.js 24 + Express</b> · HTML/JS · React + Vite (composant de la page d'audit)</td><td>la page Twiin, ses API, le lancement des workers</td><td><span class="where w-cloud">serveur</span></td></tr>
+    <tr><td>Workers</td><td><b>Python 3.12</b> (découverte, agents, n8n, OCR, journal)</td><td>tout le travail en arrière-plan</td><td><span class="where w-cloud">serveur</span></td></tr>
+    <tr><td>Navigateur de test</td><td><b>Playwright + Chromium</b> sans fenêtre</td><td>faire agir Holo dans le jumeau ; collecte des docs publiques des outils</td><td><span class="where w-cloud">serveur</span></td></tr>
+    <tr><td>Vidéo</td><td><b>Remotion</b></td><td>montage des tutos vidéo</td><td><span class="where w-cloud">serveur</span></td></tr>
+    <tr><td>Outils d'équipe</td><td>GitHub · <code>scripts/doctor.py</code></td><td>code partagé ; vérification d'un poste Mac ou Windows</td><td><span class="where w-local">poste</span></td></tr>
+  </table></div>
+
+  <h2>Le parcours</h2>
   <div class="diagram" role="img" aria-label="Schéma : Observer, Analyser, Comprendre et valider en parallèle de l'environnement de test, itérations, proposition">
     <svg viewBox="0 0 900 330" xmlns="http://www.w3.org/2000/svg">
       <defs>
