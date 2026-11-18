@@ -5,8 +5,9 @@
     .venv/bin/python automation/n8n_twiin.py plan.json --no-run   # compile + importe seulement
 
 Un plan est une liste de blocs enchaînés, après un déclencheur (à la main + planification facultative) :
-  {"type": "holo", "name": "...", "steps": ["..."], "expect": {"cle": "description"}}
-      → nœud HTTP vers le serveur Twiin local (/api/holo/run) : Holo fait les étapes sur ce Mac, sa réponse revient
+  {"type": "holo", "name": "...", "env": "cloud|mac", "steps": ["..."], "expect": {"cle": "description"}}
+      → nœud HTTP vers le serveur Twiin local (/api/holo/run) : Holo fait les étapes dans le navigateur cloud de H
+        (env cloud : l'employé garde son Mac) ou sur ce Mac (env mac) ; sa réponse revient
         dans n8n ; avec "expect", les valeurs lues sont dans  data.<cle>.
         Dans les étapes, {{Nom du nœud.cle}} est remplacé par une valeur lue par un bloc Holo précédent.
   {"type": "row", "name": "...", "fields": {"Colonne": "texte avec {{Nom du nœud.cle}}, {{today}}, {{execution}}"}}
@@ -119,7 +120,8 @@ def compile_plan(plan):
         t = b["type"]
         if t == "holo":
             steps_js = "[" + ", ".join(js_template(s) for s in b["steps"]) + "]"
-            body = ("={{ JSON.stringify({ name: " + json.dumps(b["name"]) + ", steps: " + steps_js +
+            env = b.get("env") if b.get("env") in ("cloud", "mac") else "auto"  # auto : le serveur Twiin choisit
+            body = ("={{ JSON.stringify({ name: " + json.dumps(b["name"]) + ", env: " + json.dumps(env) + ", steps: " + steps_js +
                     ", expect: " + json.dumps(b.get("expect") or {}, ensure_ascii=False) + " }) }}")
             nodes.append(node(b["name"], "n8n-nodes-base.httpRequest", 4.2, {
                 "method": "POST", "url": TWIIN_URL,

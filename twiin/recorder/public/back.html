@@ -46,6 +46,25 @@
     rejeux de Holo, exécutions n8n. Pour l'équipe et le débogage.</p>
   <div class="warnbox">Cette page contient des données personnelles (fiche employé, journal des clics, texte lu à l'écran). À réserver à l'équipe.</div>
   <div class="actions" style="margin-bottom:16px"><button id="refresh" type="button">Actualiser</button><span class="meta" id="updated"></span></div>
+  <details class="panel" id="dirigeant" open style="margin-bottom:14px">
+    <summary><h2>Cadrage du dirigeant · temps 0</h2><span class="meta" id="dMeta">une fois par entreprise, environ 3 min</span></summary>
+    <div class="content">
+      <p class="meta">Sert au chiffrage en euros et aux sources que l'audit a le droit de lire. Le dirigeant ne voit ensuite que des résultats regroupés par rôle.</p>
+      <h3>Objectif principal</h3>
+      <div class="actions" id="dObj"></div>
+      <h3>Irritants connus</h3>
+      <div class="actions" id="dIrr"></div>
+      <textarea id="dIrrLibre" rows="2" placeholder="Autres irritants, un par ligne" style="width:100%;margin-top:8px;font:13px var(--font);padding:8px 10px;border-radius:10px;border:1px solid var(--panel-border);background:var(--panel-2);color:var(--text)"></textarea>
+      <h3>Coût horaire chargé moyen : <span id="dCoutVal">35</span> €/h</h3>
+      <input type="range" id="dCout" min="15" max="120" step="1" value="35" style="width:100%;accent-color:var(--accent)">
+      <h3>Consentement et sources autorisées</h3>
+      <label class="check"><input type="checkbox" id="dConsent"> L'entreprise autorise l'audit des postes, après information des salariés</label>
+      <label class="check"><input type="checkbox" data-src="logiciel_installe" checked disabled> Logiciels installés (toujours)</label>
+      <label class="check"><input type="checkbox" data-src="historique_navigateur"> Outils web métier vus dans Chrome (domaines connus seulement, jamais les pages)</label>
+      <label class="check"><input type="checkbox" data-src="connecteur_google_workspace" disabled> Connecteur Google Workspace (bientôt)</label>
+      <div class="actions" style="margin-top:12px"><button class="primary" id="dSave" type="button">Enregistrer le cadrage</button><span class="meta" id="dMsg"></span></div>
+    </div>
+  </details>
   <div class="grid" id="root"></div>
 
   <details class="panel" id="decouverte" style="margin-top:14px" open>
@@ -184,6 +203,40 @@ async function load() {
 }
 document.getElementById('refresh').addEventListener('click', load);
 load();
+
+// --- Temps 0 : cadrage du dirigeant ---
+const OBJ = [['gagner_du_temps', 'Gagner du temps'], ['reduire_les_erreurs', 'Réduire les erreurs'], ['absorber_plus_de_volume', 'Absorber plus de volume sans recruter'],
+             ['preparer_facturation_electronique', 'Préparer la facturation électronique']];
+const IRR = ['Ressaisies entre logiciels', 'Relances clients ou fournisseurs', 'Dossiers administratifs trop longs', 'Erreurs de saisie', 'Pics d\'activité difficiles à absorber', 'Reporting fait à la main'];
+let dir = null;
+const pill = (on, txt, attr) => `<button type="button" class="${on ? 'primary' : ''}" ${attr}>${escapeHtml(txt)}</button>`;
+function drawDir() {
+  document.getElementById('dObj').innerHTML = OBJ.map(([k, l]) => pill(dir.objectif === k, l, `data-obj="${k}"`)).join('');
+  document.getElementById('dIrr').innerHTML = IRR.map((l) => pill(dir.irritants.includes(l), l, `data-irr="${escapeHtml(l)}"`)).join('');
+  document.querySelectorAll('[data-obj]').forEach((b) => b.onclick = () => { dir.objectif = b.dataset.obj; drawDir(); });
+  document.querySelectorAll('[data-irr]').forEach((b) => b.onclick = () => {
+    const v = b.dataset.irr; dir.irritants = dir.irritants.includes(v) ? dir.irritants.filter((x) => x !== v) : [...dir.irritants, v]; drawDir();
+  });
+}
+fetch('/api/audit/dirigeant').then((r) => r.json()).then((d) => {
+  dir = d.dirigeant;
+  document.getElementById('dCout').value = dir.cout_horaire; document.getElementById('dCoutVal').textContent = dir.cout_horaire;
+  document.getElementById('dConsent').checked = !!dir.consentement_entreprise;
+  document.querySelectorAll('[data-src]').forEach((c) => { if (!c.disabled) c.checked = (dir.sources_autorisees || []).includes(c.dataset.src); });
+  document.getElementById('dIrrLibre').value = dir.irritants.filter((x) => !IRR.includes(x)).join('\n');
+  document.getElementById('dMeta').textContent = d.defaut ? 'pas encore fait · valeurs par défaut' : 'fait';
+  drawDir();
+});
+document.getElementById('dCout').oninput = (e) => { document.getElementById('dCoutVal').textContent = e.target.value; };
+document.getElementById('dSave').onclick = async () => {
+  const libres = document.getElementById('dIrrLibre').value.split('\n').map((x) => x.trim()).filter(Boolean);
+  const body = { objectif: dir.objectif, irritants: [...dir.irritants.filter((x) => IRR.includes(x)), ...libres],
+                 cout_horaire: Number(document.getElementById('dCout').value), consentement_entreprise: document.getElementById('dConsent').checked,
+                 sources_autorisees: ['logiciel_installe', ...[...document.querySelectorAll('[data-src]')].filter((c) => !c.disabled && c.checked).map((c) => c.dataset.src)] };
+  const d = await (await fetch('/api/audit/dirigeant', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })).json();
+  dir = d.dirigeant; drawDir();
+  document.getElementById('dMsg').textContent = 'Enregistré.'; document.getElementById('dMeta').textContent = 'fait';
+};
 
 // --- Tester et casser (test par Holo) : outil de travail, hors parcours employé ---
 let tasks = [];

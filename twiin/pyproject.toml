@@ -21,7 +21,12 @@ dependencies = [
     "uiautomation>=2.0; sys_platform == 'win32'",
     "psutil>=5.9; sys_platform == 'win32'",
     "winocr>=0.0.13; sys_platform == 'win32'",
+    "pyyaml>=6",                     # brique Audit v2 : bibliothèque de tâches (audit/data/taches_par_role.yaml)
+    "jsonschema>=4.20",              # brique Audit v2 : validation de la fiche d'audit
 ]
+
+[project.optional-dependencies]
+test = ["pytest>=8"]                 # tests de la brique Audit : .venv/bin/python -m pytest audit/tests
 
 
 [build-system]

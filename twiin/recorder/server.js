@@ -59,7 +59,8 @@ app.use('/vendor/supabase', express.static(path.join(path.dirname(fileURLToPath(
 // ════════════════════════════════════════════════════════════════════════════════════════════════════════════════
 const SB_URL = (process.env.SUPABASE_URL || '').replace(/\/+$/, '');
 const SB_ANON = process.env.SUPABASE_PUBLISHABLE_KEY || process.env.SUPABASE_ANON_KEY || ''; // même clé publique, deux noms (équipe / Twiin)
-const SB_ON = !!(SB_URL && SB_ANON);
+// Comptes activés seulement sur demande (TWIIN_COMPTES=1), une fois les tables créées : sinon Twiin reste en local.
+const SB_ON = !!(SB_URL && SB_ANON) && /^(1|true|oui)$/i.test(process.env.TWIIN_COMPTES || '');
 const als = new AsyncLocalStorage(); // l'employé de la requête en cours, disponible partout (même dans les tâches longues)
 const tokenCache = new Map();
 async function sbUserFromToken(token) {
@@ -900,7 +901,10 @@ let n8nRun = null; // { proc, events, running }
 const PLAN_PROMPT = `You design an n8n automation for a task an employee recorded. Tools WITH an API are handled by normal
 n8n nodes; tools WITHOUT an API (LinkedIn pages, OneNote, internal software such as comptarex) are handled by a Holo block
 (a computer-use agent that works on the employee's computer, Mac or Windows). Use ONLY these block types, in order:
-- {"type":"holo","name":"Holo — <verb> <tool>","steps":["one precise instruction in English"],"expect":{"key":"what to read"}}
+- {"type":"holo","name":"Holo — <verb> <tool>","env":"cloud|mac","steps":["one precise instruction in English"],"expect":{"key":"what to read"}}
+   "env": "cloud" for a public website reachable on the internet (Holo uses H's own cloud browser: the employee keeps using
+   their computer); "mac" for an installed desktop app (OneNote, Excel desktop…), a local site (127.0.0.1) or a page that
+   needs the employee's logged-in session. In cloud steps, give the full https:// address and never mention Chrome.
    Holo reads or does things on screen; with "expect" it returns the values it READ as data.<key>. Ask it to copy values
    EXACTLY as written. Reference values from a previous Holo block in later steps or fields as {{<block name>.<key>}}.
 - {"type":"row","name":"Préparer la ligne","fields":{"<Column>":"text with {{<block name>.<key>}}, {{today}}, {{execution}}"}}
@@ -1018,7 +1022,7 @@ app.get('/api/n8n/events', (req, res) => {
     holo = fs.readFileSync(replay.events, 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l))
       .filter((e) => ['step_start', 'step_end', 'stalled', 'restart'].includes(e.type)).slice(-3);
   }
-  res.json({ events: all.slice(since), next: all.length, running: n8nRun.running, holo, holoRunning: !!replay?.running });
+  res.json({ events: all.slice(since), next: all.length, running: n8nRun.running, holo, holoRunning: !!replay?.running, holoEnv: replay?.env || 'mac' });
 });
 
 // --- Rejouer un workflow sur ce Mac avec Holo (scripts/run_live.py), suivi en direct par la page ----------------
@@ -1071,7 +1075,19 @@ app.post('/api/replay', (req, res) => {
   }
 });
 
-// --- Pont n8n → Holo : n8n envoie des étapes, Holo les fait sur ce Mac, la réponse revient à n8n -----------------
+// Où Holo travaille pour un bloc : « cloud » = navigateur hébergé chez H (l'employé garde son Mac), « mac » = ce Mac.
+// Un logiciel installé ou un site local (127.0.0.1, comptarex) ne sont pas joignables depuis le cloud : ils restent sur le Mac.
+const HOLO_DESKTOP = /\b(onenote|excel|word|powerpoint|outlook|keynote|numbers|pages|finder|comptarex|desktop app|application de bureau|logiciel install)/i;
+const HOLO_LOCAL = /(localhost|127\.0\.0\.1|0\.0\.0\.0|\.local\b)/i;
+const HOLO_WEB = /(https?:\/\/|www\.|\.com\b|\.fr\b|linkedin|website|web page|site web|portail|portal)/i;
+function holoEnv(steps, asked) {
+  const text = steps.join(' ');
+  if (HOLO_LOCAL.test(text) || HOLO_DESKTOP.test(text)) return 'mac'; // même si on demande le cloud : il ne pourrait pas
+  if (asked === 'mac' || asked === 'cloud') return asked;
+  return HOLO_WEB.test(text) ? 'cloud' : 'mac';
+}
+
+// --- Pont n8n → Holo : n8n envoie des étapes, Holo les fait (cloud ou Mac), la réponse revient à n8n -------------
 // Appel SYNCHRONE (n8n attend la fin). Réservé aux appels locaux portant le jeton TWIIN_LOCAL_TOKEN.
 // --- Ponts n8n → Twiin « sans gêner l'employé » ------------------------------------------------------------------
 // /api/holo/web : Holo lit une page web dans un navigateur INVISIBLE (la souris et le clavier restent à l'employé).
@@ -1161,9 +1177,11 @@ app.post('/api/holo/run', async (req, res) => {
       return res.status(403).json({ error: 'Accès refusé (appel local avec jeton Twiin uniquement).' });
     }
     if (replay?.running) return res.status(409).json({ error: 'Holo est déjà occupé par un autre rejeu.' });
-    const { name, steps: raw, expect } = req.body || {};
-    const steps = (raw || []).map((x) => String(x).trim()).filter(Boolean);
+    const { name, steps: raw, expect, env: asked } = req.body || {};
+    let steps = (raw || []).map((x) => String(x).trim()).filter(Boolean);
     if (!steps.length) return res.status(400).json({ error: 'Aucune étape.' });
+    const env = holoEnv(steps, asked);
+    if (env === 'cloud') steps = steps.map((x) => x.replace(/^(in|dans)\s+(google\s+)?chrome\s*,\s*/i, '')); // le cloud a son propre navigateur
     if (expect && Object.keys(expect).length) {
       // la dernière étape demande à Holo de rendre les valeurs lues sous forme de JSON, exploitable par n8n
       steps[steps.length - 1] += ' Then answer ONLY with a JSON object with exactly these keys, filled with the values you READ ON SCREEN '
@@ -1174,13 +1192,13 @@ app.post('/api/holo/run', async (req, res) => {
     fs.mkdirSync(dir, { recursive: true });
     const events = path.join(dir, `${new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)}-n8n-events.jsonl`);
     fs.writeFileSync(events, '');
-    spawnMac( ['-e', 'tell application "System Events" to set visible of process "Code" to false']);
+    if (env === 'mac') spawnMac(['-e', 'tell application "System Events" to set visible of process "Code" to false']);
     const t0 = Date.now();
-    const proc = spawn(PYTHON, ['-u', RUN_LIVE, id, '--no-open', '--events', events], { cwd: REPO_ROOT });
+    const proc = spawn(PYTHON, ['-u', RUN_LIVE, id, '--no-open', '--events', events, ...(env === 'cloud' ? ['--remote'] : [])], { cwd: REPO_ROOT });
     proc.stdout.on('data', (d) => process.stdout.write(`[n8n→holo] ${d}`));
     proc.stderr.on('data', (d) => process.stderr.write(`[n8n→holo] ${d}`));
-    replay = { proc, events, id, running: true };
-    console.log(`n8n → Holo : ${id} (${steps.length} étape(s))`);
+    replay = { proc, events, id, running: true, env };
+    console.log(`n8n → Holo : ${id} (${steps.length} étape(s), ${env === 'cloud' ? 'navigateur cloud de H' : 'sur ce Mac'})`);
     await new Promise((resolve) => proc.on('close', resolve));
     replay.running = false;
     const evs = fs.readFileSync(events, 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l));
@@ -1192,7 +1210,8 @@ app.post('/api/holo/run', async (req, res) => {
     if (expect && a >= 0 && b > a) {
       try { data = JSON.parse(jsonrepair(last.slice(a, b + 1))); } catch { data = null; }
     }
-    res.json({ ok: !!end.ok, status: end.status || 'inconnu', seconds: Math.round((Date.now() - t0) / 1000),
+    backLog('holo-bloc', { name, env, ok: !!end.ok, seconds: Math.round((Date.now() - t0) / 1000), usage: end.usage || {} });
+    res.json({ ok: !!end.ok, status: end.status || 'inconnu', seconds: Math.round((Date.now() - t0) / 1000), env,
                answers, data, usage: end.usage || {}, restarts: end.restarts || 0 });
   } catch (err) {
     if (replay) replay.running = false;
@@ -1284,7 +1303,7 @@ const ONBOARDING = {
   bye: "Merci ! J'ai tout noté. Maintenant, je peux regarder quels logiciels sont installés sur ton ordinateur : "
      + "seulement leur nom, jamais tes fichiers.",
 };
-app.get('/api/onboarding/questions', (req, res) => res.json(ONBOARDING));
+app.get('/api/onboarding/voix-v1', (req, res) => res.json(ONBOARDING)); // ancien accueil vocal (8 questions)
 
 // Twiin parle : texte → voix (ElevenLabs), gardée en cache sur le disque.
 app.get('/api/voice/say', async (req, res) => {
@@ -1601,7 +1620,13 @@ async function automationSummary(w) {
   const dur = done.map((e) => (new Date(e.stoppedAt) - new Date(e.startedAt)) / 1000);
   return {
     id: w.id, name: w.name.replace(/^Twiin — /, ''), active: w.active, freq, freq_label: cron ? scheduleLabel(schedule) : 'Manuelle', cron, schedule,
-    blocks: w.nodes.filter((n) => !/(webhook|scheduleTrigger|manualTrigger)$/i.test(n.type)).map((n) => ({ name: n.name, kind: BLOCK_KIND(n) })),
+    blocks: w.nodes.filter((n) => !/(webhook|scheduleTrigger|manualTrigger)$/i.test(n.type)).map((n) => {
+      const kind = BLOCK_KIND(n);
+      if (kind !== 'holo') return { name: n.name, kind };
+      const body = String(n.parameters?.jsonBody || '');
+      const asked = (body.match(/env:\s*"(cloud|mac)"/) || [])[1];
+      return { name: n.name, kind, env: holoEnv([body.replace(/\\"/g, '"')], asked) };
+    }),
     sheet: sheetId ? { id: sheetId, url: `https://docs.google.com/spreadsheets/d/${sheetId}/edit${gid ? `#gid=${gid}` : ''}` } : null,
     executions: execs.map((e) => ({ id: e.id, status: e.status, mode: e.mode, startedAt: e.startedAt, stoppedAt: e.stoppedAt,
                                     url: `${N8N_URL}/workflow/${w.id}/executions/${e.id}` })),
@@ -1823,6 +1848,146 @@ app.get('/api/back', async (req, res) => {
     n8n: runFiles.filter((f) => /n8n-(create|events)\.jsonl$/.test(f)).slice(0, 10).map((f) => ({ file: f, events: readJsonl(path.join(runsDir, f)).slice(-40) })),
     tuto: tutoJob,
   });
+});
+
+// ════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+// BRIQUE AUDIT v2 (twiin/audit, voir son CLAUDE.md) : temps 0 dirigeant, temps 1 outils, temps 2 onboarding, temps 3
+// résultat. Les calculs (catalogue, score, croisement, questions) sont dans le module Python twiin_audit : une seule
+// version des règles. Tout reste sur le poste (workflows/audit2/), dont la transcription de la question 7.
+// ════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+const AUDIT2_DIR = path.join(REPO_ROOT, 'workflows', 'audit2');
+const AUDIT_PKG = path.join(REPO_ROOT, 'audit');
+const POSTE_ID = 'poste_' + crypto.createHash('sha256').update(`${os.hostname()}|${os.userInfo().username}`).digest('hex').slice(0, 6); // pseudonyme
+const a2 = (f) => path.join(AUDIT2_DIR, f);
+const readA2 = (f, d = null) => { try { return JSON.parse(fs.readFileSync(a2(f), 'utf8')); } catch { return d; } };
+const writeA2 = (f, v) => { fs.mkdirSync(AUDIT2_DIR, { recursive: true }); fs.writeFileSync(a2(f), JSON.stringify(v, null, 2) + '\n'); };
+
+function auditPy(args, input) {
+  return new Promise((resolve, reject) => {
+    const p = spawn(PYTHON, ['-m', 'twiin_audit.cli', ...args], { cwd: AUDIT_PKG });
+    let out = '', err = '';
+    p.stdout.on('data', (d) => { out += d; });
+    p.stderr.on('data', (d) => { err += d; });
+    p.on('close', (code) => {
+      if (code !== 0) return reject(new Error(err.trim().split('\n').at(-1) || `code ${code}`));
+      try { resolve(JSON.parse(out)); } catch (e) { reject(e); }
+    });
+    if (input !== undefined) p.stdin.end(JSON.stringify(input)); else p.stdin.end();
+  });
+}
+
+const DIRIGEANT_DEFAUT = { objectif: 'gagner_du_temps', irritants: [], cout_horaire: 35, consentement_entreprise: false,
+                           sources_autorisees: ['logiciel_installe'] };
+// Temps 0 · dirigeant (une fois par entreprise) : objectif, irritants, coût horaire, consentement et sources autorisées
+app.get('/api/audit/dirigeant', (req, res) => res.json({ dirigeant: readA2('dirigeant.json', DIRIGEANT_DEFAUT), defaut: !readA2('dirigeant.json') }));
+app.post('/api/audit/dirigeant', (req, res) => {
+  const d = req.body || {};
+  const dirigeant = {
+    objectif: ['gagner_du_temps', 'reduire_les_erreurs', 'absorber_plus_de_volume', 'preparer_facturation_electronique'].includes(d.objectif) ? d.objectif : 'gagner_du_temps',
+    irritants: (d.irritants || []).map(String).filter(Boolean).slice(0, 20),
+    cout_horaire: Math.max(0, Math.min(500, Number(d.cout_horaire) || 35)),
+    consentement_entreprise: !!d.consentement_entreprise,
+    sources_autorisees: (d.sources_autorisees || []).filter((x) => ['logiciel_installe', 'historique_navigateur', 'connecteur_google_workspace', 'telechargement'].includes(x)),
+  };
+  writeA2('dirigeant.json', dirigeant);
+  backLog('audit-dirigeant', { objectif: dirigeant.objectif, cout_horaire: dirigeant.cout_horaire, sources: dirigeant.sources_autorisees });
+  res.json({ dirigeant });
+});
+
+// Temps 1 · audit outils passif : logiciels installés (+ jours d'utilisation), outils web vus dans Chrome (domaines seulement)
+app.get('/api/audit/outils', (req, res) => res.json(readA2('outils.json', { applications: [], resume: null })));
+app.post('/api/audit/outils', async (req, res) => {
+  try {
+    const dir = readA2('dirigeant.json', DIRIGEANT_DEFAUT);
+    const autorise = (s) => (dir.sources_autorisees || []).includes(s);
+    const navigateur = !!req.body?.navigateur && autorise('historique_navigateur');
+    const usage = !!req.body?.usage;
+    const out = path.join(AUDIT2_DIR, 'scan');
+    fs.mkdirSync(out, { recursive: true });
+    const t0 = Date.now();
+    await new Promise((resolve, reject) => {
+      const p = spawn(PYTHON, [AUDIT_SCRIPT, '--out', out, ...(usage ? ['--usage'] : [])]);
+      let err = '';
+      p.stderr.on('data', (d) => { err += d; });
+      p.on('close', (code) => (code === 0 ? resolve() : reject(new Error(err.trim().split('\n').at(-1) || `code ${code}`))));
+    });
+    const r = await auditPy(['outils', '--scan', path.join(out, 'audit_poste.json'), ...(navigateur ? ['--navigateur'] : [])]);
+    const result = { ...r, genere_le: new Date().toISOString(), avec_usage: usage, avec_navigateur: navigateur,
+                     navigateur_refuse: !!req.body?.navigateur && !navigateur };
+    writeA2('outils.json', result);
+    backLog('audit-outils', { seconds: (Date.now() - t0) / 1000, usage, navigateur, ...r.resume });
+    res.json(result);
+  } catch (e) {
+    res.status(500).json({ error: `Audit des outils impossible : ${e.message}` });
+  }
+});
+
+// La fiche v2 en cours : poste pseudonymisé, consentement, dirigeant, outils (confirmés ou ajoutés par l'employé), tâches
+function ficheEnCours(rep = readA2('reponses.json', {})) {
+  const dir = readA2('dirigeant.json', DIRIGEANT_DEFAUT);
+  const outils = readA2('outils.json', { applications: [] });
+  const confirmes = new Set(rep.outils_confirmes || []);
+  const apps = (outils.applications || []).map((a) => (a.filtre_metier?.est_metier && rep.outils_confirmes
+    ? { ...a, confirmee_par_employe: confirmes.has(a.id) } : a));
+  for (const x of rep.outils_ajoutes || []) { // « + ajouter » : déclaré par l'employé
+    if (apps.some((a) => a.id === x.id)) continue;
+    apps.push({ id: x.id, nom: x.nom, type: 'saas_web', sources_detection: ['declaration_employe'], usage: { frequence: 'inconnu' },
+                filtre_metier: { est_metier: true, categorie: 'autre', methode: 'validation_humaine', confiance: 0.8, a_valider: false },
+                api: { disponibilite: 'inconnue', confiance: 0.3 }, duplication: { strategie: 'hybride', dans_process_observe: false, statut: 'a_faire' },
+                confirmee_par_employe: true });
+  }
+  const metier = apps.filter((a) => a.filtre_metier?.est_metier);
+  const disp = metier.map((a) => a.api?.disponibilite);
+  return {
+    audit_id: `aud_${new Date().toISOString().slice(0, 10)}_${POSTE_ID.slice(-4)}`, date_audit: new Date().toISOString(), version_schema: '2.0',
+    entreprise: { nom: rep.entreprise || 'Entreprise démo', taille: 'PME' },
+    poste: { id: POSTE_ID, os: 'macos', ...(rep.role_metier ? { role_metier: rep.role_metier } : {}) },
+    consentement: { obtenu: !!dir.consentement_entreprise, sources_autorisees: dir.sources_autorisees?.length ? dir.sources_autorisees : ['logiciel_installe'] },
+    dirigeant: dir, applications: apps,
+    resume: { nb_detectees: apps.length, nb_metier: metier.length, nb_avec_api: disp.filter((d) => ['publique', 'partenaire', 'payante_entreprise'].includes(d)).length,
+              nb_sans_api: disp.filter((d) => d === 'aucune').length, nb_api_inconnue: disp.filter((d) => d === 'inconnue').length,
+              nb_a_valider: apps.filter((a) => a.filtre_metier?.a_valider).length },
+    taches: rep.taches || [],
+  };
+}
+
+// Temps 2 · questions pré-remplies (outils du temps 1, tâches de la bibliothèque selon le rôle et les outils)
+app.get('/api/onboarding/questions', async (req, res) => {
+  try {
+    const rep = readA2('reponses.json', {});
+    const fiche = ficheEnCours({ ...rep, role_metier: req.query.role || rep.role_metier });
+    const q = await auditPy(['questions'], fiche);
+    res.json({ questions: q, roles: ROLES_AUDIT, brouillon: rep, temps1: { resume: fiche.resume, genere_le: readA2('outils.json', {}).genere_le || null } });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+const ROLES_AUDIT = ['Assistant(e) de direction', 'Gestion de la scolarité', 'Comptable', 'RH', 'Commercial'];
+// Les 3 tâches les plus lourdes (fréquence × durée) : les questions 5 à 7 ne portent que sur elles
+app.post('/api/onboarding/lourdes', async (req, res) => {
+  try { res.json({ ids: await auditPy(['lourdes'], req.body?.taches || []) }); } catch (e) { res.status(500).json({ error: e.message }); }
+});
+// Réponses (brouillon à chaque écran : on peut reprendre plus tard ; envoi final après le récap)
+app.get('/api/onboarding/reponses', (req, res) => res.json({ reponses: readA2('reponses.json', null) }));
+app.post('/api/onboarding/reponses', (req, res) => {
+  const r = req.body || {};
+  const rep = { ...readA2('reponses.json', {}), ...r, mis_a_jour: new Date().toISOString() };
+  writeA2('reponses.json', rep);
+  res.json({ ok: true });
+});
+
+// Temps 3 · croisement + score : la fiche v2 complète (alertes, opportunités triées, top 3 à observer)
+app.get('/api/audit/resultat', async (req, res) => {
+  try {
+    const { fiche, erreurs_schema } = await auditPy(['resultat'], ficheEnCours());
+    writeA2('fiche-audit.json', fiche);
+    const top = fiche.opportunites.filter((o) => o.a_observer);
+    backLog('audit-resultat', { taches: fiche.taches.length, top3: top.map((o) => o.tache_id), alertes: fiche.alertes.map((a) => a.type),
+                                heures_semaine_top3: top.reduce((n, o) => n + (o.gain_heures_semaine || 0), 0), erreurs_schema: erreurs_schema.length });
+    res.json({ fiche, erreurs_schema });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
 });
 
 app.listen(PORT, () => console.log(`workflow-recorder (Hugging Face) running at http://localhost:${PORT}`));

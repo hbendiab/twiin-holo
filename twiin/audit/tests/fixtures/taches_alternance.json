@@ -1,0 +1,22 @@
+[
+  {"id": "t1", "libelle": "Saisir les contrats d'alternance (Cerfa) et les faire signer", "source": "suggestion",
+   "suggestion_id": "sco_contrats_alternance", "frequence_tranche": "6-20", "duree_tranche": "15-30",
+   "applis_ids": ["gmail", "logiciel-scolarite-interne", "docusign", "google-drive"], "recopie": true,
+   "declencheur": "document_recu", "exceptions_transcript": "Si l'entreprise oublie une pièce, je la relance par mail.",
+   "deleguer_en_premier": true},
+  {"id": "t2", "libelle": "Relancer les entreprises pour les pièces manquantes", "source": "suggestion",
+   "suggestion_id": "sco_relances_entreprises", "frequence_tranche": "6-20", "duree_tranche": "5-15",
+   "applis_ids": ["gmail", "excel"], "recopie": true, "declencheur": "date", "exceptions_transcript": "",
+   "deleguer_en_premier": false},
+  {"id": "t3", "libelle": "Déposer les dossiers de prise en charge sur le portail de l'OPCO", "source": "suggestion",
+   "suggestion_id": "sco_opco", "frequence_tranche": "2-5", "duree_tranche": "15-30",
+   "applis_ids": ["portail-opco", "google-drive", "excel"], "recopie": true, "declencheur": "document_recu",
+   "exceptions_transcript": "Ça dépend de l'OPCO, chaque dossier est différent.", "deleguer_en_premier": false},
+  {"id": "t4", "libelle": "Organiser l'agenda de la direction", "source": "suggestion", "suggestion_id": "ad_agenda",
+   "frequence_tranche": "6-20", "duree_tranche": "<5", "applis_ids": ["gmail"], "recopie": false,
+   "declencheur": "demande_collegue", "exceptions_transcript": "", "deleguer_en_premier": false},
+  {"id": "t5", "libelle": "Préparer le comité pédagogique mensuel", "source": "saisie_libre",
+   "frequence_tranche": "1", "duree_tranche": ">60", "applis_ids": ["excel", "google-drive"], "recopie": false,
+   "declencheur": "demande_collegue", "exceptions_transcript": "Je décide au cas par cas ce qu'on présente, selon les urgences.",
+   "deleguer_en_premier": false}
+]

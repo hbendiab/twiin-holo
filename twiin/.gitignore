@@ -51,3 +51,4 @@ workflows/tuto-workflow.json
 workflows/hotkey.log
 workflows/server.log
 workflows/back-log.jsonl
+workflows/audit2/

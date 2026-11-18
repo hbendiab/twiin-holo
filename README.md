@@ -89,6 +89,14 @@ cd twiin
 .venv/bin/python tuto/build_tuto.py workflows/runs/<rejeu>-local.json --name <nom>   # données d'un tuto vidéo
 ```
 
+**Où travaille Holo dans une automatisation n8n.** Chaque bloc Holo a un réglage `env` :
+- `cloud` : navigateur hébergé chez H. L'employé continue à utiliser son Mac pendant que l'automatisation tourne. Pour les
+  sites web publics (LinkedIn, portails…). Un site qui demande une connexion passe par le coffre d'identifiants de H
+  (`HAI_VAULT_ID`), jamais par un mot de passe dans les étapes.
+- `mac` : ce Mac, avec la vraie souris. Obligatoire pour un logiciel installé (OneNote, Excel bureau…) ou un site local
+  (`127.0.0.1`, comptarex), que le cloud ne peut pas atteindre.
+- Sans réglage, le serveur Twiin choisit tout seul (`holoEnv()` dans `recorder/server.js`).
+
 **Autorisations macOS** pour VS Code (ou le Terminal) : Enregistrement de l'écran, Accessibilité, Surveillance de l'entrée.
 
 ## Secrets et données personnelles
