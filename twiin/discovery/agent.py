@@ -39,6 +39,13 @@ def _tools():
     return out
 
 
+TEXT_AT = """([x, y]) => {
+  const el = document.elementFromPoint(x, y);
+  if (!el) return '';
+  const t = el.closest('input,textarea,a,td,th,li,span,div,p,h1,h2,h3,b,strong') || el;
+  return String(t.value ?? t.innerText ?? '').trim().split('\\n')[0].slice(0, 300);
+}"""
+
 ELEMENT_AT = """([x, y]) => {
   const el = document.elementFromPoint(x, y);
   if (!el) return null;
@@ -49,7 +56,10 @@ ELEMENT_AT = """([x, y]) => {
 
 
 def run_agent(url: str, mission: str, out_dir: Path, model: str, max_steps: int = 30,
-              init_script: str | None = None, on_event=None) -> dict:
+              init_script: str | None = None, on_event=None, progress_fn=None, done_guard=None,
+              hints: str = "") -> dict:
+    """progress_fn(state) -> texte d'avancement montré à Holo à chaque étape ;
+    done_guard(state) -> raison de refuser « fini » (ou None) ; hints : conseils tirés de l'essai précédent."""
     """Rejoue `mission` dans le jumeau servi à `url`. Renvoie stats, issue et état final du jumeau."""
     from playwright.sync_api import sync_playwright
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -61,6 +71,9 @@ def run_agent(url: str, mission: str, out_dir: Path, model: str, max_steps: int 
     outcome, claimed_success, summary = "max_steps", None, ""
     last_call, t0 = 0.0, time.time()
     gap = FREE_GAP if model in FREE_MODELS else 0.5
+    refusals = 0
+    clipboard = ""
+    read_state = "() => (window.__twinState ? window.__twinState() : null)"
     with sync_playwright() as pw:
         browser = pw.chromium.launch()
         ctx = browser.new_context(viewport={"width": VIEW_W, "height": VIEW_H})
@@ -76,7 +89,14 @@ def run_agent(url: str, mission: str, out_dir: Path, model: str, max_steps: int 
             wait = gap - (time.time() - last_call)
             if wait > 0:
                 time.sleep(wait)
-            prompt = (mission + "\n\n## What you already did\n" + ("\n".join(history[-12:]) or "(nothing yet)") +
+            progress = ""
+            if progress_fn:
+                try:
+                    progress = "\n\n## Progress of the table (checked by the system)\n" + progress_fn(page.evaluate(read_state))
+                except Exception:  # noqa: BLE001
+                    progress = ""
+            prompt = (mission + (f"\n\n## Advice from the previous attempt\n{hints}" if hints else "") + progress +
+                      "\n\n## What you already did\n" + ("\n".join(history[-12:]) or "(nothing yet)") +
                       "\n\nLook at the screenshot and call exactly ONE tool for the next action.")
             uri = "data:image/jpeg;base64," + base64.b64encode(shot.read_bytes()).decode()
             resp = None
@@ -108,6 +128,14 @@ def run_agent(url: str, mission: str, out_dir: Path, model: str, max_steps: int 
                 args = json.loads(calls[0].function.arguments or "{}")
             except json.JSONDecodeError:
                 args = {}
+            if name == "done" and done_guard and refusals < 2:
+                why = done_guard(page.evaluate(read_state))
+                if why:
+                    refusals += 1
+                    stats["done_refused"] = refusals
+                    history.append(f"{step}. done REFUSED by the system: {why}")
+                    emit("refused", step=step, text=why)
+                    continue
             if name == "done":
                 outcome, claimed_success, summary = "done", bool(args.get("success")), str(args.get("summary", ""))
                 emit("done", step=step, text=summary)
@@ -131,6 +159,14 @@ def run_agent(url: str, mission: str, out_dir: Path, model: str, max_steps: int 
                     page.keyboard.press("ControlOrMeta+A")
                     page.keyboard.press("Backspace")
                     page.keyboard.type(str(args.get("text", "")), delay=30)
+                elif name == "copy_text":
+                    clipboard = page.evaluate(TEXT_AT, [px, py]) or ""
+                    args["copied"] = clipboard[:80]
+                elif name == "paste":
+                    page.mouse.click(px, py)
+                    page.keyboard.press("ControlOrMeta+A")
+                    page.keyboard.press("Backspace")
+                    page.keyboard.insert_text(clipboard)
                 elif name == "press_key":
                     page.keyboard.press(str(args.get("key", "Enter")))
                 elif name == "scroll":
@@ -143,7 +179,7 @@ def run_agent(url: str, mission: str, out_dir: Path, model: str, max_steps: int 
                 stats["errors"] += 1
                 history.append(f"{step}. {name} failed: {str(e)[:100]}")
         try:
-            state = page.evaluate("() => (window.__twinState ? window.__twinState() : null)")
+            state = page.evaluate(read_state)
         except Exception:  # noqa: BLE001
             state = None
         page.screenshot(path=str(out_dir / "final.jpg"), type="jpeg", quality=70)

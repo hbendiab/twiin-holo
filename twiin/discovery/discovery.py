@@ -44,7 +44,7 @@ from discovery.supa import Supa  # noqa: E402
 
 HF_MODEL = os.environ.get("HF_MODEL", "Qwen/Qwen3.8-27B")
 DEV_MODEL = os.environ.get("DISCOVERY_DEV_MODEL", "holo4-35b-a3b")  # pas de limite de débit : test dev rapide
-CASSE_MODELS = [m.strip() for m in os.environ.get("DISCOVERY_CASSE_MODELS", "holo3-1-35b-a3b,holo4-35b-a3b").split(",") if m.strip()]
+CASSE_MODEL = os.environ.get("DISCOVERY_CASSE_MODEL", "holo4-35b-a3b")  # holo3-1-35b-a3b = gratuit, 3x plus lent
 MAX_IMAGES = 4
 
 # Perturbations injectées dans le jumeau pour la casse (scripts exécutés à chaque chargement de page).
@@ -153,6 +153,8 @@ def load_frames(session_dir: Path) -> list[dict]:
 def norm(v) -> str:
     s = unicodedata.normalize("NFKD", str(v or "")).encode("ascii", "ignore").decode().lower()
     s = re.sub(r"(eur|€|\s)", "", s).replace(",", ".")
+    if s in ("-", "--", "n/a", "na", "?"):  # « — » devient vide après normalisation ; on aligne les autres marques d'absence
+        s = ""
     return s.rstrip("/")
 
 
@@ -313,17 +315,17 @@ def discover(session_dir: Path) -> None:
     st.set(work="dev_test", twin_seconds=round(time.time() - t0), twin_cost_usd=hf_cost,
            message=f"Jumeau construit en {time.time() - t0:.0f} s ; test dev avec {DEV_MODEL}")
 
-    # 5. test « dev » : le jumeau est-il rejouable ?
+    # 5. itération 1 (test « dev ») : le jumeau est-il rejouable ? Guidée comme les suivantes.
     url, srv = serve(twin_dir)
     try:
-        res = run_agent(url, spec["mission"], session_dir / "runs" / "dev", DEV_MODEL,
-                        max_steps=int(os.environ.get("DISCOVERY_MAX_STEPS", "50")))
+        res, sc, errs = run_iteration(spec, url, session_dir / "runs" / "it1-base", DEV_MODEL, "base")
     finally:
         srv.shutdown()
-    sc, errs = score(spec.get("expected"), res["state"])
-    record_test(sb, tid, "base", res, sc, errs, "dev")
+    record_test(sb, tid, "base", res, sc, errs, "itération 1 (dev)")
+    first = summary_of(DEV_MODEL, "base", res, sc, errs, 1)
     dev = {"model": DEV_MODEL, "success_rate": round(sc, 3), "claimed_success": res["claimed_success"],
            "seconds": res["stats"]["seconds"], "calls": res["stats"]["calls"], "errors": errs}
+    st.set(iterations=[first])
     uploader.join(timeout=120)
     sb.update("taches", f"id=eq.{tid}", {"twin": {"fidelite": spec.get("fidelite"), "mission": spec["mission"],
                                                     "expected": spec.get("expected"), "dev_test": dev,
@@ -335,33 +337,116 @@ def discover(session_dir: Path) -> None:
         answer(session_dir)
 
 
-# ---------------------------------------------------------------- phase 2 : casse
+# ---------------------------------------------------------------- guidage de Holo (sans jamais lui donner les valeurs)
+
+GUIDE = """
+## How to work (rules checked by the system)
+- Work ONE item at a time: open its page or tab, read the values, then write them in that item's row, then the next item.
+- Copy text EXACTLY as displayed. A link is the address shown in the page's address bar, copied completely: never invent a link.
+- A price is the CURRENT price of the product of the page: ignore crossed-out old prices, ads, banners and other products.
+- Fill EVERY column of the row. If an information really does not exist on the page, write "—".
+- Click a cell before typing in it (type_text does it for you). Never use buy / add to cart / send / validate buttons.
+- Call done only when every row and every column is filled."""
+
+
+def _columns(expected: dict) -> tuple[int, list[str]]:
+    rows = (expected or {}).get("rows") or []
+    cols = list(rows[0].keys()) if rows else []
+    return len(rows), cols
+
+
+def progress_text(expected: dict, state: dict | None) -> str:
+    """Avancement du tableau, sans aucune valeur attendue : lignes remplies et cases encore vides."""
+    n, cols = _columns(expected)
+    got = (state or {}).get("rows") or []
+    lines = [f"{len(got)}/{n} rows started."]
+    for i in range(n):
+        row = got[i] if i < len(got) else {}
+        empty = [c for c in cols if not str(row.get(c, "")).strip()]
+        lines.append(f"Row {i + 1}: " + ("complete" if not empty else "empty cells: " + ", ".join(empty)))
+    return "\n".join(lines)
+
+
+def done_guard(expected: dict):
+    n, cols = _columns(expected)
+
+    def guard(state):
+        got = (state or {}).get("rows") or []
+        if len(got) < n:
+            return f"only {len(got)} of {n} rows are filled"
+        for i, row in enumerate(got[:n], 1):
+            empty = [c for c in cols if not str(row.get(c, "")).strip()]
+            if empty:
+                return f"row {i} still has empty cells: {', '.join(empty)}"
+        return None
+    return guard
+
+
+def hints_from(errs: list[str]) -> str:
+    """Conseils pour l'essai suivant à partir des erreurs, sans révéler les valeurs attendues."""
+    cols = sorted({e.split(" : ")[0] for e in errs})
+    tips = []
+    if any("prix" in c or "price" in c for c in cols):
+        tips.append("Last time some prices were wrong: take the current price of THE product of the page, not a crossed-out price, an ad or another product.")
+    if any("lien" in c or "link" in c or "url" in c for c in cols):
+        tips.append("Last time some links were wrong: copy the full address shown in the address bar of each page, not the site's home.")
+    others = [c for c in cols if not any(k in c for k in ("prix", "price", "lien", "link", "url"))]
+    if others:
+        tips.append("Last time these columns were wrong or empty: " + ", ".join(others) + ". Read them carefully on each page.")
+    return "\n".join(tips)
+
+
+def run_iteration(spec, url, out, model, variant, hints="") -> tuple[dict, float, list[str]]:
+    res = run_agent(url, spec["mission"] + GUIDE, out, model, max_steps=int(os.environ.get("DISCOVERY_MAX_STEPS", "40")),
+                    init_script=VARIANTS[variant], progress_fn=lambda s: progress_text(spec.get("expected"), s),
+                    done_guard=done_guard(spec.get("expected")), hints=hints)
+    sc, errs = score(spec.get("expected"), res["state"])
+    return res, sc, errs
+
+
+def summary_of(model, variant, res, sc, errs, it):
+    return {"iteration": it, "model": model, "variant": variant, "success_rate": round(sc, 3),
+            "claimed_success": res["claimed_success"], "false_success": bool(res["claimed_success"]) and sc < 1,
+            "seconds": res["stats"]["seconds"], "calls": res["stats"]["calls"], "blocked": res["stats"]["blocked"],
+            "done_refused": res["stats"].get("done_refused", 0), "errors": errs[:3]}
+
+
+# ---------------------------------------------------------------- phase 2 : casse (3 itérations au plus)
 
 def casse(session_dir: Path) -> None:
+    """Itération 1 = le test dev (déjà fait pendant la question). Puis au plus 2 itérations :
+    si l'essai précédent a réussi, on durcit (popup, puis lenteur) ; sinon on réessaie la même chose avec des conseils.
+    Pas de casse ? Tant mieux : on s'arrête là."""
     st = State(session_dir)
     tid = st.data["task_id"]
     spec = json.loads((session_dir / "twin" / "spec.json").read_text(encoding="utf-8"))
     sb = Supa()
     sb.update("taches", f"id=eq.{tid}", {"status": "confirmed"})
-    results = []
+    results = list(st.data.get("iterations") or [])
+    total = int(os.environ.get("DISCOVERY_ITERATIONS", "3"))
+    harder = ["popup", "lent", "zoom"]
     url, srv = serve(session_dir / "twin")
     try:
-        for model in CASSE_MODELS:
-            for name, script in VARIANTS.items():
-                st.set(phase="casse", message=f"Casse : variante {name} avec {model}", casse=results, progress={"done": len(results), "total": len(CASSE_MODELS) * len(VARIANTS)})
-                try:
-                    res = run_agent(url, spec["mission"], session_dir / "runs" / f"casse-{model}-{name}", model,
-                                    max_steps=int(os.environ.get("DISCOVERY_MAX_STEPS", "50")), init_script=script)
-                except Exception as e:  # noqa: BLE001
-                    results.append({"model": model, "variant": name, "error": str(e)[:200]})
-                    continue
-                sc, errs = score(spec.get("expected"), res["state"])
-                record_test(sb, tid, name, res, sc, errs, "casse")
-                results.append({"model": model, "variant": name, "success_rate": round(sc, 3),
-                                "claimed_success": res["claimed_success"],
-                                "false_success": bool(res["claimed_success"]) and sc < 1,
-                                "seconds": res["stats"]["seconds"], "calls": res["stats"]["calls"],
-                                "blocked": res["stats"]["blocked"], "errors": errs[:3]})
+        while len(results) < total:
+            last = results[-1] if results else None
+            if last and last["success_rate"] >= 0.9:
+                done_variants = {r["variant"] for r in results if r["success_rate"] >= 0.9}
+                variant = next((v for v in harder if v not in done_variants), "zoom")
+                hints = ""
+            else:
+                variant = last["variant"] if last else "base"
+                hints = hints_from(last["errors"]) if last else ""
+            it = len(results) + 1
+            st.set(phase="casse", message=f"Itération {it} : {variant} avec {CASSE_MODEL}", iterations=results,
+                   progress={"done": len(results), "total": total})
+            try:
+                res, sc, errs = run_iteration(spec, url, session_dir / "runs" / f"it{it}-{variant}", CASSE_MODEL, variant, hints)
+            except Exception as e:  # noqa: BLE001
+                results.append({"iteration": it, "model": CASSE_MODEL, "variant": variant, "success_rate": 0.0,
+                                "false_success": False, "seconds": 0, "calls": 0, "errors": [str(e)[:200]]})
+                continue
+            record_test(sb, tid, variant, res, sc, errs, f"itération {it}")
+            results.append(summary_of(CASSE_MODEL, variant, res, sc, errs, it))
     finally:
         srv.shutdown()
     sb.update("taches", f"id=eq.{tid}", {"status": "tested"})
@@ -376,43 +461,33 @@ def casse(session_dir: Path) -> None:
         })
     except Exception as e:  # noqa: BLE001
         print("recommandation non enregistrée :", e, flush=True)
-    st.set(phase="done", message="Casse terminée", casse=results, solution=solution)
+    st.set(phase="done", message="Itérations terminées", iterations=results, solution=solution,
+           progress={"done": len(results), "total": total})
 
 
 def propose(results: list[dict]) -> dict:
-    """Choisit la solution à partir des essais : le modèle le plus fiable sous perturbations, sinon accélérer (tuto)."""
-    by_model: dict[str, list[dict]] = {}
-    for r in results:
-        if "success_rate" in r:
-            by_model.setdefault(r["model"], []).append(r)
-    ranking = []
-    for m, rs in by_model.items():
-        avg = sum(r["success_rate"] for r in rs) / len(rs)
-        full = sum(1 for r in rs if r["success_rate"] >= 1)
-        faux = sum(1 for r in rs if r["false_success"])
-        secs = sum(r["seconds"] for r in rs) / len(rs)
-        ranking.append({"modele": m, "moyenne": round(avg, 3), "reussites": full, "essais": len(rs), "faux_reussis": faux,
-                        "duree_moy_s": round(secs), "gratuit": m == "holo3-1-35b-a3b"})
-    ranking.sort(key=lambda r: (-r["moyenne"], r["faux_reussis"], not r["gratuit"], r["duree_moy_s"]))
-    if not ranking:
-        return {"kind": "accelerate", "confidence": "low", "texte": "Aucun essai exploitable : Twiin propose un tuto pour accélérer la tâche.",
-                "raisons": ["les essais automatiques ont échoué"], "classement": []}
-    best = ranking[0]
-    fragile = [r["variant"] for r in results if r.get("model") == best["modele"] and r.get("success_rate", 0) < 1]
-    raisons = [f"{best['reussites']}/{best['essais']} essais parfaits avec {best['modele']} (moyenne {round(best['moyenne'] * 100)} %)",
-               f"durée moyenne {best['duree_moy_s']} s par exécution"]
-    if fragile:
-        raisons.append("fragile face à : " + ", ".join(fragile))
-    if best["faux_reussis"]:
-        raisons.append(f"{best['faux_reussis']} faux « réussi » : une vérification automatique est indispensable")
-    if best["moyenne"] >= 0.9 and best["reussites"] >= max(1, best["essais"] - 1):
-        return {"kind": "automate", "confidence": "high" if not fragile else "medium", "modele": best["modele"],
-                "texte": f"Automatiser la tâche avec Holo ({best['modele']}{', gratuit' if best['gratuit'] else ''}) "
-                         "et une vérification du résultat à chaque exécution.", "raisons": raisons, "classement": ranking}
-    return {"kind": "accelerate", "confidence": "medium" if best["moyenne"] >= 0.6 else "low", "modele": best["modele"],
+    """Automatiser si la dernière itération réussit et qu'au moins 2 itérations sur 3 réussissent ; sinon accélérer."""
+    ok = [r for r in results if r.get("success_rate", 0) >= 0.9]
+    last = results[-1] if results else None
+    model = last["model"] if last else CASSE_MODEL
+    secs = round(sum(r.get("seconds", 0) for r in results) / max(1, len(results)))
+    faux = sum(1 for r in results if r.get("false_success"))
+    raisons = [f"{len(ok)}/{len(results)} itérations réussies avec {model} "
+               f"(dernière : {round((last or {}).get('success_rate', 0) * 100)} %)",
+               f"durée moyenne {secs} s par exécution"]
+    survived = [r["variant"] for r in ok if r["variant"] != "base"]
+    if survived:
+        raisons.append("résiste à : " + ", ".join(survived))
+    if faux:
+        raisons.append(f"{faux} faux « réussi » détecté(s) : la vérification automatique reste indispensable")
+    if last and last["success_rate"] >= 0.9 and len(ok) >= min(2, len(results)):
+        return {"kind": "automate", "confidence": "high" if len(ok) == len(results) else "medium", "modele": model,
+                "texte": f"Automatiser la tâche avec Holo ({model}) et une vérification du résultat à chaque exécution.",
+                "raisons": raisons, "iterations": results}
+    return {"kind": "accelerate", "confidence": "medium" if (last or {}).get("success_rate", 0) >= 0.6 else "low", "modele": model,
             "texte": "L'automatisation n'est pas encore assez fiable : Twiin propose d'accélérer la tâche (tuto + raccourcis) "
-                     "et de réessayer l'automatisation après correction des points fragiles.",
-            "raisons": raisons, "classement": ranking}
+                     "et réessaiera l'automatisation après correction des points fragiles.",
+            "raisons": raisons, "iterations": results}
 
 
 def answer(session_dir: Path) -> None:
