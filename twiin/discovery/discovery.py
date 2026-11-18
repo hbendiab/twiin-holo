@@ -265,8 +265,10 @@ def discover(session_dir: Path) -> None:
             except Exception as e:  # noqa: BLE001
                 print("capture non envoyée :", e, flush=True)
         sb.update("taches", f"id=eq.{tid}", {"screenshots": shots})
+    # Par défaut les captures restent sur le poste (règle de l'équipe : texte et chiffres seulement dans Supabase)
     uploader = threading.Thread(target=upload_all, daemon=True)
-    uploader.start()
+    if os.environ.get("DISCOVERY_UPLOAD_CAPTURES", "off") == "on":
+        uploader.start()
 
     # 3. fiche de cadrage (appel court, texte seul) -> question posée tout de suite
     st.set(phase="cadrage", message="Reformulation de la tâche")
@@ -334,7 +336,8 @@ def discover(session_dir: Path) -> None:
     dev = {"model": DEV_MODEL, "success_rate": best["success_rate"], "seconds": max(r["seconds"] for r in wave1),
            "chemins": [r["route"] for r in wave1]}
     st.set(iterations=wave1, bricks=bricks)
-    uploader.join(timeout=120)
+    if uploader.is_alive():
+        uploader.join(timeout=120)
     sb.update("taches", f"id=eq.{tid}", {"twin": {"fidelite": spec.get("fidelite"), "mission": spec["mission"],
                                                     "expected": spec.get("expected"), "dev_test": dev,
                                                     "hf_cost_usd": hf_cost}})

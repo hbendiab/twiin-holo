@@ -277,12 +277,17 @@ def execute(wid):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("plan", type=Path)
+    ap.add_argument("plan", type=Path, nargs="?")
     ap.add_argument("--no-run", action="store_true")
+    ap.add_argument("--run", metavar="WORKFLOW_ID", help="lance seulement une automatisation déjà importée (page « Mes automatisations »)")
     ap.add_argument("--events", help="fichier .jsonl de progression (page Twiin)")
     a = ap.parse_args()
     global EVENTS
     EVENTS = a.events
+    if a.run:
+        ok, result, exec_id = execute_mcp(a.run)
+        ev("done", ok=ok, id=a.run, execution=exec_id, status="success" if ok else "error")
+        sys.exit(0 if ok else 1)
     plan = json.loads(a.plan.read_text())
     wf = compile_plan(plan)
     ev("compiled", id=wf["id"], name=wf["name"],

@@ -12,6 +12,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Google+Sans+Flex:wght@300;400;500;600;700&display=swap">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="ui/twiin-ui.css">
 <style>
   /* Direction « Clair net » (cahier UX du 18/11) : blanc, un seul bleu d'action, coins arrondis, Google Sans Flex.
      Règle : UN SEUL bouton plein à l'écran (classe .primary), c'est la prochaine action. Tous les autres sont en contour. */
@@ -76,6 +77,13 @@
   .brand svg { width: 52px; height: 34px; display: block; }
   .brand b { font-weight: 700; }
   #themeBtn { font-size: 13px; padding: 7px 14px; color: var(--text-dim); }
+  .topbar .nav { display: flex; gap: 4px; flex-wrap: wrap; margin-right: auto; margin-left: 12px; }
+  .topbar .nav a { font-size: 13.5px; color: var(--text-dim); text-decoration: none; padding: 6px 10px; border-radius: 999px; white-space: nowrap; }
+  .topbar .nav { flex-wrap: nowrap; margin-left: 4px; }
+  body { max-width: 860px; }
+  .topbar .nav a:hover { color: var(--text); background: var(--panel-2); }
+  .topbar .nav a[aria-current="page"] { color: var(--accent); background: var(--accent-soft); font-weight: 600; }
+  @media (max-width: 640px) { .topbar { flex-wrap: wrap; } .topbar .nav { order: 3; width: 100%; margin-left: 0; } }
 
   h1 { font-size: 40px; font-weight: 400; letter-spacing: -0.03em; line-height: 1.1; margin: 0 0 10px; text-wrap: balance; }
   .subtitle { color: var(--text-dim); font-size: 15px; margin: 0 0 28px; max-width: 62ch; }
@@ -234,6 +242,49 @@
   .num-inline { width: 20px; height: 20px; font-size: 11px; margin-right: 4px; vertical-align: -4px; }
   .step-help { font-size: 13px; color: var(--text-dim); margin: 0 0 16px; }
   .card-step { font-size: 14px; font-weight: 600; color: var(--text); margin: 20px 0 4px; display: flex; align-items: center; gap: 8px; }
+  .tuto { margin-top: 12px; padding: 14px 16px; border-radius: 12px; background: var(--panel-2); border: 1px solid var(--panel-border); }
+  .tuto h4 { margin: 0 0 10px; font-size: 14px; }
+  .tuto-video video { width: 100%; border-radius: 10px; margin-top: 12px; background: #000; display: block; }
+  .link-btn { display: inline-block; font-size: 14px; font-weight: 500; padding: 9px 16px; border-radius: 999px; text-decoration: none;
+              border: 1px solid var(--panel-border); background: var(--panel); color: var(--text); }
+  .link-btn:hover { border-color: var(--accent); color: var(--accent); }
+  /* --- une page par étape : seule la vue de l'étape en cours est affichée --- */
+  .view { display: none; }
+  body[data-view="1"] .view[data-view~="1"], body[data-view="2"] .view[data-view~="2"],
+  body[data-view="3"] .view[data-view~="3"] { display: block; }
+  body[data-view="1"] #results { display: none; }
+  /* « Tester et casser » (test par Holo) est retiré du parcours employé : il vit dans le Back (travail de Lucas) */
+  .part-test { display: none !important; }
+  body[data-view="2"] .part-reco, body[data-view="3"] .part-relire { display: none; }
+  body[data-view="3"] .card-section { margin-top: 12px; padding-top: 0; border-top: 0; }
+  .card-section > .card-step.big { display: none; } /* le titre de l'étape est déjà en haut de la page */
+  #stepper li { cursor: pointer; }
+  #stepper li:hover { border-color: var(--accent); }
+  .pager { display: flex; justify-content: space-between; gap: 12px; margin-top: 32px; padding-top: 18px; border-top: 1px solid var(--panel-border); }
+  .pager button:empty { visibility: hidden; }
+  .no-task { text-align: center; padding: 32px 20px; margin-bottom: 16px; }
+  .no-task b { font-size: 17px; }
+  .no-task p { color: var(--text-dim); margin: 6px 0 0; }
+  .no-task .controls { justify-content: center; }
+  /* --- étape 4 · une seule recommandation, deux options --- */
+  .reco { margin-top: 14px; }
+  .verdict-head { padding: 14px 16px; border-radius: 12px; background: var(--accent-soft); margin-bottom: 12px; }
+  .verdict-head h4 { margin: 2px 0 6px; font-size: 18px; font-weight: 600; }
+  .eyebrow-small { margin: 0 !important; font-size: 11px !important; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--accent) !important; }
+  .options { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+  .option { position: relative; padding: 16px; border-radius: 14px; border: 1px solid var(--panel-border); background: var(--panel); display: flex; flex-direction: column; }
+  .option.rec { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent) inset; }
+  .option h4 { margin: 0; font-size: 16px; font-weight: 600; }
+  .option .sub { margin: 2px 0 10px !important; font-size: 13px !important; }
+  .option .wf-actions { margin-top: auto; padding-top: 12px; }
+  .option .tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); margin-bottom: 8px; }
+  .option .observed { font-size: 12px; color: var(--text-dim); margin-top: 2px; }
+  .rec-badge { position: absolute; top: -9px; right: 12px; font-size: 11px; font-weight: 600; color: var(--accent-ink); background: var(--accent);
+               border-radius: 999px; padding: 1px 9px; }
+  @media (max-width: 640px) { .options { grid-template-columns: minmax(0, 1fr); } }
+  .card-section { margin-top: 22px; padding-top: 16px; border-top: 1px solid var(--panel-border); }
+  .card-step.big { font-size: 16px; margin-top: 0; }
+  .card-help { font-size: 13px !important; color: var(--text-dim); margin: 2px 0 10px !important; max-width: 66ch; }
   .optional { margin-top: 20px; padding-top: 12px; border-top: 1px dashed var(--panel-border); }
   .optional .card-step { color: var(--text-dim); font-weight: 500; }
 
@@ -253,10 +304,77 @@
   .chip .ticon { width: 14px; height: 14px; vertical-align: -3px; margin-right: 4px; }
   .n8n h4 .ticon { width: 18px; height: 18px; }
 
+  /* --- étape 1 · audit --- */
+  .panel { background: var(--panel); border: 1px solid var(--panel-border); border-radius: 18px; padding: 18px 22px; margin: 0 0 16px; }
+  .panel-head { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; flex-wrap: wrap; margin-bottom: 8px; }
+  .panel-head h3 { margin: 0; font-size: 17px; font-weight: 600; }
+  .panel-meta { font-size: 12px; color: var(--text-dim); }
+  .panel .hint { font-size: 13px; color: var(--text-dim); margin: 0 0 10px; }
+  .panel .controls { margin: 12px 0 4px; }
+  .ob-stage { display: grid; grid-template-columns: 120px minmax(0, 1fr); gap: 18px; align-items: center; margin: 6px 0 10px; }
+  #obCells svg { width: 120px; height: 72px; display: block; }
+  .ob-question { font-size: 18px; font-weight: 500; letter-spacing: -0.01em; margin: 0; line-height: 1.35; }
+  .ob-hint { font-size: 13px; color: var(--text-dim); margin: 6px 0 0; min-height: 18px; }
+  .ob-hint .rec { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--bad); margin-right: 6px; animation: blink 1s ease-in-out infinite; }
+  @keyframes blink { 50% { opacity: 0.25; } }
+  .ob-input { display: flex; gap: 8px; flex-wrap: wrap; }
+  .ob-input input { flex: 1 1 260px; min-width: 0; font: 14px var(--font); padding: 10px 14px; border-radius: 999px;
+                    border: 1px solid var(--panel-border); background: var(--panel-2); color: var(--text); }
+  .ob-input input:focus { outline: none; border-color: var(--accent); background: var(--panel); }
+  .ob-answers { margin: 12px 0 0; padding: 0; list-style: none; display: grid; gap: 8px; counter-reset: q; }
+  .ob-answers li { counter-increment: q; display: grid; grid-template-columns: 22px minmax(0, 1fr); gap: 4px 10px; font-size: 13px; }
+  .ob-answers li::before { content: counter(q); grid-row: span 2; width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center;
+                           background: var(--accent-soft); color: var(--accent); font-size: 11px; font-weight: 600; }
+  .ob-answers .q { color: var(--text-dim); }
+  .ob-answers input { font: 13px var(--font); padding: 6px 10px; border-radius: 8px; border: 1px solid var(--panel-border);
+                      background: var(--panel-2); color: var(--text); min-width: 0; }
+  .ob-answers li.current input { border-color: var(--accent); }
+  #obAnswersBox > summary { cursor: pointer; font-size: 13px; color: var(--text-dim); margin-top: 12px; }
+  #obAnswersBox:not([open]) > summary { margin-bottom: 0; }
+  button.quiet { border-color: transparent; background: transparent; color: var(--text-dim); }
+  .scan-more { margin-top: 10px; }
+  .sphere-box { margin: 8px 0 4px; padding: 8px 0 4px; border-radius: 16px;
+                background: radial-gradient(60% 60% at 50% 45%, var(--accent-soft), transparent 70%); }
+  .sphere-caption { text-align: center; font-size: 13px; color: var(--text-dim); margin: 0 0 6px; min-height: 18px; }
+  .tool .days { color: var(--text-dim); font-weight: 500; font-variant-numeric: tabular-nums; }
+  .privacy { font-size: 12px; color: var(--text-dim); margin: 12px 0 0; }
+  #profileCard { margin-top: 14px; padding: 14px 16px; border-radius: 14px; background: var(--panel-2); border: 1px solid var(--panel-border); }
+  #profileCard h4 { margin: 0 0 2px; font-size: 18px; font-weight: 600; }
+  #profileCard .role { font-size: 14px; color: var(--text-dim); margin: 0 0 10px; }
+  #profileCard .resume { font-size: 14px; margin: 0 0 10px; }
+  #profileCard dl { display: grid; grid-template-columns: 150px minmax(0, 1fr); gap: 6px 12px; margin: 0; font-size: 13px; }
+  #profileCard dt { color: var(--text-dim); }
+  #profileCard dd { margin: 0; }
+  .tag-list { display: flex; flex-wrap: wrap; gap: 6px; }
+  .tag-list span { font-size: 12px; padding: 2px 9px; border-radius: 999px; background: var(--panel); border: 1px solid var(--panel-border); }
+  #profileCard .corrections { font-size: 12px; color: var(--text-dim); margin: 10px 0 0; }
+  .check { display: flex; gap: 8px; align-items: flex-start; font-size: 13px; color: var(--text); cursor: pointer; }
+  .check input { margin-top: 3px; accent-color: var(--accent); }
+  .scan-summary { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0; font-size: 13px; }
+  .scan-summary span { padding: 4px 10px; border-radius: 999px; background: var(--panel-2); border: 1px solid var(--panel-border); }
+  .scan-summary b { font-variant-numeric: tabular-nums; }
+  .tool-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(168px, 1fr)); gap: 8px; }
+  .tool { position: relative; display: grid; grid-template-columns: 32px minmax(0, 1fr); gap: 2px 10px; align-items: center;
+          padding: 10px 12px; border-radius: 12px; border: 1px solid var(--panel-border); background: var(--panel); }
+  .tool .ticon, .tool .noicon { grid-row: span 2; width: 32px; height: 32px; margin: 0; border-radius: 8px; }
+  .tool .noicon { display: grid; place-items: center; background: var(--panel-2); color: var(--text-dim); font-weight: 600; font-size: 14px; }
+  .tool b { font-size: 13px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .tool small { font-size: 11px; font-weight: 600; }
+  .tool small.api { color: var(--ok); } .tool small.noapi { color: var(--warn); } .tool small.unknown { color: var(--text-dim); }
+  .tool.cited { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent) inset; }
+  .tool .badge-cited { position: absolute; top: -8px; right: 8px; font-size: 10px; font-weight: 600; color: var(--accent-ink);
+                       background: var(--accent); border-radius: 999px; padding: 1px 7px; }
+  .tool.old { opacity: 0.5; }
+  .tool .recent { position: absolute; top: 8px; right: 8px; width: 7px; height: 7px; border-radius: 50%; background: var(--ok); }
+  .scan-cli { font-size: 12px; color: var(--text-dim); margin-top: 10px; }
+  .next-row { justify-content: flex-end; margin: 0 0 40px; }
+
   @media (max-width: 560px) {
     h1 { font-size: 30px; }
     #analysis { grid-template-columns: minmax(0, 1fr); }
     #reBtn { margin-left: 0; }
+    .ob-stage { grid-template-columns: minmax(0, 1fr); }
+    #profileCard dl { grid-template-columns: minmax(0, 1fr); }
   }
   @media (prefers-reduced-motion: reduce) { .phases li.active i { animation: none; } }
 </style>
@@ -264,24 +382,72 @@
 <body>
   <header class="topbar">
     <div class="brand" aria-label="Twiin"><span id="logoCells"></span><span>Tw<b>ii</b>n</span></div>
+    <nav class="nav"><a href="/" aria-current="page">Analyser une tâche</a><a href="/videos.html">Mes vidéos</a><a href="/automatisations.html">Mes automatisations</a><a href="/back.html" class="nav-back">Back</a></nav>
     <button id="themeBtn" type="button">Thème sombre</button>
   </header>
 
+  <section class="view" data-view="1">
   <h1>Analyse tes tâches. Automatise tes process.</h1>
   <p class="subtitle">Fais ta tâche comme d'habitude, Twiin regarde. Il la découpe en étapes, te montre où gagner du temps ou te propose une automatisation, et enfin la transforme en tuto vidéo. Le texte de l'écran est lu sur ton Mac ; seules les images et ce texte partent à l'analyse.</p>
 
+  </section>
+
   <ol id="stepper">
-    <li data-step="1"><span>1</span>Enregistrer</li>
-    <li data-step="2"><span>2</span>Relire les étapes</li>
-    <li data-step="3"><span>3</span>Améliorer mon process</li>
-    <li data-step="4"><span>4</span>Accélérer ou automatiser</li>
-    <li data-step="5"><span>5</span>Créer</li>
+    <li data-step="1"><span>1</span>Audit</li>
+    <li data-step="2"><span>2</span>Enregistrer</li>
+    <li data-step="3"><span>3</span>Reco</li>
   </ol>
 
-  <h2 class="step-title"><span class="num">1</span> Enregistre ta tâche</h2>
-  <p class="step-help">Plusieurs écrans ? Clique sur « Ajouter un écran » une fois par écran. Fais ta tâche normalement, puis « Terminer et analyser ».</p>
+  <section class="view" data-view="1">
+  <h2 class="step-title"><span class="num">1</span> Fais connaissance avec Twiin</h2>
+  <p class="step-help">Deux minutes : présente-toi, puis laisse Twiin regarder quels logiciels sont installés. Tu peux passer cette étape.</p>
+
+  <section class="panel" id="onboard">
+    <div class="panel-head"><h3>Présente-toi</h3><span class="panel-meta" id="obMeta">8 questions · à voix haute ou par écrit</span></div>
+    <div class="ob-stage">
+      <div id="obCells"></div>
+      <div class="ob-talk">
+        <p class="ob-question" id="obQuestion">Twiin va te poser quelques questions sur ton travail, pour mieux t'aider ensuite.</p>
+        <p class="ob-hint" id="obHint"></p>
+      </div>
+    </div>
+    <div class="ob-input" id="obInputRow" hidden>
+      <input id="obText" type="text" placeholder="Ou écris ta réponse ici, puis Entrée" autocomplete="off">
+      <button id="obDoneBtn" type="button">J'ai fini de répondre</button>
+      <button id="obSkipBtn" type="button">Passer</button>
+    </div>
+    <div class="controls"><button id="obStartBtn" type="button">Commencer la présentation</button>
+      <button id="obSkipAllBtn" type="button" class="quiet">Passer la présentation</button>
+      <button id="obUpdateBtn" type="button" hidden>Mettre à jour ma fiche</button></div>
+    <div id="profileCard" hidden></div>
+    <details id="obAnswersBox" open><summary>Mes réponses</summary><ol class="ob-answers" id="obAnswers"></ol></details>
+    <p class="privacy">Ta voix est transcrite par ElevenLabs, puis l'audio est effacé. Tes réponses et ta fiche restent sur ce Mac.</p>
+  </section>
+
+  <section class="panel" id="scan">
+    <div class="panel-head"><h3>Les logiciels de ton poste</h3><span class="panel-meta" id="scanMeta"></span></div>
+    <p class="hint">Twiin lit seulement le nom, la version et la catégorie des applications installées. Jamais tes fichiers ni ton historique.</p>
+    <label class="check"><input type="checkbox" id="usageChk"> Classer mes applis par utilisation sur les 30 derniers jours. Twiin compte
+      seulement les jours où chaque appli a été ouverte, jamais ce que tu y fais.</label>
+    <div class="controls"><button id="scanBtn" type="button">Scanner mon ordinateur</button></div>
+    <div class="sphere-box" id="sphereBox" hidden>
+      <div id="scanSphere"></div>
+      <p class="sphere-caption" id="sphereCaption"></p>
+    </div>
+    <div id="scanSummary" class="scan-summary"></div>
+    <div id="scanGrid" class="tool-grid"></div>
+    <div class="scan-more"><button id="scanMoreBtn" type="button" class="quiet" hidden></button></div>
+    <div id="scanCli" class="scan-cli"></div>
+  </section>
+  <div class="controls next-row"><button id="toRecordBtn" type="button">Continuer : enregistrer une tâche</button></div>
+  </section>
+
+  <section class="view" data-view="2">
+
+  <h2 class="step-title" id="recordTitle"><span class="num">2</span> Enregistre ta tâche</h2>
+  <p class="step-help">Plusieurs écrans ? Clique sur « Ajouter un écran » une fois par écran. Fais ta tâche normalement, puis « Terminer et analyser ». Tu relis ensuite les étapes trouvées.</p>
   <div class="controls">
-    <button id="startBtn" class="primary">Enregistrer ma tâche</button>
+    <button id="startBtn">Enregistrer ma tâche</button>
     <button id="addBtn" disabled>+ Ajouter un écran</button>
     <button id="stopBtn" disabled>Terminer et analyser</button>
     <button id="reBtn" title="Refaire l'analyse du dernier enregistrement, sans le refaire">Réanalyser le dernier enregistrement</button>
@@ -313,8 +479,28 @@
 
   <div id="frames"></div>
   <div id="journal"></div>
+  </section>
+
+  <section class="view" data-view="3">
+    <h2 class="step-title"><span class="num">3</span> Reco : accélérer ou automatiser</h2>
+  </section>
+  <section class="view panel no-task" data-view="3" id="noTask" hidden>
+    <b>Pas encore de tâche analysée</b>
+    <p>Enregistre d'abord une tâche (étape 2), ou ouvre l'exemple « Veille L'Oréal ».</p>
+    <div class="controls"><button type="button" data-go="2">Enregistrer une tâche</button>
+      <button type="button" id="noTaskExample">Ouvrir l'exemple</button></div>
+  </section>
+
   <div id="results"></div>
 
+  <nav class="pager" aria-label="Étapes">
+    <button type="button" id="prevBtn"></button>
+    <button type="button" id="nextBtn"></button>
+  </nav>
+
+  <script src="/vendor/supabase/supabase.js"></script>
+  <script src="auth.js"></script>
+  <script src="ui/twiin-ui.js"></script>
   <script src="app.js"></script>
   <script src="discovery.js"></script>
 </body>

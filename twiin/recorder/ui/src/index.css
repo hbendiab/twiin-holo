@@ -1,0 +1,6 @@
+/* Tailwind SANS sa remise à zéro globale (preflight) : la page Twiin garde ses propres styles,
+   seules les classes utilisées par les composants React sont ajoutées. */
+@layer theme, utilities;
+@import "tailwindcss/theme.css" layer(theme);
+@import "tailwindcss/utilities.css" layer(utilities);
+@source "./";
