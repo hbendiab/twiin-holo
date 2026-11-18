@@ -317,7 +317,7 @@ def discover(session_dir: Path) -> None:
     url, srv = serve(twin_dir)
     try:
         res = run_agent(url, spec["mission"], session_dir / "runs" / "dev", DEV_MODEL,
-                        max_steps=int(os.environ.get("DISCOVERY_MAX_STEPS", "30")))
+                        max_steps=int(os.environ.get("DISCOVERY_MAX_STEPS", "50")))
     finally:
         srv.shutdown()
     sc, errs = score(spec.get("expected"), res["state"])
@@ -351,7 +351,7 @@ def casse(session_dir: Path) -> None:
                 st.set(phase="casse", message=f"Casse : variante {name} avec {model}", casse=results, progress={"done": len(results), "total": len(CASSE_MODELS) * len(VARIANTS)})
                 try:
                     res = run_agent(url, spec["mission"], session_dir / "runs" / f"casse-{model}-{name}", model,
-                                    max_steps=int(os.environ.get("DISCOVERY_MAX_STEPS", "30")), init_script=script)
+                                    max_steps=int(os.environ.get("DISCOVERY_MAX_STEPS", "50")), init_script=script)
                 except Exception as e:  # noqa: BLE001
                     results.append({"model": model, "variant": name, "error": str(e)[:200]})
                     continue
