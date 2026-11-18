@@ -920,9 +920,13 @@ iconsReady.then(() => {
   // http://localhost:3000/#exemple ouvre directement l'exemple (pratique en démo si l'enregistrement en direct coince)
   if (location.hash === '#exemple') document.getElementById('exOpenBtn').click();
 });
-fetch('/api/candidates').then((r) => r.json()).then((d) => {
-  if (d.workflows?.length) { lastWorkflows = d.workflows; document.getElementById('lastBtn').hidden = false; }
-}).catch(() => {});
+// Le dernier résultat n'est proposé qu'une fois la compréhension confirmée par l'employé.
+Promise.all([fetch('/api/candidates').then((r) => r.json()), fetch('/api/discovery').then((r) => r.json()).catch(() => ({ phase: 'idle' }))])
+  .then(([d, disc]) => {
+    const pending = ['upload', 'twin', 'dev_test', 'awaiting_confirmation'].includes(disc.phase);
+    if (pending) statusEl.textContent = 'Twiin étudie ta tâche… une question va bientôt apparaître.';
+    if (d.workflows?.length && !pending) { lastWorkflows = d.workflows; document.getElementById('lastBtn').hidden = false; }
+  }).catch(() => {});
 
 function escapeHtml(str) {
   const div = document.createElement('div');
