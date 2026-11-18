@@ -259,6 +259,7 @@ function actionTranscript(events, startedAtMs, screens) {
 
 // --- Voix : audio envoyé par la page (si « Capture vocale » est activée) puis transcrit en local par Whisper --------
 const AUDIO_RE = /^audio\.(webm|m4a|ogg)$/;
+const WHISPER_TIMEOUT_MS = parseInt(process.env.WHISPER_TIMEOUT_MS || '600000', 10); // 10 min
 app.post('/api/audio', express.raw({ type: () => true, limit: '200mb' }), (req, res) => {
   try {
     const dir = sessionDirById(String(req.query.session || ''));
@@ -301,9 +302,11 @@ async function transcribeSession(dir) {
       await new Promise((resolve, reject) => {
         const py = spawn(PYTHON, [script, '--audio', path.join(dir, audio), '--out', tmp, '--prompt', whisperVocabulary()]);
         let err = '';
+        // Garde-fou : premier usage sans réseau (téléchargement du modèle) ou audio énorme → on abandonne, l'analyse continue sans voix
+        const timer = setTimeout(() => { py.kill('SIGKILL'); reject(new Error(`transcription trop longue (plus de ${Math.round(WHISPER_TIMEOUT_MS / 60000)} min)`)); }, WHISPER_TIMEOUT_MS);
         py.stderr.on('data', (d) => (err += d));
-        py.on('error', reject);
-        py.on('close', (code) => (code === 0 ? resolve() : reject(new Error(err.trim().split('\n').slice(-2).join(' ').slice(0, 400) || `code ${code}`))));
+        py.on('error', (e) => { clearTimeout(timer); reject(e); });
+        py.on('close', (code) => { clearTimeout(timer); if (code === 0) resolve(); else reject(new Error(err.trim().split('\n').slice(-2).join(' ').slice(0, 400) || `code ${code}`)); });
       });
       const out = JSON.parse(fs.readFileSync(tmp, 'utf8'));
       out.audio_started_at_ms = meta.startedAt;
