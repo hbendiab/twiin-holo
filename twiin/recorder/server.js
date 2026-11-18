@@ -6,6 +6,7 @@ import fs from 'fs';
 import path from 'path';
 import { spawn } from 'child_process';
 import { fileURLToPath } from 'url';
+import { mergeVoice } from './voice.js';
 
 // recorder/ sits one level below the repo root, alongside the twiin/ Python package
 const REPO_ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
@@ -105,6 +106,10 @@ typing burst (keys are never recorded, only that typing happened and where), key
 ⌘S save…), structure key (Enter, Tab, Escape: they move between fields, e.g. Enter leaves a page title) and app switch, with the screen, the app, the window title and the label of the clicked element.
 The ACTION LOG is authoritative for the ORDER of actions, the SCREEN and APP used, and WHERE the user clicked or
 typed. Match each typing burst with the next frame of that screen to read WHAT was typed (from the OCR text).
+The ACTION LOG may also contain lines starting with 🎤: what the user SAID aloud during the session, transcribed automatically
+(it can contain small recognition errors), with the time. Use them to understand the INTENT: why a step is done, the rules or
+exceptions the user states, what matters to them, and to name the steps. They are NOT authoritative for exact values
+(the OCR text wins) nor for the order of actions (the click/typing lines win). Never turn a vague or off-topic remark into a step.
 You also receive an OCR TRANSCRIPT: the exact text read on every kept frame by a local OCR engine
 (only lines that are new compared to the previous frame). Use the images to understand context,
 layout and intent; use the OCR transcript for every EXACT value — dates, prices, amounts, names,
@@ -244,11 +249,76 @@ function actionTranscript(events, startedAtMs, screens) {
     else if (e.type === 'click') lines.push(`${t(e.ts)} · ${where} · ${e.double ? 'double-' : ''}${e.button === 'right' ? 'right-' : ''}click on ${e.element || 'an element'}`);
     else if (e.type === 'typing') lines.push(`${t(e.ts)}→${t(e.until).slice(2)} · ${where} · typing${e.keys ? ` (${e.keys} keys)` : ''} in ${e.element || 'the focused field'}`);
     else if (e.type === 'shortcut') lines.push(`${t(e.ts)} · ${where} · shortcut ${e.keys}`);
+    else if (e.type === 'voice') lines.push(`${t(e.ts)}→${t(e.until).slice(2)} · 🎤 the user says: « ${String(e.text).replace(/\s+/g, ' ').trim()} »`);
     else if (e.type === 'key') lines.push(`${t(e.ts)} · ${where} · presses ${({ 'Entrée': 'Enter', 'Échap': 'Escape' })[e.keys] || e.keys}${e.element ? ` in ${e.element}` : ''}`);
   }
   let out = lines.join('\n');
   if (out.length > 15000) out = out.slice(0, 15000) + '\n[… journal tronqué]';
   return out;
+}
+
+// --- Voix : audio envoyé par la page (si « Capture vocale » est activée) puis transcrit en local par Whisper --------
+const AUDIO_RE = /^audio\.(webm|m4a|ogg)$/;
+app.post('/api/audio', express.raw({ type: () => true, limit: '200mb' }), (req, res) => {
+  try {
+    const dir = sessionDirById(String(req.query.session || ''));
+    const startedAt = Number(req.query.startedAt);
+    if (!dir) return res.status(400).json({ error: 'session introuvable' });
+    if (!Number.isFinite(startedAt)) return res.status(400).json({ error: 'heure de départ de l\'audio manquante' });
+    if (!Buffer.isBuffer(req.body) || req.body.length < 1000) return res.status(400).json({ error: 'audio vide' });
+    const mime = String(req.headers['content-type'] || '');
+    const ext = /mp4|m4a/.test(mime) ? 'm4a' : /ogg/.test(mime) ? 'ogg' : 'webm';
+    for (const f of fs.readdirSync(dir)) if (AUDIO_RE.test(f)) fs.rmSync(path.join(dir, f));
+    fs.rmSync(path.join(dir, 'voice.json'), { force: true }); // un nouvel audio = une nouvelle transcription
+    fs.writeFileSync(path.join(dir, `audio.${ext}`), req.body);
+    fs.writeFileSync(path.join(dir, 'audio.json'), JSON.stringify({ startedAt, mime, bytes: req.body.length }));
+    console.log(`Audio reçu : ${(req.body.length / 1024).toFixed(0)} Ko (${ext}) pour ${path.basename(dir)}`);
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Mots attendus (noms d'outils du registre) donnés à Whisper pour mieux reconnaître « Notion », « Excel »…
+function whisperVocabulary() {
+  const names = loadRegistry().map((t) => String(t.name || '').replace(/\s*\(.*\)/, '').trim()).filter(Boolean);
+  return [...new Set(names)].join(', ').slice(0, 600);
+}
+
+// Transcrit l'audio de la session (une seule fois : voice.json sert de cache) et renvoie des événements « voice »
+// à heure absolue (secondes), calés sur le même repère que le journal d'actions. Ne plante jamais l'analyse.
+async function transcribeSession(dir) {
+  const info = { status: 'none', segments: 0 };
+  try {
+    const audio = fs.readdirSync(dir).find((f) => AUDIO_RE.test(f));
+    if (!audio) return { events: [], info };
+    const voiceF = path.join(dir, 'voice.json');
+    if (!fs.existsSync(voiceF)) {
+      setPhase('transcription');
+      const meta = JSON.parse(fs.readFileSync(path.join(dir, 'audio.json'), 'utf8'));
+      const script = path.join(path.dirname(fileURLToPath(import.meta.url)), 'transcribe.py');
+      const tmp = voiceF + '.tmp';
+      await new Promise((resolve, reject) => {
+        const py = spawn(PYTHON, [script, '--audio', path.join(dir, audio), '--out', tmp, '--prompt', whisperVocabulary()]);
+        let err = '';
+        py.stderr.on('data', (d) => (err += d));
+        py.on('error', reject);
+        py.on('close', (code) => (code === 0 ? resolve() : reject(new Error(err.trim().split('\n').slice(-2).join(' ').slice(0, 400) || `code ${code}`))));
+      });
+      const out = JSON.parse(fs.readFileSync(tmp, 'utf8'));
+      out.audio_started_at_ms = meta.startedAt;
+      fs.writeFileSync(voiceF, JSON.stringify(out, null, 2));
+      fs.rmSync(tmp, { force: true });
+      console.log(`Transcription locale : ${out.segments.length} segment(s), ${out.audio_duration} s d'audio, ${out.elapsed} s de calcul`);
+    }
+    const voice = JSON.parse(fs.readFileSync(voiceF, 'utf8'));
+    const base = voice.audio_started_at_ms / 1000;
+    const events = (voice.segments || []).map((s) => ({ type: 'voice', ts: base + s.start, until: base + s.end, text: s.text }));
+    return { events, info: { status: events.length ? 'ok' : 'empty', segments: events.length } };
+  } catch (err) {
+    console.warn(`⚠️ Voix non transcrite, l'analyse continue sans elle : ${err.message}`);
+    return { events: [], info: { status: 'failed', segments: 0, error: String(err.message).slice(0, 200) } };
+  }
 }
 
 // Images envoyées AU FIL DE L'EAU par la page (une requête par image) : si la page plante, rien n'est perdu.
@@ -320,7 +390,7 @@ const setPhase = (phase) => { analysisProgress = { phase, at: Date.now() }; };
 app.get('/api/analysis/progress', (req, res) => res.json(analysisProgress));
 
 // Analyse commune : nouvel enregistrement (images + OCR) ou relance (images gardées, ou texte OCR seul).
-async function analyze({ frames, transcript, actionLog = '', ocrLines = 0, screens = 1, textOnly = false }) {
+async function analyze({ frames, transcript, actionLog = '', ocrLines = 0, screens = 1, textOnly = false, voice = null }) {
   const used = textOnly ? [] : sampleFrames(frames);
   const header = textOnly
     ? `No images are available for this session: only the OCR transcript of its ${frames?.length ?? 'several'} kept frames over ${screens} screen(s). Return the JSON described in the system prompt.`
@@ -328,7 +398,7 @@ async function analyze({ frames, transcript, actionLog = '', ocrLines = 0, scree
   const content = [
     { type: 'text', text: header },
     ...used.flatMap((f) => [{ type: 'text', text: `Image ${f.index} · screen ${f.screen ?? 1} · t+${f.seconds ?? '?'}s` }, toImageBlock(f.dataUrl)]),
-    { type: 'text', text: `ACTION LOG (recorded during the session: exact time, screen, app and clicked element; authoritative for ORDER and WHERE):\n${actionLog || '(no action log)'}` },
+    { type: 'text', text: `ACTION LOG (recorded during the session: exact time, screen, app and clicked element; authoritative for ORDER and WHERE; lines starting with 🎤 are what the user said aloud):\n${actionLog || '(no action log)'}` },
     { type: 'text', text: `OCR TRANSCRIPT (exact text, authoritative for values):\n${transcript || '(no text read)'}` },
   ];
 
@@ -352,7 +422,7 @@ async function analyze({ frames, transcript, actionLog = '', ocrLines = 0, scree
   const meta = { mode: RECORDER_MODE, model: HF_MODEL, provider, screens, images_kept: frames?.length ?? null,
                  images_sent: used.length, text_only: textOnly, ocr_lines: ocrLines, ocr_chars: (transcript || '').length,
                  action_lines: actionLog ? actionLog.split('\n').length : 0,
-                 usage, cost_usd };
+                 voice, usage, cost_usd };
   console.log(`Modèle ${HF_MODEL} via ${provider ?? '?'} : ${usage.prompt_tokens ?? '?'} tokens entrée, ${usage.completion_tokens ?? '?'} sortie` +
               (cost_usd != null ? `, ≈ ${cost_usd.toFixed(4)} $` : ''));
 
@@ -379,7 +449,9 @@ async function analyze({ frames, transcript, actionLog = '', ocrLines = 0, scree
 async function analyzeSessionDir(dir) {
   const { frames, startedAt, screens: shared } = loadSessionFrames(dir);
   if (!frames.length) throw new Error('Aucune image enregistrée pour cet enregistrement.');
-  const actionLog = actionTranscript(readActions(dir), startedAt || Date.parse(frames[0]?.timestamp), shared);
+  const voice = await transcribeSession(dir);
+  const events = mergeVoice(readActions(dir), voice.events);
+  const actionLog = actionTranscript(events, startedAt || Date.parse(frames[0]?.timestamp), shared);
   const t0 = Date.now();
   setPhase('ocr');
   const ocr = await runOcr(frames);
@@ -387,7 +459,7 @@ async function analyzeSessionDir(dir) {
   const ocrLines = ocr.reduce((n, o) => n + (o.lines?.length || 0), 0);
   console.log(`OCR local : ${ocr.length} image(s), ${ocrLines} lignes, ${transcript.length} caractères gardés, ${((Date.now() - t0) / 1000).toFixed(1)} s · journal : ${actionLog ? actionLog.split('\n').length : 0} action(s)`);
   const screens = new Set(frames.map((f) => f.screen ?? 1)).size;
-  return analyze({ frames, transcript, actionLog, ocrLines, screens });
+  return analyze({ frames, transcript, actionLog, ocrLines, screens, voice: voice.info });
 }
 
 app.post('/api/generate-workflows', async (req, res) => {

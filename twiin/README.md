@@ -11,6 +11,7 @@ l'enregistreur, la connexion à Holo et le stockage des workflows ont été gard
 | **Observer** | Start recording, « + Ajouter un écran » (multi-écrans), Stop | `recorder/public/app.js`, `recorder/server.js` |
 | | OCR local des captures (rien ne sort du Mac) | `recorder/ocr.py` |
 | | Journal d'actions : clics, saisies (jamais les touches), raccourcis, Entrée/Tab, changements d'app | `recorder/actions.py` |
+| | 🎤 **Capture vocale** (interrupteur, désactivé par défaut) : la voix est enregistrée par le navigateur, puis transcrite **sur le Mac** par Whisper (`faster-whisper`, modèle `small`) à la fin, avec des horodatages calés sur les captures ; les passages sont ajoutés au journal envoyé au modèle (`🎤 the user says: « … »`). L'audio reste dans le dossier de session (non publié) | `recorder/transcribe.py`, `recorder/voice.js`, `/api/audio` |
 | **Analyser** | Copie fidèle de la tâche (modèle Qwen via Hugging Face) | `recorder/server.js` (`/api/generate-workflows`) |
 | | 💡 Améliorer mon process : bilan chiffré + conseils pour l'employé | `/api/process-advice` |
 | | 🧭 Accélérer ou automatiser ? : verdict + outils avec / sans API (registre `../capture/backend/app/known_tools.json`) | `/api/verdict` |
@@ -39,6 +40,8 @@ cd recorder && npm install && cd ..                     # page Twiin
 cd tuto/video && npm install && cd ../..                # Remotion (tutos)
 cp .env.example .env                                    # puis remplir les clés (voir les commentaires)
 ```
+
+La transcription vocale télécharge le modèle Whisper `small` (~500 Mo) au premier usage : lance une fois `recorder/transcribe.py` sur un audio, ou fais un premier enregistrement vocal court, avant une démo. `av` est limité à `<16` (au-delà, faster-whisper ne lit plus l'audio). Tests : `.venv/bin/python -m unittest recorder/test_voice.py -v` (macOS : utilise `say` et ffmpeg).
 
 n8n 2.48 (exige Node 24) : voir `automation/n8n-runtime/start.sh` (Node 24 isolé copié dans `automation/n8n-runtime/bin/`).
 
