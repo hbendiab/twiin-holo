@@ -533,6 +533,12 @@ window.addEventListener('hashchange', routeFromHash);
 }
 
 // Appelé par discovery.js quand l'employé confirme « Oui, c'est bien ça ».
+// Appelé par discovery.js après le « oui » : on passe directement à l'étape Reco et on lance la recommandation.
+window.twiinGoReco = () => {
+  setStep(3);
+  const b = resultsEl.querySelector('.btn-reco');
+  if (b && !b.disabled) b.click();
+};
 window.twiinShowResults = async () => {
   let wfs = window.__pendingWorkflows;
   if (!wfs) { try { wfs = (await (await fetch('/api/candidates')).json()).workflows || []; } catch { wfs = []; } }

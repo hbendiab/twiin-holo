@@ -6,6 +6,9 @@
   #discovery { position: fixed; inset: 0; z-index: 50; display: flex; align-items: center; justify-content: center;
     background: rgba(15, 18, 24, .45); padding: 16px; }
   #discovery[hidden] { display: none; }
+  #discovery.dc-mini { inset: auto 16px 16px auto; background: none; padding: 0; pointer-events: none; }
+  #discovery.dc-mini .dc-card { width: min(380px, calc(100vw - 32px)); pointer-events: auto; padding: 14px 16px 12px; }
+  #discovery.dc-mini h3 { font-size: 15px; }
   #discovery .dc-card { width: min(520px, 100%); max-height: calc(100vh - 32px); overflow: auto;
     background: var(--panel, #fff); border: 1px solid var(--panel-border, #dadce0); border-radius: 16px;
     box-shadow: 0 16px 40px rgba(0,0,0,.25); padding: 22px 22px 18px; font-size: 14px; color: var(--text, #1f1f1f); }
@@ -56,6 +59,7 @@
   ];
 
   function loading(title, steps, phase, progress) {
+    box.classList.toggle('dc-mini', steps === AFTER); // après le « oui » : la page Reco reste utilisable
     const idx = steps.findIndex(([, ph]) => ph.includes(phase));
     const cur = idx < 0 ? steps.length - 1 : idx;
     const pct = progress?.total ? Math.round((progress.done / progress.total) * 100) : null;
@@ -63,7 +67,8 @@
       <li class="${i < cur ? 'done' : i === cur ? 'active' : ''}"><i></i>${esc(label)}${
         i === cur && pct != null ? ` (${progress.done}/${progress.total})` : ''}</li>${
         i === cur && pct != null ? `<div class="dc-bar"><span style="width:${pct}%"></span></div>` : ''}`).join('')}</ul>
-      <p>Vous pouvez continuer à utiliser la page, Twiin vous préviendra.</p>
+      <p>${steps === AFTER ? 'Votre recommandation s’affiche sur la page. Twiin vous prévient quand les tests sont finis.'
+                           : 'Vous pouvez continuer à utiliser la page, Twiin vous préviendra.'}</p>
       <div class="dc-row"><button class="dc-hide">Masquer</button></div>`;
     card.querySelector('.dc-hide').onclick = () => { box.hidden = true; view = 'hidden'; };
     if (view !== 'hidden') box.hidden = false;
@@ -75,7 +80,10 @@
       const r = await fetch('/api/discovery/answer', { method: 'POST', headers: { 'Content-Type': 'application/json' },
                                                        body: JSON.stringify({ ok, correction }) });
       if (!r.ok) throw new Error((await r.json()).error || r.statusText);
-      if (ok && window.twiinShowResults) window.twiinShowResults();
+      if (ok && window.twiinShowResults) {
+        await window.twiinShowResults();
+        window.twiinGoReco?.(); // directement à l'étape Reco, la recommandation se calcule
+      }
       if (ok) { view = 'loading-2'; loading('Merci ! Twiin cherche la meilleure solution', AFTER, 'answered'); }
       else {
         card.innerHTML = '<h3>Merci pour la précision</h3><p>Twiin reprend son analyse avec votre correction.</p>';
@@ -90,6 +98,7 @@
 
   function question(q) {
     view = 'question';
+    box.classList.remove('dc-mini');
     card.innerHTML = `
       <h3>${esc(q.titre || 'Ai-je bien compris votre problème ?')}</h3>
       <p>${esc(q.probleme)}</p>
@@ -112,6 +121,7 @@
 
   function solution(s) {
     view = 'solution';
+    box.classList.remove('dc-mini');
     card.innerHTML = `
       <h3>${s.kind === 'automate' ? '⚡ Twiin peut automatiser cette tâche' : '🎬 Twiin propose d\'accélérer cette tâche'}</h3>
       <p>${esc(s.texte)}</p>

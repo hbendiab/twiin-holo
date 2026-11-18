@@ -32,6 +32,18 @@ from dotenv import dotenv_values
 
 ROOT = Path(__file__).resolve().parents[1]
 ENV = dotenv_values(ROOT / ".env")
+for _k in ("N8N_LOCAL_URL", "N8N_LOCAL_API_KEY", "N8N_LOCAL_MCP_TOKEN", "TWIIN_LOCAL_TOKEN"):  # variables du serveur
+    if not ENV.get(_k) and __import__("os").environ.get(_k):
+        ENV[_k] = __import__("os").environ[_k]
+try:  # sinon, l'environnement LOCAL de n8ncli (n8ncli envs edit LOCAL …) : même clé et même jeton
+    _l = json.loads((Path.home() / ".n8ncli-global.json").read_text(encoding="utf-8"))["environments"]["LOCAL"]
+    ENV.setdefault("N8N_LOCAL_URL", _l.get("instanceUrl"))
+    if not ENV.get("N8N_LOCAL_API_KEY"):
+        ENV["N8N_LOCAL_API_KEY"] = _l.get("apiKey")
+    if not ENV.get("N8N_LOCAL_MCP_TOKEN"):
+        ENV["N8N_LOCAL_MCP_TOKEN"] = _l.get("accessToken")
+except (OSError, KeyError, ValueError):
+    pass
 N8N_DB = Path.home() / ".n8n" / "database.sqlite"
 TWIIN_URL = "http://127.0.0.1:3000/api/holo/run"
 SHEETS = {"veille": ENV.get("N8N_SHEET_VEILLE_ID"), "factures": ENV.get("N8N_SHEET_FACTURES_ID")}
@@ -249,12 +261,14 @@ def ensure_header(sheet_key, column_letter, title):
 
 
 def run_cli(args, timeout=3600):
-    r = subprocess.run(["n8n", *args], capture_output=True, text=True, timeout=timeout)
+    import shutil
+    exe = shutil.which("n8n") or "n8n"  # Windows : n8n.cmd (npm global), introuvable sous le simple nom « n8n »
+    r = subprocess.run([exe, *args], capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=timeout)
     return r.returncode, r.stdout, r.stderr
 
 
 def import_workflow(wf):
-    with tempfile.NamedTemporaryFile("w", suffix=".json", delete=False) as f:
+    with tempfile.NamedTemporaryFile("w", suffix=".json", delete=False, encoding="utf-8") as f:
         json.dump(wf, f, ensure_ascii=False)
     code, out, err = run_cli(["import:workflow", f"--input={f.name}"])
     if code != 0:
