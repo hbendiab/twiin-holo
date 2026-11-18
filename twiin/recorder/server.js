@@ -173,8 +173,8 @@ one app to another, say which values go where.
 Segment the session into distinct candidate workflows.
 
 You also receive an ACTION LOG recorded on the computer during the session: the exact time of every click,
-typing burst (keys are never recorded, only that typing happened and where), keyboard shortcut (⌘C copy, ⌘V paste,
-⌘S save…), structure key (Enter, Tab, Escape: they move between fields, e.g. Enter leaves a page title) and app switch, with the screen, the app, the window title and the label of the clicked element.
+typing burst (keys are never recorded, only that typing happened and where), keyboard shortcut (⌘C / Ctrl+C copy, ⌘V / Ctrl+V paste,
+⌘S / Ctrl+S save… ; ⌃ means Ctrl on Windows), structure key (Enter, Tab, Escape: they move between fields, e.g. Enter leaves a page title) and app switch, with the screen, the app, the window title and the label of the clicked element.
 The ACTION LOG is authoritative for the ORDER of actions, the SCREEN and APP used, and WHERE the user clicked or
 typed. Match each typing burst with the next frame of that screen to read WHAT was typed (from the OCR text).
 You also receive an OCR TRANSCRIPT: the exact text read on every kept frame by a local OCR engine
@@ -601,7 +601,7 @@ app.post('/api/reanalyze', async (req, res) => {
 
 // --- Améliorer un workflow (fiabilité pour Holo + process optimisé), modifiable avant le rejeu ---------------
 const IMPROVE_PROMPT = `You improve a recorded computer workflow before an AI agent (Holo, a computer-use agent that sees the
-screen and uses mouse and keyboard on a Mac with several monitors) replays it. Improve it in TWO ways:
+screen and uses mouse and keyboard on the employee's computer, Mac or Windows, possibly with several monitors) replays it. Improve it in TWO ways:
 
 1. RELIABILITY for the agent:
    - group the steps by application and goal (typically 3 to 6 steps); each step must be self-contained;
@@ -865,7 +865,7 @@ let n8nRun = null; // { proc, events, running }
 
 const PLAN_PROMPT = `You design an n8n automation for a task an employee recorded. Tools WITH an API are handled by normal
 n8n nodes; tools WITHOUT an API (LinkedIn pages, OneNote, internal software such as comptarex) are handled by a Holo block
-(a computer-use agent that works on the employee's Mac). Use ONLY these block types, in order:
+(a computer-use agent that works on the employee's computer, Mac or Windows). Use ONLY these block types, in order:
 - {"type":"holo","name":"Holo — <verb> <tool>","steps":["one precise instruction in English"],"expect":{"key":"what to read"}}
    Holo reads or does things on screen; with "expect" it returns the values it READ as data.<key>. Ask it to copy values
    EXACTLY as written. Reference values from a previous Holo block in later steps or fields as {{<block name>.<key>}}.

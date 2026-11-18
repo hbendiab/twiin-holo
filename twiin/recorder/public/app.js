@@ -143,7 +143,7 @@ const analysisEl = document.getElementById('analysis');
 const phasesEl = document.getElementById('phases');
 const PHASES = [
   ['upload', 'Envoi des dernières images'],
-  ['ocr', 'Lecture du texte de l\'écran, sur ton Mac'],
+  ['ocr', 'Lecture du texte de l\'écran, sur ton ordinateur'],
   ['model', 'Découpage en étapes par le modèle'],
   ['parse', 'Mise en forme du résultat'],
 ];
@@ -486,7 +486,7 @@ async function analyzeRequest(url, body, message, nScreens) {
   }
 }
 
-// --- Workflow modifiable → « ✨ Améliorer » → « ▶ Rejouer sur mon Mac » (suivi en direct) ---------------------
+// --- Workflow modifiable → « ✨ Améliorer » → « ▶ Rejouer sur mon ordinateur » (suivi en direct) ---------------------
 // Barre du parcours : étapes faites (vert) et étape en cours (bleu)
 // Une page par étape : setStep(n) marque le parcours ET affiche la page de l'étape n (adresse /#audit, /#enregistrer…).
 // « Tester et casser » est sorti du parcours employé (il vit dans le Back, travail de Lucas) : 3 étapes.
@@ -574,10 +574,10 @@ function workflowCard(wf, example = false) {
 
     <section class="card-section part-test">
       <div class="card-step big"><span class="num-inline">3</span> Tester et casser</div>
-      <p class="card-help">Holo refait la tâche sur ton Mac pour vérifier que Twiin l'a bien comprise. Bientôt : plusieurs variantes
+      <p class="card-help">Holo refait la tâche sur ton ordinateur pour vérifier que Twiin l'a bien comprise. Bientôt : plusieurs variantes
         testées sur une copie de tes fichiers, et Twiin garde celle qui passe.</p>
       <div class="wf-actions">
-        <button class="btn-replay" title="Holo refait la tâche sur ton Mac pour vérifier que Twiin l'a bien comprise">Tester la tâche avec Holo</button>
+        <button class="btn-replay" title="Holo refait la tâche sur ton ordinateur pour vérifier que Twiin l'a bien comprise">Tester la tâche avec Holo</button>
         <button class="btn-improve" title="Rend les étapes plus précises pour Holo, sans changer la tâche">Préciser les étapes pour Holo</button>
         <button class="btn-original" hidden>Revenir aux étapes d'origine</button>
         <button class="btn-skip-test" title="Passer directement à la recommandation">Passer le test</button>
@@ -756,7 +756,7 @@ function workflowCard(wf, example = false) {
     origBtn.hidden = true;
   };
 
-  // ▶ Rejouer sur mon Mac
+  // ▶ Rejouer sur mon ordinateur
   const replayBtn = card.querySelector('.btn-replay');
   const replayEl = card.querySelector('.replay');
   replayBtn.onclick = async () => {
@@ -765,7 +765,7 @@ function workflowCard(wf, example = false) {
     const todo = wfNow.steps.map((x, i) => (/à compléter/i.test(x) ? i + 1 : null)).filter(Boolean);
     if (todo.length) return alert(`Complète d'abord les étapes ${todo.join(', ')} : elles contiennent une valeur « ⚠️ À compléter ». ` +
       `Sinon Holo inventerait la valeur.`);
-    const ok = confirm(`Holo va refaire « ${wfNow.name} » (${wfNow.steps.length} étape(s)) sur ton Mac.\n\n` +
+    const ok = confirm(`Holo va refaire « ${wfNow.name} » (${wfNow.steps.length} étape(s)) sur ton ordinateur.\n\n` +
       `• Il prend la souris et le clavier : ne touche à rien pendant le rejeu.\n` +
       `• VS Code sera masqué ; ferme ce qui est privé.\n` +
       `• Holo écrit exactement là où les étapes l'indiquent (cellules, pages) : vérifie que ce ne sont pas tes données d'origine.\n` +
@@ -893,7 +893,7 @@ const BLOCK_ICON = { holo: '🤖 Holo', row: '🧮 Code', verify: '✅ Vérifica
 
 async function createN8n(wf, verdict, el) {
   const ok = confirm(`Twiin va créer l'automatisation n8n de « ${wf.name} », l'importer dans ton n8n local et la TESTER une fois.\n\n` +
-    `Si elle contient des blocs Holo, Holo prendra la souris et le clavier de ton Mac pendant le test : ne touche à rien ` +
+    `Si elle contient des blocs Holo, Holo prendra la souris et le clavier de ton ordinateur pendant le test : ne touche à rien ` +
     `(double Échap pour l'arrêter). L'automatisation restera INACTIVE : c'est toi qui l'actives dans n8n.\n\nContinuer ?`);
   if (!ok) return;
   el.hidden = false;
@@ -954,7 +954,7 @@ async function createN8n(wf, verdict, el) {
         }
       }
       const last = (hs || []).at(-1);
-      holo.textContent = holoRunning && last ? `🤖 Holo travaille sur ton Mac : ${(last.step || last.answer || '').slice(0, 160)}…` : '';
+      holo.textContent = holoRunning && last ? `🤖 Holo travaille sur ton ordinateur : ${(last.step || last.answer || '').slice(0, 160)}…` : '';
       if (!running && next > 0 && /terminé|succès|échoué|Erreur/.test(st.textContent)) clearInterval(timer);
     } catch { /* on réessaie */ }
   }, 1500);
@@ -963,7 +963,7 @@ async function createN8n(wf, verdict, el) {
 // ════════════════════════════════════════════════════════════════════════════════════════════════════════════════
 // ÉTAPE 1 · AUDIT
 // A. « Présente-toi » : Twiin pose ses questions à voix haute (ElevenLabs), l'employé répond à l'oral (transcription
-//    ElevenLabs) ou à l'écrit ; les réponses deviennent une fiche employé (gardée sur le Mac).
+//    ElevenLabs) ou à l'écrit ; les réponses deviennent une fiche employé (gardée sur ton ordinateur).
 // B. « Les logiciels de ton poste » : scan des applis installées (noms seulement), API → n8n, sans API → Holo.
 // ════════════════════════════════════════════════════════════════════════════════════════════════════════════════
 const $ = (id) => document.getElementById(id);

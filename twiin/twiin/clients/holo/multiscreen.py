@@ -1,4 +1,4 @@
-"""Multi-écrans pour le pilote d'ordinateur local de H (macOS).
+"""Multi-écrans pour le pilote d'ordinateur local de H (macOS et Windows).
 
 Problème : le pilote de H (hai_drivers.desktop.local.LocalDesktopDriver) capture l'écran avec pyautogui,
 qui ne voit que l'écran PRINCIPAL. Avec un MacBook + moniteurs, si l'app à piloter s'ouvre sur un autre
@@ -14,7 +14,20 @@ au premier plan (à défaut, celui où est la souris), et on convertit les coord
 from __future__ import annotations
 
 import logging
+import sys
 import threading
+
+IS_WIN = sys.platform == "win32"
+if IS_WIN:  # coordonnées en vrais pixels (sinon la mise à l'échelle 125 %/150 % de Windows décale les clics)
+    import ctypes
+    from ctypes import wintypes
+    try:
+        ctypes.windll.shcore.SetProcessDpiAwareness(2)
+    except Exception:  # noqa: BLE001
+        try:
+            ctypes.windll.user32.SetProcessDPIAware()
+        except Exception:  # noqa: BLE001
+            pass
 
 log = logging.getLogger("twiin.multiscreen")
 _enabled = False
@@ -27,7 +40,21 @@ def on_switch(callback) -> None:
     _listeners.append(callback)
 
 
+def _win_displays():
+    out = []
+    proto = ctypes.WINFUNCTYPE(ctypes.c_int, wintypes.HMONITOR, wintypes.HDC, ctypes.POINTER(wintypes.RECT), wintypes.LPARAM)
+
+    def cb(_h, _dc, r, _l):
+        rc = r.contents
+        out.append((len(out) + 1, (rc.left, rc.top, rc.right - rc.left, rc.bottom - rc.top)))
+        return 1
+    ctypes.windll.user32.EnumDisplayMonitors(None, None, proto(cb), 0)
+    return out
+
+
 def displays() -> list[tuple[int, tuple[float, float, float, float]]]:
+    if IS_WIN:
+        return _win_displays()
     import Quartz
     ids = Quartz.CGGetActiveDisplayList(16, None, None)[1]
     out = []
@@ -53,6 +80,12 @@ def _frontmost_window_center() -> tuple[float, float] | None:
     est relue à chaque appel et triée du premier plan vers l'arrière-plan : on prend la première vraie
     fenêtre (niveau normal, assez grande pour ne pas être une barre d'outils ou une bulle).
     """
+    if IS_WIN:
+        r = wintypes.RECT()
+        hwnd = ctypes.windll.user32.GetForegroundWindow()
+        if hwnd and ctypes.windll.user32.GetWindowRect(hwnd, ctypes.byref(r)) and r.right - r.left >= 300:
+            return (r.left + r.right) / 2, (r.top + r.bottom) / 2
+        return None
     import Quartz
     wins = Quartz.CGWindowListCopyWindowInfo(
         Quartz.kCGWindowListOptionOnScreenOnly | Quartz.kCGWindowListExcludeDesktopElements, Quartz.kCGNullWindowID)
@@ -66,6 +99,10 @@ def _frontmost_window_center() -> tuple[float, float] | None:
 
 
 def _mouse() -> tuple[float, float]:
+    if IS_WIN:
+        pt = wintypes.POINT()
+        ctypes.windll.user32.GetCursorPos(ctypes.byref(pt))
+        return pt.x, pt.y
     import Quartz
     p = Quartz.CGEventGetLocation(Quartz.CGEventCreate(None))
     return p.x, p.y
@@ -80,6 +117,11 @@ def active_display() -> tuple[int, tuple[float, float, float, float], int, int]:
         for i, (did, b) in enumerate(ds, 1):
             if _contains(b, *point):
                 return did, b, i, len(ds)
+    if IS_WIN:  # écran principal : celui qui contient (0, 0)
+        for i, (did, b) in enumerate(ds, 1):
+            if _contains(b, 0, 0):
+                return did, b, i, len(ds)
+        return ds[0][0], ds[0][1], 1, len(ds)
     import Quartz
     main = Quartz.CGMainDisplayID()
     for i, (did, b) in enumerate(ds, 1):
@@ -89,6 +131,11 @@ def active_display() -> tuple[int, tuple[float, float, float, float], int, int]:
 
 
 def _grab(did):
+    if IS_WIN:
+        from PIL import ImageGrab
+        b = dict(_win_displays()).get(did)
+        x, y, w, h = b
+        return ImageGrab.grab(bbox=(x, y, x + w, y + h), all_screens=True).convert("RGB")
     import Quartz
     from PIL import Image
     cg = Quartz.CGDisplayCreateImage(did)
@@ -123,7 +170,7 @@ def enable() -> None:
                         pass
             self._ms_display, self._ms_bounds = did, b
             self._screenshot_size = (img.width, img.height)       # repère de Holo : pixels de la capture
-            self._screen_size = (int(b[2]), int(b[3]))           # taille de l'écran en points macOS
+            self._screen_size = (int(b[2]), int(b[3]))           # taille de l'écran (points macOS, pixels Windows)
             return img
 
     def _screenshot_to_screen(self, x, y):
