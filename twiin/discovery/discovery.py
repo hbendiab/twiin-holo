@@ -710,17 +710,14 @@ def casse(session_dir: Path) -> None:
 
     def progress(msg):
         st.set(phase="casse", iterations=results, message=msg,
-               progress={"done": len(results), "total": max_it + 2})
+               progress={"done": len(results), "total": len(results)})
 
     try:
-        if not any(r["success_rate"] >= 1 for r in results) and len(results) < max_it * 2:
-            progress("Nouvelle vague de 3 parcours différents")
-            bricks = (st.data.get("bricks") or list_bricks(url) or [None])
-            rest = [b for b in bricks if b not in {r.get("start") for r in results}] or bricks
-            known = sorted({r["route"] for r in results if r.get("path")})
-            results += parallel_wave(spec, url, session_dir, CASSE_MODEL, len(results) + 1, rest, known, None, sb, tid)
+        # Règle : exactement 5 itérations = 3 « conseil » (parcours Holo) + 2 « automatisation » (n8n), déjà faites pendant la
+        # question. Pas de vague supplémentaire. Le test de robustesse (popup, lenteur) est facultatif : DISCOVERY_TRAFFIC=on.
         best = max(results, key=lambda r: (r["success_rate"], -r["seconds"]), default=None)
-        if best and best["success_rate"] >= 0.9 and best.get("kind") != "n8n":  # n8n : pas de trafic écran à tester
+        if (os.environ.get("DISCOVERY_TRAFFIC", "off") == "on" and best and best["success_rate"] >= 1
+                and best.get("kind") != "n8n"):  # n8n : pas de trafic écran à tester
             progress("Test du meilleur chemin avec popup et lenteur")
             base = len(results)
             route = r0 if best.get("label") == "chemin de l'employé" else None
