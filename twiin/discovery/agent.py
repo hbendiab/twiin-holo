@@ -70,7 +70,8 @@ ELEMENT_AT = """([x, y]) => {
 
 def run_agent(url: str, mission: str, out_dir: Path, model: str, max_steps: int = 30,
               init_script: str | None = None, on_event=None, progress_fn=None, done_guard=None,
-              hints: str = "", subtasks: list[dict] | None = None, start_click: str | None = None) -> dict:
+              hints: str = "", subtasks: list[dict] | None = None, start_click: str | None = None,
+              others_fn=None, on_path=None) -> dict:
     """progress_fn(state) -> texte d'avancement montré à Holo à chaque étape ;
     done_guard(state) -> raison de refuser « fini » (ou None) ; hints : conseils tirés de l'essai précédent."""
     """Rejoue `mission` dans le jumeau servi à `url`. Renvoie stats, issue et état final du jumeau.
@@ -132,6 +133,9 @@ def run_agent(url: str, mission: str, out_dir: Path, model: str, max_steps: int 
                 except Exception:  # noqa: BLE001
                     progress = ""
             mem = ("\n\n## Your notes (values you read earlier)\n" + "\n".join(f"- {n}" for n in notes[-12:])) if notes else ""
+            others = others_fn() if others_fn else ""
+            if others:  # parcours EN COURS des autres agents lancés en même temps : ne pas les copier
+                mem += "\n\n## Other agents are working at the same time on these ways (do NOT follow the same way)\n" + others
             prompt = (mission + (f"\n\n## Advice from the previous attempt\n{hints}" if hints else "") + progress + mem +
                       "\n\n## What you already did\n" + ("\n".join(history[-12:]) or "(nothing yet)") +
                       "\n\nLook at the screenshot and call exactly ONE tool for the next action.")
@@ -185,6 +189,8 @@ def run_agent(url: str, mission: str, out_dir: Path, model: str, max_steps: int 
             if name == "note":
                 if not path or path[-1] != "lire":
                     path.append("lire")
+                    if on_path:
+                        on_path(list(path))
                 notes.append(str(args.get("text", ""))[:300])
                 history.append(f"{step}. note -> saved")
                 emit("note", step=step, text=notes[-1])
@@ -229,6 +235,8 @@ def run_agent(url: str, mission: str, out_dir: Path, model: str, max_steps: int 
                          else "saisir" if name == "type_text" else None)
                 if token and (not path or path[-1] != token):
                     path.append(token)
+                    if on_path:
+                        on_path(list(path))
             except Exception as e:  # noqa: BLE001
                 stats["errors"] += 1
                 history.append(f"{step}. {name} failed: {str(e)[:100]}")

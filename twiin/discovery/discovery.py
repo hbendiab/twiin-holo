@@ -320,18 +320,15 @@ def discover(session_dir: Path) -> None:
     url, srv = serve(twin_dir)
     try:
         r0 = route_zero(session_dir)
-        res, sc, errs = run_iteration(spec, url, session_dir / "runs" / "it1-base", DEV_MODEL, "base", route=r0)
+        bricks = list_bricks(url)
+        wave1 = parallel_wave(spec, url, session_dir, DEV_MODEL, 1, bricks, [], r0, sb, tid,
+                              width=int(os.environ.get("DISCOVERY_AGENTS", "3")))
     finally:
         srv.shutdown()
-    record_test(sb, tid, "base", res, sc, errs, "itération 1 (chemin de l'employé)" if r0 else "itération 1 (dev)")
-    first = summary_of(DEV_MODEL, "base", res, sc, errs, 1)
-    first["path"] = res.get("path") or []
-    first["route"] = " → ".join(first["path"]) or "(aucun chemin)"
-    first["start"] = None
-    first["label"] = "chemin de l'employé" if r0 else "libre"
-    dev = {"model": DEV_MODEL, "success_rate": round(sc, 3), "claimed_success": res["claimed_success"],
-           "seconds": res["stats"]["seconds"], "calls": res["stats"]["calls"], "errors": errs}
-    st.set(iterations=[first])
+    best = max(wave1, key=lambda r: (r["success_rate"], -r["seconds"]))
+    dev = {"model": DEV_MODEL, "success_rate": best["success_rate"], "seconds": max(r["seconds"] for r in wave1),
+           "chemins": [r["route"] for r in wave1]}
+    st.set(iterations=wave1, bricks=bricks)
     uploader.join(timeout=120)
     sb.update("taches", f"id=eq.{tid}", {"twin": {"fidelite": spec.get("fidelite"), "mission": spec["mission"],
                                                     "expected": spec.get("expected"), "dev_test": dev,
@@ -475,7 +472,8 @@ def route_zero(session_dir: Path) -> dict | None:
 
 
 def run_iteration(spec, url, out, model, variant, hints="", route: dict | None = None,
-                  start: str | None = None, known: list[str] | None = None) -> tuple[dict, float, list[str]]:
+                  start: str | None = None, known: list[str] | None = None, order: str | None = None,
+                  others_fn=None, on_path=None) -> tuple[dict, float, list[str]]:
     """Un essai dans le jumeau. Exploration : seuls A (départ `start`) et B (résultat attendu) sont donnés ;
     `known` = chemins déjà découverts, à NE PAS refaire."""
     exp = spec.get("expected")
@@ -488,11 +486,57 @@ def run_iteration(spec, url, out, model, variant, hints="", route: dict | None =
     if known:
         mission += ("\n\n## Ways already found by other agents (find a DIFFERENT way: other order, other pages, "
                     "other navigation)\n" + "\n".join(f"- {k}" for k in known))
+    if order:
+        mission += f"\n\n## Order imposed for you\n{order}"
     res = run_agent(url, mission, out, model, max_steps=int(os.environ.get("DISCOVERY_MAX_STEPS", "40")),
                     init_script=VARIANTS[variant], progress_fn=lambda s: progress_text(exp, s),
-                    done_guard=done_guard(exp), hints=hints, start_click=start)
+                    done_guard=done_guard(exp), hints=hints, start_click=start, others_fn=others_fn, on_path=on_path)
     sc, errs = score(exp, res["state"])
     return res, sc, errs
+
+
+def parallel_wave(spec, url, session_dir: Path, model: str, first_it: int, bricks: list, known: list[str],
+                  r0: dict | None, sb, tid, width: int = 3) -> list[dict]:
+    """width agents EN MÊME TEMPS, parcours différents : départs et ordres imposés différents, et registre partagé
+    où chacun voit le parcours en cours des autres (consigne : ne pas le suivre)."""
+    from concurrent.futures import ThreadPoolExecutor
+    live: dict[int, list[str]] = {}
+    lock = threading.Lock()
+    orders = ["Process the items in the order given by the task.", "Process the items in REVERSE order (last item first).",
+              "Start with the item in the middle of the list, then the others."]
+    plans = []
+    if r0:
+        plans.append({"route": r0, "label": "chemin de l'employé", "start": None})
+    for b in bricks:
+        if len(plans) >= width:
+            break
+        plans.append({"route": None, "label": f"départ « {b} »", "start": b})
+    while len(plans) < width:
+        plans.append({"route": None, "label": "libre", "start": None})
+
+    def one(i, plan):
+        it = first_it + i
+        def others():
+            with lock:
+                return "\n".join(f"- agent {j + 1}: " + " → ".join(p) for j, p in live.items() if j != i and p)
+        def on_path(p):
+            with lock:
+                live[i] = p
+        try:
+            res, sc, errs = run_iteration(spec, url, session_dir / "runs" / f"it{it}-agent{i + 1}", model, "base",
+                                          route=plan["route"], start=plan["start"], known=known,
+                                          order=orders[i % len(orders)], others_fn=others, on_path=on_path)
+            r = summary_of(model, "base", res, sc, errs, it)
+            r["path"] = res.get("path") or []
+            record_test(sb, tid, plan["label"], res, sc, errs, f"exploration agent {i + 1}")
+        except Exception as e:  # noqa: BLE001
+            r = {"iteration": it, "model": model, "variant": "base", "success_rate": 0.0, "false_success": False,
+                 "seconds": 0, "calls": 0, "errors": [str(e)[:200]], "path": []}
+        r.update(start=plan["start"], label=plan["label"], route=" → ".join(r["path"]) or "(aucun chemin)")
+        return r
+
+    with ThreadPoolExecutor(max_workers=width) as pool:
+        return list(pool.map(lambda a: one(*a), enumerate(plans)))
 
 
 BRICKS_JS = """() => [...document.querySelectorAll('body *')]
@@ -561,15 +605,12 @@ def casse(session_dir: Path) -> None:
                progress={"done": len(results), "total": max_it + 2})
 
     try:
-        bricks = list_bricks(url) or [None]
-        k = 0
-        while len(results) < max_it and not any(r["success_rate"] >= 1 for r in results):
-            start = bricks[k % len(bricks)]
-            k += 1
+        if not any(r["success_rate"] >= 1 for r in results) and len(results) < max_it * 2:
+            progress("Nouvelle vague de 3 parcours différents")
+            bricks = (st.data.get("bricks") or list_bricks(url) or [None])
+            rest = [b for b in bricks if b not in {r.get("start") for r in results}] or bricks
             known = sorted({r["route"] for r in results if r.get("path")})
-            progress(f"Itération {len(results) + 1} : départ « {start} »")
-            results.append(one(len(results) + 1, start=start, known=known))
-            progress(f"Itération {len(results)} : {round(results[-1]['success_rate'] * 100)} %")
+            results += parallel_wave(spec, url, session_dir, CASSE_MODEL, len(results) + 1, rest, known, None, sb, tid)
         best = max(results, key=lambda r: (r["success_rate"], -r["seconds"]), default=None)
         if best and best["success_rate"] >= 0.9:
             progress("Test du meilleur chemin avec popup et lenteur")
