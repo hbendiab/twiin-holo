@@ -515,7 +515,8 @@ app.post('/api/generate-workflows', async (req, res) => {
 // --- Découverte de la tâche + environnement de test interne (côté serveur uniquement) -------------------------
 // À la fin de l'analyse, un worker Python (discovery/) envoie la tâche dans Supabase, construit un JUMEAU interne,
 // le teste avec Holo, puis pose UNE question à l'employé : « Ai-je bien compris votre problème ? ».
-// Le jumeau, les essais et la casse ne sont jamais montrés sur la page. Désactiver : DISCOVERY=off.
+// Le jumeau, les essais et la casse ne sont jamais montrés sur la page. Toujours active : seule l'absence des clés
+// (Supabase, Holo) la saute, et la page affiche alors directement les étapes, comme avant.
 let discovery = { dir: null, proc: null };
 const discoveryState = (dir) => {
   try { return JSON.parse(fs.readFileSync(path.join(dir, 'discovery.json'), 'utf8')); } catch { return null; }
@@ -536,7 +537,6 @@ const workerBusy = (st) => !!st && (['upload', 'cadrage', 'answered', 'casse'].i
   || (st.phase === 'awaiting_confirmation' && st.work !== 'ready'))
   && Date.now() - Date.parse(st.updated_at || 0) < 15 * 60 * 1000;
 function startDiscovery(dir) {
-  if ((process.env.DISCOVERY || 'off') !== 'on') return false; // opt-in : sans DISCOVERY=on, le parcours de Hanine reste inchangé
   const missing = ['SUPABASE_URL', 'SUPABASE_PUBLISHABLE_KEY', 'SUPABASE_EMAIL', 'SUPABASE_PASSWORD', 'HAI_API_KEY'].filter((k) => !process.env[k]);
   if (missing.length) { console.warn(`[découverte] désactivée, variables manquantes : ${missing.join(', ')}`); return false; }
   const st = discoveryState(dir);
