@@ -582,9 +582,10 @@ footer { margin-top: 48px; color: var(--dim); font-size: 13px; }
     <p class="sub">Twiin range chaque tâche enregistrée dans un arbre : entreprise › logiciel (Excel, Sage, logiciel interne…)
       › catégorie › cas précis. Le but : rapprocher les tâches qui se ressemblent sans être identiques. Un même cas
       regroupe plusieurs salariés (« moi aussi », ou un process similaire reconnu), ce qui donne un meilleur score aux
-      recommandations : on sait combien de personnes et combien d'heures sont en jeu. La DSI fixe un seuil, valide les
-      catégories proposées, et reçoit les solutions : un conseil que le salarié applique lui-même, ou une automatisation (n8n, ou n8n + Holo en computer use quand le logiciel n'a pas d'API).
-      Exemple ci-dessous avec une entreprise fictive.</p>
+      recommandations : on sait combien de personnes et combien d'heures sont en jeu. Chaque salarié crée lui-même son
+      automatisation (n8n, ou n8n + Holo en computer use quand le logiciel n'a pas d'API) ou applique un conseil. Twiin
+      partage ensuite ces bonnes pratiques avec les collègues qui font la même tâche. La DSI n'intervient qu'une fois,
+      pour autoriser les outils. Exemple ci-dessous avec une entreprise fictive.</p>
     <style>
 #tg{
   --bg:#F4F6F8; --surface:#FFFFFF; --ink:#17202B; --muted:#657083; --line:#D2D8E1; --line-soft:#E6EAF0;
@@ -709,6 +710,7 @@ footer { margin-top: 48px; color: var(--dim); font-size: 13px; }
 #tg .ring{fill:none;stroke:var(--accent);stroke-width:1.5}
 #tg .plus{font-family:var(--f-mono);font-size:12px;font-weight:500;fill:var(--a)}
 #tg .plus.rec{fill:var(--accent)}
+#tg .bar,#tg .barbg,#tg .barlbl{display:none}
 @media (prefers-reduced-motion:reduce){#tg *{transition:none!important;animation:none!important}
 }
 
@@ -746,14 +748,13 @@ footer { margin-top: 48px; color: var(--dim); font-size: 13px; }
 
     <aside>
       <div class="panel" id="sumpanel" hidden>
-        <h2>Rapport DSI</h2>
-        <div class="big">529 h/mois</div>
-        <p class="small" style="color:var(--ink)">2 groupes retenus : factures fournisseurs (14 pers, 497 h) et rapports Excel (11 pers, 32 h). Commandes PDF sous surveillance (65 h, 4 pers).</p>
+        <h2>Bonnes pratiques partagées</h2>
+        <div class="big">2 automatisations</div>
+        <p class="small" style="color:var(--ink)">créées par 2 salariés, proposées à 23 collègues qui font la même tâche : factures fournisseurs (14 pers, 497 h/mois) et rapports Excel (11 pers, 32 h/mois).</p>
       </div>
       <div class="panel">
-        <h2>Seuil fixé par la DSI</h2>
-        <div class="rule"><b>≥ 10 personnes</b>ET<b>≥ 30 h/mois</b></div>
-        <p class="small">Sur chaque cas, la barre du haut compte les personnes, celle du bas les heures. Un cas s'allume quand les deux sont pleines.</p>
+        <h2>Comment Twiin rapproche les tâches</h2>
+        <p class="small">Chaque tâche enregistrée est rangée sous logiciel › catégorie › cas. Une tâche similaire, sans être identique, rejoint le même cas, et un collègue peut cliquer « moi aussi ». Ce qu'un salarié a automatisé peut alors servir à tous ceux du même cas.</p>
       </div>
       <div class="panel">
         <h2>Journal</h2>
@@ -769,9 +770,8 @@ footer { margin-top: 48px; color: var(--dim); font-size: 13px; }
           <div><span class="sw" style="background:var(--a-soft);border-color:var(--a)"></span>Conseil : le salarié l'applique lui-même, à la main</div>
           <div><span class="sw" style="background:var(--b-soft);border-color:var(--b)"></span>Automatisation n8n (le logiciel a une API)</div>
           <div><span class="sw" style="background:var(--c-soft);border-color:var(--c)"></span>Automatisation n8n + Holo (computer use, sans API), en arrière-plan</div>
-          <div><span class="sw" style="background:var(--accent-soft);border-color:var(--accent)"></span>Cas partagé, au-dessus du seuil</div>
-          <div><span class="sw" style="background:var(--watch-soft);border-color:var(--watch)"></span>Sous surveillance (heures oui, personnes non)</div>
-          <div><span class="sw" style="background:var(--surface);border-color:var(--muted);border-style:dashed"></span>Catégorie proposée par Twiin, à valider</div>
+          <div><span class="sw" style="background:var(--accent-soft);border-color:var(--accent)"></span>Cas dont l'automatisation est partagée entre collègues</div>
+          <div><span class="sw" style="background:var(--surface);border-color:var(--muted);border-style:dashed"></span>Catégorie créée par Twiin quand rien ne correspond</div>
         </div>
       </div>
     </aside>
@@ -802,9 +802,9 @@ const CASES={
   relances:{cat:'relances',label:'Relancer les devis sans réponse',y:520,n:3,h:28}};
 const SEUIL_N=10, SEUIL_H=30;
 const BR={
-  fA:{k:'A',from:'facture',y:70,t:'Conseil',to:'→ employée',d:'Supprimer la vérif. TVA manuelle'},
-  fB:{k:'C',from:'facture',y:130,t:'Automatisation n8n + Holo',to:'→ DSI',d:'Factures vers Sage 100, sans API'},
-  rB:{k:'B',from:'group',y:241,t:'Automatisation n8n',to:'→ DSI',d:'API Excel et Salesforce, envoi n8n'}};
+  fA:{k:'A',from:'facture',y:70,t:'Conseil',to:'→ la salariée',d:'Supprimer la vérif. TVA manuelle'},
+  fB:{k:'C',from:'facture',y:130,t:'Automatisation n8n + Holo',to:'→ partagée',d:'Factures vers Sage 100, sans API'},
+  rB:{k:'B',from:'group',y:241,t:'Automatisation n8n',to:'→ partagée',d:'API Excel et Salesforce, envoi n8n'}};
 const CHIPS={ms:'Microsoft 365',gw:'Google Workspace',n8n:'n8n',claude:'Claude',holo:'Holo'};
 const X={tool:180,toolW:120,cat:340,catW:205,cas:585,casW:260,br:905,brW:272};
 const TH=34, CH=58, BH=44;
@@ -836,7 +836,7 @@ for(const id in CATS){const c=CATS[id];const g=el('g',{class:'node cat'},gNodes)
  const l=el('text',{class:'lbl',x:X.cat+12,y:c.y+4.5},g,c.label);
  nodes['k-'+id]={g,l};edge('k-'+id,X.tool+X.toolW,TOOLS[c.tool].y,X.cat,c.y);
  tag('k-'+id,X.cat+X.catW,c.y-TH/2-8);}
-const agg=el('text',{class:'agg',x:X.cat+12,y:CATS.rapports.y+TH/2+15},gNodes,'groupe : 11 pers · 32 h/mois');
+const agg=el('text',{class:'agg',x:X.cat+12,y:CATS.rapports.y+TH/2+15},gNodes,'même méthode : 11 pers · 32 h/mois');
 for(const id in CASES){const c=CASES[id];const y=c.y-CH/2,x=X.cas;const g=el('g',{class:'node case'},gNodes);
  el('rect',{class:'box',x,y,width:X.casW,height:CH,rx:9},g);
  el('text',{class:'lbl',x:x+12,y:y+21},g,c.label);
@@ -869,41 +869,31 @@ for(const k in CHIPS){const s=document.createElement('span');s.className='chip';
 /* ---------- Scénario ---------- */
 const rec=(e,c)=>[e,c,'rec'], too=(es,c)=>es.map(e=>[e,c,'too']);
 const STEPS=[
- {cap:'La DSI crée le graphe de l’entreprise et renseigne son catalogue d’outils.',dur:3000,
+ {cap:'L’entreprise ouvre son graphe. La DSI renseigne une fois le catalogue d’outils autorisés.',dur:3000,
   run:s=>{s.on.add('root');s.catalog=true;log(s,'dsi','DSI','renseigne son catalogue : Microsoft 365, Google Workspace, n8n, Claude, Holo.');}},
- {cap:'Une comptable enregistre son process une seule fois. Holo l’observe et Twiin le range : Sage 100 › Saisie de factures › cas précis.',dur:4200,
+ {cap:'Une comptable enregistre sa tâche une seule fois. Twiin la range : Sage 100 › Saisie de factures › cas précis.',dur:4200,
   fx:[rec(0,'facture')],run:s=>{log(s,'emp','Comptable','enregistre « Traiter une facture fournisseur ».');log(s,'twiin','Twiin','classe le cas sous Sage 100 › Saisie de factures.');}},
  {cap:'Un conseil lui est proposé tout de suite, qu’elle applique elle-même : Sage 100 vérifie déjà la TVA, l’étape à la calculatrice peut sauter.',dur:3600,
-  run:s=>{s.br.add('fA');s.chips.add('claude');log(s,'twiin','Twiin → employée','conseil : supprimer la vérification TVA manuelle, environ 3 min gagnées par facture.');}},
- {cap:'Un commercial enregistre ses relances de devis : une branche Salesforce apparaît.',dur:3000,
-  fx:[rec(first('relances'),'relances')],run:s=>log(s,'emp','Commercial','enregistre « Relancer les devis sans réponse ».')},
- {cap:'Une contrôleuse de gestion enregistre son rapport hebdomadaire : Excel › Automatisation de rapports.',dur:3000,
-  fx:[rec(first('hebdo'),'hebdo')],run:s=>log(s,'emp','Contrôle de gestion','enregistre « Rapport hebdomadaire des ventes ».')},
- {cap:'Une deuxième comptable enregistre la même tâche. Twiin reconnaît un process similaire et le rattache au cas existant.',dur:3800,
+  run:s=>{s.br.add('fA');s.chips.add('claude');log(s,'twiin','Twiin → comptable','conseil : supprimer la vérification TVA manuelle, environ 3 min gagnées par facture.');}},
+ {cap:'Un commercial et une contrôleuse de gestion enregistrent leurs tâches : de nouvelles branches poussent.',dur:3400,
+  fx:[rec(first('relances'),'relances'),rec(first('hebdo'),'hebdo')],run:s=>{log(s,'emp','Commercial','enregistre « Relancer les devis sans réponse ».');log(s,'emp','Contrôle de gestion','enregistre « Rapport hebdomadaire des ventes ».');}},
+ {cap:'Une deuxième comptable fait presque la même chose. Twiin reconnaît un process similaire à 91 % et la rattache au même cas.',dur:3800,
   fx:[rec(1,'facture')],run:s=>{log(s,'emp','Comptable','enregistre sa saisie de factures.');log(s,'twiin','Twiin','process similaire à 91 % : rattaché au cas existant, pas de nouveau nœud.');}},
- {cap:'Les autres comptables se reconnaissent et cliquent « moi aussi ». Pas de nouvel enregistrement ni de nouvelle analyse : le compteur monte.',dur:5600,tween:2400,
-  fx:too(range('facture',2),'facture'),run:s=>{log(s,'emp','12 comptables','cliquent « moi aussi » sur « Traiter une facture fournisseur ».');log(s,'twiin','Twiin','12 enregistrements et 12 analyses Holo évités.');}},
- {cap:'D’autres process arrivent. Quand rien ne correspond, Twiin propose une catégorie, en pointillés, que la DSI validera.',dur:4400,
-  fx:[rec(first('treso'),'treso'),rec(first('commandes'),'commandes'),rec(first('notes'),'notes')],
-  run:s=>{s.st['k-autres']='proposed';log(s,'emp','Trésorerie','enregistre « Rapport mensuel de trésorerie ».');log(s,'emp','ADV','enregistre « Saisir les commandes reçues en PDF ».');log(s,'twiin','Twiin','propose la catégorie « Autres : notes de frais ».');}},
- {cap:'Les « moi aussi » s’accumulent sur les autres cas.',dur:5200,tween:2200,
-  fx:[...too(range('hebdo',first('hebdo')+1),'hebdo'),...too(range('treso',first('treso')+1),'treso'),...too(range('commandes',first('commandes')+1),'commandes'),...too(range('relances',first('relances')+1),'relances'),...too(range('notes',first('notes')+1),'notes')],
-  run:s=>log(s,'emp','15 employés','cliquent « moi aussi » sur les rapports, les commandes PDF, les relances et les notes de frais.')},
- {cap:'Seuil de la DSI : au moins 10 personnes ET 30 h/mois. Les factures fournisseurs le franchissent avec 14 personnes et 497 h/mois.',dur:4200,
-  run:s=>{s.st['c-facture']='lit';s.hot.add('c-facture');s.hot.add('k-saisie');s.hot.add('t-sage');log(s,'twiin','Twiin','seuil franchi : « Traiter une facture fournisseur ».');}},
- {cap:'Aucun rapport ne passe seul, mais les deux cas de la même catégorie le dépassent ensemble : 11 personnes, 32 h/mois.',dur:4400,
-  run:s=>{s.group=true;s.st['k-rapports']='lit';s.st['c-hebdo']='grouped';s.st['c-treso']='grouped';['k-rapports','c-hebdo','c-treso','t-excel'].forEach(i=>s.hot.add(i));log(s,'twiin','Twiin','regroupe les deux rapports en remontant l’arbre : seuil franchi ensemble.');}},
- {cap:'Le reste est sous le seuil. Les 3 commerciaux sont écartés. Les commandes PDF restent sous surveillance : 4 personnes seulement, mais 65 h/mois.',dur:4600,
-  run:s=>{s.st['c-relances']='drop';s.st['c-notes']='drop';s.st['c-commandes']='watch';log(s,'twiin','Twiin','écarte les relances (3 pers) et les notes de frais (2 pers), surveille les commandes PDF.');}},
- {cap:'La DSI valide la taxonomie proposée : accepter, renommer, fusionner, ignorer.',dur:4400,
-  run:s=>{s.tags['c-facture']='accepté';s.tags['k-rapports']='fusionnés';s.tags['k-autres']='renommé';s.tags['c-relances']='ignoré';s.rename=true;delete s.st['k-autres'];
-   log(s,'dsi','DSI','accepte « Traiter une facture fournisseur ».');log(s,'dsi','DSI','fusionne les deux rapports en un groupe.');log(s,'dsi','DSI','renomme « Autres : notes de frais » en « Notes de frais ».');log(s,'dsi','DSI','ignore « Relancer les devis ».');}},
- {cap:'Pour les factures, Sage 100 n’a pas d’API : l’automatisation passe par n8n + Holo (computer use), en arrière-plan, pendant que les comptables continuent à travailler.',dur:4800,
-  run:s=>{s.br.add('fB');['n8n','holo'].forEach(c=>s.chips.add(c));log(s,'twiin','Twiin → DSI','automatisation n8n + Holo pour les factures fournisseurs.');}},
- {cap:'Pour les rapports, les logiciels ont une API : n8n suffit, sans Holo.',dur:4400,
-  run:s=>{s.br.add('rB');s.chips.add('ms');log(s,'twiin','Twiin → DSI','automatisation n8n pour les rapports Excel.');}},
- {cap:'Rapport DSI : 2 groupes retenus, 529 h/mois en jeu. Aucun nom d’employé n’y figure.',dur:3000,
-  run:s=>{s.summary=true;log(s,'twiin','Twiin → DSI','rapport envoyé : 2 groupes, 529 h/mois.');}}
+ {cap:'Les autres comptables se reconnaissent et cliquent « moi aussi » : pas de nouvel enregistrement ni de nouvelle analyse.',dur:5600,tween:2400,
+  fx:too(range('facture',2),'facture'),run:s=>{log(s,'emp','12 comptables','cliquent « moi aussi » sur « Traiter une facture fournisseur ».');log(s,'twiin','Twiin','12 enregistrements et 12 analyses évités.');}},
+ {cap:'D’autres tâches arrivent et les « moi aussi » s’accumulent. Quand rien ne correspond, Twiin crée une catégorie.',dur:5200,tween:2200,
+  fx:[rec(first('treso'),'treso'),rec(first('commandes'),'commandes'),rec(first('notes'),'notes'),...too(range('hebdo',first('hebdo')+1),'hebdo'),...too(range('treso',first('treso')+1),'treso'),...too(range('commandes',first('commandes')+1),'commandes'),...too(range('relances',first('relances')+1),'relances'),...too(range('notes',first('notes')+1),'notes')],
+  run:s=>{s.st['k-autres']='proposed';log(s,'emp','Trésorerie, ADV, assistants','enregistrent leurs tâches ; 15 collègues cliquent « moi aussi ».');log(s,'twiin','Twiin','crée la catégorie « Notes de frais ».');}},
+ {cap:'La première comptable crée son automatisation en un clic. Sage 100 n’a pas d’API : n8n + Holo (computer use) la font tourner en arrière-plan, elle continue à travailler.',dur:4800,
+  run:s=>{s.br.add('fB');['n8n','holo'].forEach(c=>s.chips.add(c));s.hot.add('c-facture');log(s,'emp','Comptable','crée l’automatisation « Traiter une facture fournisseur ».');}},
+ {cap:'Bonne pratique partagée : Twiin propose cette automatisation aux 13 autres comptables du même cas, sans nouvel enregistrement.',dur:4400,
+  run:s=>{s.st['c-facture']='lit';s.hot.add('k-saisie');s.hot.add('t-sage');log(s,'twiin','Twiin → 13 comptables','proposent l’automatisation de leur collègue.');}},
+ {cap:'La contrôleuse de gestion automatise son rapport avec n8n seul : les logiciels ont une API.',dur:4000,
+  run:s=>{s.br.add('rB');s.chips.add('ms');s.st['c-hebdo']='lit';s.hot.add('c-hebdo');log(s,'emp','Contrôle de gestion','crée l’automatisation du rapport hebdomadaire.');}},
+ {cap:'Le rapport de trésorerie ressemble au rapport des ventes : même catégorie, même méthode. Twiin propose l’automatisation à la trésorerie aussi.',dur:4400,
+  run:s=>{s.group=true;s.st['k-rapports']='lit';s.st['c-treso']='grouped';['k-rapports','c-treso','t-excel'].forEach(i=>s.hot.add(i));log(s,'twiin','Twiin → trésorerie','propose l’automatisation des rapports, adaptée à leur rapport.');}},
+ {cap:'Bilan : 2 automatisations créées par 2 salariés, proposées à 23 collègues qui font la même tâche.',dur:3200,
+  run:s=>{s.summary=true;log(s,'twiin','Twiin','2 bonnes pratiques partagées entre salariés.');}}
 ];
 function log(s,kind,who,text){s.log.push({kind,who,text});}
 
@@ -934,7 +924,7 @@ function render(s,i,anim,tween){
   if(anim&&st==='lit'&&prevSt[id]!=='lit'){g.classList.remove('flash');void g.getBBox();g.classList.add('flash');}}
  prevSt={...s.st};
  edges.forEach(e=>{e.p.classList.toggle('on',s.on.has(e.to));e.p.classList.toggle('hot',s.hot.has(e.to));});
- nodes['k-autres'].l.textContent=s.rename?'Notes de frais':'Autres : notes de frais';
+ nodes['k-autres'].l.textContent='Notes de frais';
  for(const id in BR){bnodes[id].classList.toggle('on',s.br.has(id));bedges[id].classList.toggle('on',s.br.has(id));}
  bracket.classList.toggle('on',s.group);agg.classList.toggle('on',s.group);
  for(const id in tags){const T=tags[id],txt=s.tags[id];T.g.classList.toggle('on',!!txt);
@@ -997,9 +987,10 @@ if(!reduce)setTimeout(()=>{if(!playing&&cur===STEPS.length-1)replay();},1800);
       <tr><th>Dans le graphe</th><th>Dans Supabase</th><th>Aujourd'hui</th></tr>
       <tr><td>Entreprise</td><td><code>company_id</code> sur chaque table (RLS)</td><td>en place</td></tr>
       <tr><td>Logiciel</td><td><code>dictionnaire</code></td><td>en place</td></tr>
-      <tr><td>Catégorie</td><td>nouvelle table, proposée par Twiin, validée par la DSI</td><td>à faire</td></tr>
+      <tr><td>Catégorie</td><td>nouvelle table, créée par Twiin quand aucune ne correspond</td><td>à faire</td></tr>
       <tr><td>Cas</td><td><code>taches</code> regroupées par similarité (pgvector)</td><td>à faire : aujourd'hui une tâche = un enregistrement</td></tr>
       <tr><td>« Moi aussi »</td><td>lien salarié ↔ cas, sans nouvel enregistrement ni nouvelle analyse</td><td>à faire</td></tr>
+      <tr><td>Partage entre salariés</td><td>une automatisation créée par un salarié, proposée aux autres membres du même cas</td><td>à faire</td></tr>
       <tr><td>Solutions (conseil, automatisation)</td><td><code>recommendations</code> + <code>tests</code></td><td>en place pour une tâche ; à étendre au cas regroupé</td></tr>
     </table></div>
   </section>
