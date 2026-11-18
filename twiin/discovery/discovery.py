@@ -517,15 +517,24 @@ def classify_tools(spec: dict, used: list[dict]) -> dict:
     """Avant les itérations : chaque outil est-il accessible par API, par lecture de page, ou seulement à l'écran ?
     Le mode d'automatisation en découle : « n8n natif » ou « n8n + Holo »."""
     outils = (spec.get("cadrage") or {}).get("outils") or []
+    # Le navigateur n'est pas un outil : on le retire, mais on garde l'information « web » (accès par HTTP)
+    browsers = re.compile(r"\b(chrome|edge|firefox|safari|brave|opera|navigateur|browser)\b", re.I)
+    web = any(browsers.search(o) for o in outils)
+    outils = [o for o in outils if not browsers.search(o)]
     dico = "\n".join(f"- {d['name']}: {'API (' + (d.get('connector') or '') + ')' if d.get('has_api') else 'no API'}" for d in used)
+    note = ("NOTE: the employee works in a WEB BROWSER: the websites above are reached over the web (HTTP); "
+            "the browser itself is not a tool.\n") if web else ""
     r = hf_client().chat.completions.create(
         model=HF_MODEL, max_tokens=1200, temperature=0,
         messages=[{"role": "system", "content": CLASSIFY_PROMPT},
-                  {"role": "user", "content": f"TOOLS: {', '.join(outils)}\nDICTIONARY:\n{dico or '(none)'}\nTASK: {spec['mission'][:1500]}"}],
+                  {"role": "user", "content": f"TOOLS: {', '.join(outils)}\nDICTIONARY:\n{dico or '(none)'}\n{note}TASK: {spec['mission'][:1500]}"}],
         extra_body={"reasoning_effort": "low"})
     raw = (r.choices[0].message.content or "").strip()
     raw = fenced(raw, "json") or raw[raw.find("{"): raw.rfind("}") + 1]
     res = json.loads(raw)
+    res["outils"] = [o for o in res.get("outils", []) if not browsers.search(o.get("nom", ""))]
+    if web:
+        res["web"] = "sites utilisés dans un navigateur : accès par le web (HTTP)"
     res["mode"] = "n8n + Holo" if any(o.get("acces") == "ecran" for o in res.get("outils", [])) else "n8n natif"
     return res
 
