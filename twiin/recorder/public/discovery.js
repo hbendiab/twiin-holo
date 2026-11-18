@@ -124,6 +124,11 @@
       ${q.etapes?.length ? `<ol>${q.etapes.map((e) => `<li>${esc(e)}</li>`).join('')}</ol>` : ''}
       ${q.outils?.length ? `<p><b>Outils :</b> ${q.outils.map(esc).join(', ')}</p>` : ''}
       ${q.objectif ? `<p><b>Objectif :</b> ${esc(q.objectif)}</p>` : ''}
+      ${q.resultat?.lignes?.length ? `<p><b>Résultat attendu :</b> ${esc(q.resultat.description || '')}</p>
+        <div style="overflow-x:auto"><table style="border-collapse:collapse;font-size:13px;width:100%">
+          <tr>${(q.resultat.colonnes || Object.keys(q.resultat.lignes[0])).map((c) => `<th style="text-align:left;padding:4px 8px 4px 0;border-bottom:1px solid var(--panel-border)">${esc(c)}</th>`).join('')}</tr>
+          ${q.resultat.lignes.map((r) => `<tr>${(q.resultat.colonnes || Object.keys(r)).map((c) => `<td style="padding:4px 8px 4px 0">${esc(r[c] ?? '')}</td>`).join('')}</tr>`).join('')}
+        </table></div>` : ''}
       ${q.doutes?.length ? `<p class="dc-doubt"><b>À confirmer :</b> ${q.doutes.map(esc).join(' · ')}</p>` : ''}
       <div class="dc-row">
         <button class="primary dc-yes">Oui, c'est bien ça</button>
@@ -152,13 +157,22 @@
       const results = document.getElementById('results');
       (results?.parentNode || document.body).insertBefore(host, results || null);
     }
+    // « Accélérer » = conseils seulement : on masque l'option et le bouton d'automatisation de l'étape Reco
+    if (!document.getElementById('twiinAccStyle')) {
+      const st = document.createElement('style');
+      st.id = 'twiinAccStyle';
+      st.textContent = 'body.twiin-accelerer [data-opt="automatiser"], body.twiin-accelerer .btn-n8n { display: none !important; }';
+      document.head.appendChild(st);
+    }
+    document.body.classList.toggle('twiin-accelerer', s.kind !== 'automate');
     host.dataset.view = '3';
     host.classList.add('view');
     const card = host;
     card.innerHTML = `
-      <h3>${s.kind === 'automate' ? '⚡ Twiin peut automatiser cette tâche' : '🎬 Twiin propose d\'accélérer cette tâche'}</h3>
+      <p class="eyebrow-small">Recommandation vérifiée${s.essais ? ` par ${esc(s.essais)} essais` : ' par des essais'}</p>
+      <h3>${s.kind === 'automate' ? '⚡ Twiin peut automatiser cette tâche' : '💡 Après vérification : accélère cette tâche toi-même'}</h3>
       <p>${esc(s.texte)}</p>
-      <ul>${(s.raisons || []).map((r) => `<li>${esc(r)}</li>`).join('')}</ul>
+      ${(s.raisons || []).length ? `<details><summary>Pourquoi</summary><ul>${s.raisons.map((r) => `<li>${esc(r)}</li>`).join('')}</ul></details>` : ''}
       <p class="dc-msg"></p>
       <div class="dc-row">${s.kind === 'automate' ? '<button class="primary dc-create">Créer cette automatisation</button>' : ''}
         <button class="${s.kind === 'automate' ? '' : 'primary '}dc-ok">${s.kind === 'automate' ? 'Plus tard' : 'Compris'}</button></div>`;

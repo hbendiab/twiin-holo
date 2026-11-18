@@ -143,6 +143,23 @@ def compile_plan(plan):
                 "sendBody": True, "specifyBody": "json", "jsonBody": body,
                 "options": {"timeout": 600000, "response": {"response": {"responseFormat": "json"}}},
             }, x))
+        elif t in ("source_read", "holo_fill"):
+            # Saisie « document → logiciel web sans API » : lecture du document sur le poste, puis Holo saisit dans un
+            # navigateur INVISIBLE et le navigateur vérifie les valeurs à l'écran. S'il n'y a rien de nouveau, rien n'est saisi.
+            if t == "source_read":
+                url = TWIIN_URL.replace("/api/holo/run", "/api/source/read")
+                body = json.dumps({"columns": b["columns"], "line_columns": b.get("line_columns") or [], "folder": b.get("folder") or "", "pattern": b.get("pattern") or ""},
+                                  ensure_ascii=False)
+            else:
+                url = TWIIN_URL.replace("/api/holo/run", "/api/holo/fill")
+                body = ("={{ JSON.stringify({ url: " + json.dumps(b["url"]) + ", label: " + json.dumps(b.get("label") or "", ensure_ascii=False)
+                        + ", values: $json.data || {} }) }}")
+            nodes.append(node(b["name"], "n8n-nodes-base.httpRequest", 4.2, {
+                "method": "POST", "url": url,
+                "sendHeaders": True, "headerParameters": {"parameters": [{"name": "x-twiin-token", "value": token}]},
+                "sendBody": True, "specifyBody": "json", "jsonBody": body,
+                "options": {"timeout": 900000, "response": {"response": {"responseFormat": "json"}}},
+            }, x))
         elif t == "rows_from":
             src = ", ".join("$(" + json.dumps(n, ensure_ascii=False) + ").first().json.data || {}" for n in b["sources"])
             code = (f"const rows = [{src}];\n"

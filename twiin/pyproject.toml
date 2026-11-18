@@ -14,7 +14,8 @@ dependencies = [
     "pyobjc-framework-Vision>=10; sys_platform == 'darwin'",
     "pyobjc-framework-Quartz>=10; sys_platform == 'darwin'",
     "playwright>=1.45",              # découverte : agents Holo dans le jumeau (navigateur sans fenêtre)
-    "openpyxl>=3.1",                 # automatisations : écrire dans un classeur Excel du poste sans Holo
+    "openpyxl>=3.1",
+    "pypdf>=5",                 # automatisations : lire une facture PDF (source d'une saisie)
     # Windows : journal d'actions (souris/clavier + UI Automation) et OCR intégré de Windows
     "pynput>=1.7; sys_platform == 'win32'",
     "uiautomation>=2.0; sys_platform == 'win32'",

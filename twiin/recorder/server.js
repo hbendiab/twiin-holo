@@ -1104,6 +1104,22 @@ app.post('/api/holo/web', async (req, res) => {
   console.log(`   → ${r.ok ? 'lu' : 'échec'} en ${Math.round(r.seconds || 0)} s : ${JSON.stringify(r.data || r.error).slice(0, 160)}`);
   res.json(r);
 });
+// /api/source/read : lit le document à saisir (PDF…) le plus récent d'un dossier du poste, sans Holo.
+// /api/holo/fill : Holo saisit dans un logiciel web sans API, navigateur INVISIBLE ; connexion par le coffre local.
+app.post('/api/source/read', async (req, res) => {
+  if (!localBridge(req)) return res.status(403).json({ error: 'Accès refusé (appel local avec jeton Twiin uniquement).' });
+  const r = await runPyJson('discovery.source_read', req.body || {}, { timeout: 120000 });
+  console.log(`n8n → document : ${r.file || r.info || r.error}`);
+  res.status(r.ok ? 200 : 409).json(r);
+});
+app.post('/api/holo/fill', async (req, res) => {
+  if (!localBridge(req)) return res.status(403).json({ error: 'Accès refusé (appel local avec jeton Twiin uniquement).' });
+  const { url, label, values } = req.body || {};
+  console.log(`n8n → Holo saisit (navigateur invisible) : ${label || url}`);
+  const r = await runPyJson('discovery.web_fill', { url, label, values }, { track: webRuns, timeout: 900000 });
+  console.log(`   → ${r.ok ? 'saisi et vérifié' : `échec : ${r.error || `manque ${(r.check?.missing || []).join(', ')}`}`}`);
+  res.status(r.ok ? 200 : 409).json(r);
+});
 app.post('/api/excel/write', async (req, res) => {
   if (!localBridge(req)) return res.status(403).json({ error: 'Accès refusé (appel local avec jeton Twiin uniquement).' });
   const r = await runPyJson('discovery.excel_write', req.body || {}, { timeout: 60000 });

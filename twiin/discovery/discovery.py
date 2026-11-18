@@ -77,7 +77,13 @@ Return ONLY this JSON, in French, no fences:
  "etapes": ["3 to 5 short steps as the employee would describe them"],
  "outils": ["software / websites used"],
  "objectif": "accélérer | automatiser, with a few words",
- "doutes": ["0 to 3 things to confirm with the employee"]}
+ "doutes": ["0 to 3 things to confirm with the employee"],
+ "resultat": {"description": "one sentence: the final result the task produces (e.g. « une facture en brouillon dans QONTA »)",
+              "colonnes": ["the fields or table columns the employee filled, as labelled on screen"],
+              "lignes": [{"<colonne>": "<the EXACT value the employee entered, read in the screen text below>"}]}}
+For "resultat", use ONLY values that appear in the SCREEN TEXT or the steps (what the employee really typed or chose).
+One object per row / record produced (e.g. one per website compared, one per invoice entered). Leave a value "" if it
+is not visible. This result is shown to the employee to validate, then it is what the tests must reproduce exactly.
 """
 
 TWIN_PROMPT = """You prepare an INTERNAL test environment (a "twin") for a task an employee recorded on their computer.
@@ -288,9 +294,14 @@ def discover(session_dir: Path) -> None:
     steps_txt = (f"TASK: {cand.get('name', '')}\nSUMMARY: {cand.get('summary', '')}\nSTEPS:\n"
                  + "\n".join(f"{i + 1}. {s}" for i, s in enumerate(steps))
                  + f"\nKNOWN SOFTWARE: {', '.join(d['name'] for d in used) or '-'}")
+    try:  # texte lu à l'écran pendant l'enregistrement (OCR) : là où sont les vraies valeurs saisies
+        screen_txt = json.loads((ROOT / "workflows" / "last_run.json").read_text(encoding="utf-8")).get("ocr_transcript", "")
+    except (OSError, ValueError):
+        screen_txt = ""
+    cadrage_in = steps_txt + "\n\nSCREEN TEXT (OCR, last part):\n" + screen_txt[-7000:]
     r = hf_client().chat.completions.create(
-        model=HF_MODEL, max_tokens=1500, temperature=0.2,
-        messages=[{"role": "system", "content": CADRAGE_PROMPT}, {"role": "user", "content": steps_txt}],
+        model=HF_MODEL, max_tokens=2500, temperature=0.2,
+        messages=[{"role": "system", "content": CADRAGE_PROMPT}, {"role": "user", "content": cadrage_in}],
         extra_body={"reasoning_effort": "low"})
     raw = (r.choices[0].message.content or "").strip()
     raw = fenced(raw, "json") or raw[raw.find("{"): raw.rfind("}") + 1]
@@ -307,7 +318,12 @@ def discover(session_dir: Path) -> None:
     docs = "\n".join(f"- {d['name']} ({'API ' + (d['connector'] or '') if d['has_api'] else 'pas d API'}) : "
                      + " | ".join((x.get("title", "") + " : " + x.get("excerpt", "")[:300]) for x in (d.get("docs") or [])[:2])
                      for d in used) or "(aucun logiciel du dictionnaire reconnu)"
-    content = [{"type": "text", "text": steps_txt + f"\n\nSOFTWARE (dictionnaire):\n{docs}"}]
+    res_attendu = (cadrage.get("resultat") or {})
+    lignes = [r for r in (res_attendu.get("lignes") or []) if isinstance(r, dict) and any(str(v).strip() for v in r.values())]
+    expected_txt = ("\n\nEXPECTED FINAL RESULT (shown to the employee for validation; the twin MUST be built so that doing the task "
+                    "produces EXACTLY these rows; use these exact column names as the headers / field labels, and put these exact "
+                    "values in the source pages so they can be read):\n" + json.dumps(lignes, ensure_ascii=False)) if lignes else ""
+    content = [{"type": "text", "text": steps_txt + f"\n\nSOFTWARE (dictionnaire):\n{docs}" + expected_txt}]
     for f in pick:
         content += [{"type": "text", "text": f"Screenshot t+{f.get('seconds', '?')}s"},
                     {"type": "image_url", "image_url": {"url": f["dataUrl"]}}]
@@ -323,6 +339,10 @@ def discover(session_dir: Path) -> None:
         raise RuntimeError("le modèle n'a pas rendu le jumeau attendu (voir twin_raw.txt)")
     spec = json.loads(spec_txt)
     spec["cadrage"] = cadrage
+    if lignes:  # l'état attendu = le résultat validé par l'employé, pas une invention du modèle
+        spec["expected_model"] = spec.get("expected")
+        spec["expected"] = {"rows": lignes}
+        spec["expected_source"] = "validé dans la question"
     twin_dir = session_dir / "twin"
     twin_dir.mkdir(exist_ok=True)
     (twin_dir / "index.html").write_text(html, encoding="utf-8")
@@ -370,6 +390,8 @@ GUIDE = """
 - A price is the CURRENT price of the product of the page: ignore crossed-out old prices, ads, banners and other products.
 - Fill every column the task asks for; leave empty the columns the task says to leave empty.
 - Click a cell before typing in it (type_text does it for you). Never use buy / add to cart / send / validate buttons.
+- Fields with a SUGGESTION LIST (autocomplete: supplier, client, city, product…): type a few letters, then CLICK the matching
+  suggestion. The field must then show the chosen value, never a placeholder like « Select… » or « type 2 letters ».
 - Call done only when every row and every column is filled."""
 
 
@@ -780,14 +802,17 @@ def propose(results: list[dict]) -> dict:
                               if native else
                               f"Automatiser avec n8n : des blocs Holo ({model}) lisent seulement ce qui n'a ni API ni page "
                               "lisible, l'API écrit le résultat.") + " C'est la solution la plus rapide et la plus fiable trouvée.",
-                    "raisons": raisons, "catalogue": catalogue}
+                    "raisons": raisons, "catalogue": catalogue, "essais": len(results)}
         return {"kind": "automate", "confidence": "high" if tient else "medium", "modele": model,
                 "texte": f"Automatiser avec Holo ({model}) en suivant le meilleur chemin découvert, avec une vérification "
-                         "du résultat à chaque exécution.", "raisons": raisons, "catalogue": catalogue}
+                         "du résultat à chaque exécution.", "raisons": raisons, "catalogue": catalogue, "essais": len(results)}
     return {"kind": "accelerate", "confidence": "low", "modele": model,
-            "texte": "Aucun chemin n'est encore assez fiable : Twiin propose d'accélérer la tâche (tuto + raccourcis) "
-                     "et réessaiera l'automatisation après correction des points fragiles.",
-            "raisons": raisons, "catalogue": catalogue}
+            "texte": "Les essais montrent que cette tâche ne peut pas encore être confiée à Twiin de façon fiable. "
+                     "Le mieux est de la garder et d'aller plus vite : suis les conseils ci-dessous.",
+            # « Accélérer » = conseils seulement : aucune trace d'automatisation montrée à l'employé
+            "raisons": [f"{len(results)} essais réalisés sur une copie de ta tâche : aucun ne la refait de façon assez fiable",
+                        "tu gardes la main, Twiin t'aide à la faire plus vite"],
+            "essais": len(results), "catalogue": catalogue}
 
 
 def answer(session_dir: Path) -> None:

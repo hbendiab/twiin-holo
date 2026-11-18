@@ -59,6 +59,22 @@ TEXT_AT = """([x, y]) => {
   return String(t.value ?? t.innerText ?? '').trim().split('\\n')[0].slice(0, 300);
 }"""
 
+# Liste de suggestions ouverte sous un champ (autocomplétion) : listbox/option ARIA, datalist, ou liste visible juste
+# sous le champ actif. Générique : fonctionne pour n'importe quel site ou logiciel web.
+SUGGESTIONS_JS = """() => {
+  const vis = (e) => { const r = e.getBoundingClientRect(); const cs = getComputedStyle(e);
+    return r.width > 0 && r.height > 0 && cs.visibility !== 'hidden' && cs.display !== 'none'; };
+  let opts = [...document.querySelectorAll('[role=option], [role=listbox] li, .autocomplete li, .suggestions li, ul.ui-autocomplete li')].filter(vis);
+  const a = document.activeElement;
+  if (!opts.length && a && /INPUT|TEXTAREA/.test(a.tagName)) {
+    const r = a.getBoundingClientRect();
+    opts = [...document.querySelectorAll('li, [class*=suggest] div, [class*=option]')].filter((e) => {
+      if (!vis(e)) return false; const q = e.getBoundingClientRect();
+      return q.top >= r.bottom - 2 && q.top < r.bottom + 260 && Math.abs(q.left - r.left) < 260 && (e.innerText || '').trim().length > 1; });
+  }
+  return opts.slice(0, 8).map((e) => (e.innerText || '').trim().split(String.fromCharCode(10))[0].slice(0, 60));
+}"""
+
 ELEMENT_AT = """([x, y]) => {
   const el = document.elementFromPoint(x, y);
   if (!el) return null;
@@ -71,7 +87,7 @@ ELEMENT_AT = """([x, y]) => {
 def run_agent(url: str, mission: str, out_dir: Path, model: str, max_steps: int = 30,
               init_script: str | None = None, on_event=None, progress_fn=None, done_guard=None,
               hints: str = "", subtasks: list[dict] | None = None, start_click: str | None = None,
-              others_fn=None, on_path=None) -> dict:
+              others_fn=None, on_path=None, prepare=None, final_check=None) -> dict:
     """progress_fn(state) -> texte d'avancement montré à Holo à chaque étape ;
     done_guard(state) -> raison de refuser « fini » (ou None) ; hints : conseils tirés de l'essai précédent."""
     """Rejoue `mission` dans le jumeau servi à `url`. Renvoie stats, issue et état final du jumeau.
@@ -102,6 +118,8 @@ def run_agent(url: str, mission: str, out_dir: Path, model: str, max_steps: int 
         page.on("dialog", lambda d: d.dismiss() if FORBIDDEN.search(d.message) else d.accept())
         page.goto(url)
         page.wait_for_timeout(800)
+        if prepare:  # ex. connexion par le coffre : faite par Twiin, Holo ne voit jamais le mot de passe
+            prepare(page)
         if start_click:  # point de départ imposé (une « brique » du jumeau)
             try:
                 page.get_by_text(start_click, exact=True).first.click(timeout=3000)
@@ -216,6 +234,15 @@ def run_agent(url: str, mission: str, out_dir: Path, model: str, max_steps: int 
                     page.keyboard.press("ControlOrMeta+A")
                     page.keyboard.press("Backspace")
                     page.keyboard.type(str(args.get("text", "")), delay=30)
+                    page.wait_for_timeout(600)
+                    try:
+                        sugg = page.evaluate(SUGGESTIONS_JS) or []
+                    except Exception:  # noqa: BLE001
+                        sugg = []
+                    if sugg:  # une liste de suggestions s'est ouverte : il FAUT en choisir une, sinon le champ reste vide
+                        args["suggestions"] = sugg
+                        history.append(f"{step}. A SUGGESTION LIST opened under the field ({' | '.join(sugg)}). Your NEXT action must be "
+                                       "a click on the matching suggestion in this list (not Tab, not Enter, not another field).")
                 elif name == "copy_text":
                     clipboard = page.evaluate(TEXT_AT, [px, py]) or ""
                     args["copied"] = clipboard[:80]
@@ -251,8 +278,14 @@ def run_agent(url: str, mission: str, out_dir: Path, model: str, max_steps: int 
         except Exception:  # noqa: BLE001
             state = None
         page.screenshot(path=str(out_dir / "final.jpg"), type="jpeg", quality=70)
+        check = None
+        if final_check:  # contrôle du résultat dans la page finale, par le navigateur (pas par Holo)
+            try:
+                check = final_check(page)
+            except Exception as e:  # noqa: BLE001
+                check = {"ok": False, "error": str(e)[:200]}
         browser.close()
     stats["holo_seconds"] = round(stats["holo_seconds"], 1)
     stats["seconds"] = round(time.time() - t0, 1)
     return {"outcome": outcome, "claimed_success": claimed_success, "summary": summary, "state": state,
-            "stats": stats, "history": history, "path": path, "final_url": final_url}
+            "stats": stats, "history": history, "path": path, "final_url": final_url, "check": check}
