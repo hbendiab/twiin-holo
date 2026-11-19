@@ -57,3 +57,5 @@ desktop/node_modules/
 tuto/video/public/pitch/
 
 workflows/tuto-sessions/
+
+workflows/sauvegarde-*/
