@@ -1,0 +1,263 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Twiin · Back</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Google+Sans+Flex:wght@300;400;500;600;700&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="pages.css">
+<style>
+  body { max-width: 1200px; }
+  .grid { display: grid; gap: 14px; }
+  details.panel { padding: 0; }
+  details.panel > summary { list-style: none; cursor: pointer; padding: 16px 20px; display: flex; justify-content: space-between; gap: 12px; align-items: baseline; }
+  details.panel > summary::-webkit-details-marker { display: none; }
+  details.panel > summary h2 { font-size: 16px; font-weight: 600; margin: 0; }
+  details.panel > summary::after { content: "▸"; color: var(--text-dim); }
+  details.panel[open] > summary::after { content: "▾"; }
+  details.panel > .content { padding: 0 20px 18px; }
+  table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+  th, td { text-align: left; vertical-align: top; padding: 6px 8px; border-bottom: 1px solid var(--panel-border); }
+  th { font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: var(--text-dim); font-weight: 600; }
+  .tw { overflow-x: auto; }
+  pre { font: 11.5px/1.5 var(--mono); background: var(--panel-2); border-radius: 10px; padding: 10px 12px; max-height: 340px; overflow: auto;
+        white-space: pre-wrap; word-break: break-word; margin: 8px 0 0; }
+  code, .mono { font-family: var(--mono); font-size: 12px; }
+  .kv { display: grid; grid-template-columns: 200px minmax(0, 1fr); gap: 4px 14px; font-size: 13px; }
+  .kv dt { color: var(--text-dim); }
+  .kv dd { margin: 0; overflow-wrap: anywhere; }
+  .tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; margin-bottom: 12px; }
+  .tile { padding: 10px 12px; border-radius: 10px; background: var(--panel-2); }
+  .tile span { display: block; font-size: 11px; color: var(--text-dim); }
+  .tile b { font-size: 17px; font-variant-numeric: tabular-nums; }
+  h3 { font-size: 13px; margin: 16px 0 6px; }
+  .warnbox { font-size: 13px; padding: 10px 12px; border-radius: 10px; background: var(--warn-soft); color: var(--warn); margin-bottom: 14px; }
+</style>
+<link rel="stylesheet" href="theme.css">
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="/"><span id="logoCells"></span><span>Tw<b>ii</b>n</span></a>
+    <nav class="nav"><a href="/">Analyser une tâche</a><a href="/videos.html">Mes vidéos</a><a href="/automatisations.html">Mes automatisations</a><a href="/back.html" aria-current="page">Back</a></nav>
+    <button id="themeBtn" type="button">Thème sombre</button>
+  </header>
+  <h1>Back</h1>
+  <p class="lead">Tout ce qui est technique et que l'employé n'a pas besoin de voir : services, coûts, modèles, journaux, scans complets,
+    rejeux de Holo, exécutions n8n. Pour l'équipe et le débogage.</p>
+  <div class="warnbox">Cette page contient des données personnelles (fiche employé, journal des clics, texte lu à l'écran). À réserver à l'équipe.</div>
+  <div class="actions" style="margin-bottom:16px"><button id="refresh" type="button">Actualiser</button><span class="meta" id="updated"></span></div>
+  <details class="panel" id="dirigeant" open style="margin-bottom:14px">
+    <summary><h2>Cadrage du dirigeant · temps 0</h2><span class="meta" id="dMeta">une fois par entreprise, environ 3 min</span></summary>
+    <div class="content">
+      <p class="meta">Sert au chiffrage en euros et aux sources que l'audit a le droit de lire. Le dirigeant ne voit ensuite que des résultats regroupés par rôle.</p>
+      <h3>Objectif principal</h3>
+      <div class="actions" id="dObj"></div>
+      <h3>Irritants connus</h3>
+      <div class="actions" id="dIrr"></div>
+      <textarea id="dIrrLibre" rows="2" placeholder="Autres irritants, un par ligne" style="width:100%;margin-top:8px;font:13px var(--font);padding:8px 10px;border-radius:10px;border:1px solid var(--panel-border);background:var(--panel-2);color:var(--text)"></textarea>
+      <h3>Coût horaire chargé moyen : <span id="dCoutVal">35</span> €/h</h3>
+      <input type="range" id="dCout" min="15" max="120" step="1" value="35" style="width:100%;accent-color:var(--accent)">
+      <h3>Consentement et sources autorisées</h3>
+      <label class="check"><input type="checkbox" id="dConsent"> L'entreprise autorise l'audit des postes, après information des salariés</label>
+      <label class="check"><input type="checkbox" data-src="logiciel_installe" checked disabled> Logiciels installés (toujours)</label>
+      <label class="check"><input type="checkbox" data-src="historique_navigateur"> Outils web métier vus dans Chrome (domaines connus seulement, jamais les pages)</label>
+      <label class="check"><input type="checkbox" data-src="connecteur_google_workspace" disabled> Connecteur Google Workspace (bientôt)</label>
+      <div class="actions" style="margin-top:12px"><button class="primary" id="dSave" type="button">Enregistrer le cadrage</button><span class="meta" id="dMsg"></span></div>
+    </div>
+  </details>
+  <div class="grid" id="root"></div>
+
+  <details class="panel" id="tester" style="margin-top:14px">
+    <summary><h2>Tester et casser · test par Holo</h2><span class="meta">en préparation (Lucas) · retiré du parcours employé</span></summary>
+    <div class="content">
+      <p class="meta">Holo refait une tâche analysée sur ce Mac pour vérifier que Twiin l'a bien comprise. Il prend la souris et le clavier :
+        ne touche à rien pendant le test (double Échap pour l'arrêter). Coûte des crédits H.</p>
+      <div class="actions" style="margin:10px 0">
+        <select id="tTask" style="font:14px var(--font);padding:8px 10px;border-radius:10px;border:1px solid var(--panel-border);background:var(--panel);color:var(--text);max-width:100%"></select>
+      </div>
+      <textarea id="tSteps" rows="10" style="width:100%;font:12.5px/1.5 var(--mono);padding:10px;border-radius:10px;border:1px solid var(--panel-border);background:var(--panel-2);color:var(--text)"
+        placeholder="Une étape par ligne"></textarea>
+      <div class="actions" style="margin-top:10px">
+        <button id="tImprove" type="button">Préciser les étapes pour Holo</button>
+        <button id="tRun" class="primary" type="button">Tester avec Holo</button>
+        <button id="tStop" class="danger" type="button" hidden>Arrêter Holo</button>
+      </div>
+      <p class="meta" id="tStatus"></p>
+      <div id="tOut"></div>
+    </div>
+  </details>
+
+<script src="/vendor/supabase/supabase.js"></script>
+  <script src="shell.js" defer></script>
+  <script src="auth.js"></script>
+  <script src="banner.js"></script>
+  <script src="common.js"></script>
+<script>
+const yes = (b) => b ? '<span class="pill on">oui</span>' : '<span class="pill bad">non</span>';
+const usd = (x) => (typeof x === 'number' ? `${x.toFixed(4)} $` : '—');
+const section = (id, title, meta, body, open = false) =>
+  `<details class="panel" id="${id}" ${open ? 'open' : ''}><summary><h2>${title}</h2><span class="meta">${meta || ''}</span></summary><div class="content">${body}</div></details>`;
+const table = (cols, rows) => `<div class="tw"><table><thead><tr>${cols.map((c) => `<th>${c}</th>`).join('')}</tr></thead><tbody>${rows.join('')}</tbody></table></div>`;
+const pre = (x) => `<pre>${escapeHtml(typeof x === 'string' ? x : JSON.stringify(x, null, 2))}</pre>`;
+const openState = () => new Set([...document.querySelectorAll('details[open]')].map((d) => d.id));
+
+async function load() {
+  const opened = openState();
+  const d = await (await fetch('/api/back')).json();
+  const s = d.services;
+  const out = [];
+
+  out.push(section('services', 'Services et réglages', `n8n ${s.n8n ? 'en marche' : 'arrêté'}`, `<dl class="kv">
+    <dt>Serveur Twiin</dt><dd>${yes(true)}</dd>
+    <dt>n8n</dt><dd>${yes(s.n8n)} <code>${escapeHtml(s.n8n_url)}</code></dd>
+    ${Object.entries(s.cles).map(([k, v]) => `<dt>${k}</dt><dd>${v ? '<span class="pill on">présente</span>' : '<span class="pill bad">absente</span>'}</dd>`).join('')}
+    <dt>Modèle d'analyse</dt><dd><code>${escapeHtml(s.modele)}</code> · mode <code>${escapeHtml(s.mode)}</code></dd>
+    <dt>Voix · transcription</dt><dd><code>${escapeHtml(s.voix)}</code> · <code>${escapeHtml(s.transcription)}</code></dd>
+    <dt>Raccourci ⌥⌘T</dt><dd>${escapeHtml(s.raccourci || 'non installé')}</dd></dl>`, opened.size === 0 || opened.has('services')));
+
+  const total = Object.values(d.costs).reduce((a, b) => a + b, 0);
+  out.push(section('couts', 'Coûts et journal technique', `${usd(total)} au total (Hugging Face)`,
+    `<div class="tiles">${Object.entries(d.costs).map(([k, v]) => `<div class="tile"><span>${escapeHtml(k)}</span><b>${usd(v)}</b></div>`).join('') || '<p class="meta">Pas encore de coût noté.</p>'}</div>`
+    + table(['Heure', 'Type', 'Coût', 'Détails'], d.log.map((e) => {
+      const { t, kind, cost_usd, ...rest } = e;
+      return `<tr><td class="mono">${fmtDate(t)}</td><td>${escapeHtml(kind)}</td><td class="mono">${usd(cost_usd)}</td><td><code>${escapeHtml(JSON.stringify(rest)).slice(0, 400)}</code></td></tr>`;
+    })), opened.has('couts')));
+
+  const a = d.last_analysis;
+  out.push(section('analyse', 'Dernière analyse (étape 2)', a ? `${a.model} · ${usd(a.cost_usd)}` : 'aucune', a ? `<dl class="kv">
+    <dt>Modèle · fournisseur</dt><dd><code>${escapeHtml(a.model)}</code> via <code>${escapeHtml(a.provider || '?')}</code></dd>
+    <dt>Tokens</dt><dd class="mono">${a.usage?.prompt_tokens ?? '?'} en entrée · ${a.usage?.completion_tokens ?? '?'} en sortie</dd>
+    <dt>Coût</dt><dd class="mono">${usd(a.cost_usd)}</dd>
+    <dt>Écrans · images</dt><dd>${a.screens} écran(s) · ${a.images_kept} gardées · ${a.images_sent} envoyées au modèle${a.text_only ? ' (texte seul)' : ''}</dd>
+    <dt>Texte lu (OCR)</dt><dd>${a.ocr_lines} lignes · ${a.ocr_chars} caractères</dd>
+    <dt>Journal d'actions</dt><dd>${a.action_lines} actions</dd>
+    <dt>JSON réparé</dt><dd>${a.json_repaired ? 'oui' : 'non'}</dd></dl>
+    <h3>Journal d'actions envoyé au modèle</h3>${pre(a.action_log.join('\n'))}<h3>Extrait du texte lu à l'écran</h3>${pre(a.ocr_extract)}` : '<p class="meta">Pas encore d\'analyse.</p>', opened.has('analyse')));
+
+  out.push(section('sessions', 'Enregistrements', `${d.sessions.length} récents`, table(['Dossier', 'Images', 'Actions', 'Clics', 'Écrans', 'Autorisations'],
+    d.sessions.map((x) => `<tr><td class="mono">${escapeHtml(x.id)}</td><td>${x.frames}</td><td>${x.actions}</td><td>${x.clicks}</td><td>${x.displays ?? '—'}</td>
+      <td>${x.permissions ? `clics/clavier ${x.permissions.clics_clavier ? '✓' : '✗'} · accessibilité ${x.permissions.accessibilite ? '✓' : '✗'}` : '—'}</td></tr>`)), opened.has('sessions')));
+
+  const p = d.profile;
+  out.push(section('fiche', 'Fiche employé (étape 1)', p ? `mise à jour ${fmtAgo(p.updated_at)}` : 'aucune', p ? `
+    ${(p.corrections || []).length ? `<h3>Corrections faites à partir du dictionnaire</h3>${table(['Entendu', 'Corrigé'], p.corrections.map((c) => `<tr><td>${escapeHtml(c.entendu)}</td><td>${escapeHtml(c.corrige)}</td></tr>`))}` : ''}
+    <h3>Réponses enregistrées</h3>${table(['Question', 'Réponse'], (p.answers || []).map((x) => `<tr><td>${escapeHtml(x.question)}</td><td>${escapeHtml(x.answer)}</td></tr>`))}
+    <h3>Fiche complète (JSON)</h3>${pre((({ answers, ...rest }) => rest)(p))}` : '<p class="meta">Pas encore de fiche.</p>', opened.has('fiche')));
+
+  const au = d.audit;
+  out.push(section('audit', 'Scan complet du poste (étape 1)', au ? `${au.summary.outils} outils · ${fmtDate(au.generated_at)}` : 'aucun', au ? `
+    <p class="meta">${escapeHtml(au.scope)}</p>
+    <div class="tiles">${Object.entries(au.summary).map(([k, v]) => `<div class="tile"><span>${escapeHtml(k.replace(/_/g, ' '))}</span><b>${v}</b></div>`).join('')}</div>
+    ${table(['Outil', 'Type', 'API', 'Connecteur', 'Stratégie', 'Détecté via', 'Composants'], au.tools.map((t) => `<tr><td>${escapeHtml(t.app)}</td><td>${t.type}</td><td>${t.api}</td>
+      <td class="mono">${escapeHtml(t.connector || '—')}</td><td>${escapeHtml(t.twin_strategy)}</td><td>${escapeHtml(t.source)}</td>
+      <td>${t.components.map((c) => `${escapeHtml(c.name)} ${escapeHtml(c.version || '')}${c.usage ? ` (${c.usage})` : ''}`).join(', ')}</td></tr>`))}
+    ${au.excluded_personal?.length ? `<h3>Applis perso ignorées</h3><p class="meta">${au.excluded_personal.map((x) => escapeHtml(x.name)).join(', ')}</p>` : ''}
+    ${Object.entries(au.extensions || {}).filter(([, v]) => v.length).map(([k, v]) => `<h3>Extensions ${escapeHtml(k)} (${v.length})</h3><p class="meta">${v.map(escapeHtml).join(', ')}</p>`).join('')}`
+    : '<p class="meta">Pas encore de scan.</p>', opened.has('audit')));
+
+  out.push(section('rejeux', 'Rejeux de Holo (étape 3 et blocs n8n)', `${d.replays.length} récents`, d.replays.map((r) => `
+    <h3>${escapeHtml(r.workflow)} · ${escapeHtml(r.mode || '')} · ${escapeHtml(r.status || '')} · ${fmtDur(r.seconds)}${r.restarts ? ` · ${r.restarts} reprise(s)` : ''}</h3>
+    <p class="meta mono">${escapeHtml(r.file)} · ${r.screen_switches} changement(s) d'écran · ${Object.entries(r.usage || {}).map(([m, u]) => `${m} : ${u.input_tokens}/${u.output_tokens} tokens`).join(' · ')}
+      ${(r.share_urls || []).map((u, i) => ` · <a href="${u}" target="_blank" rel="noopener">session H ${i + 1}</a>`).join('')}${r.blocked?.length ? ` · ${r.blocked.length} action(s) bloquée(s)` : ''}</p>
+    ${table(['Étape', 'Statut', 'Durée', 'Réponse de Holo'], r.steps.map((x) => `<tr><td>${escapeHtml(String(x.step ?? '').slice(0, 220))}</td><td>${escapeHtml(x.status || '')}</td><td>${fmtDur(x.seconds)}</td><td>${escapeHtml((typeof x.answer === 'string' ? x.answer : JSON.stringify(x.answer ?? '')).slice(0, 400))}</td></tr>`))}`).join('')
+    || '<p class="meta">Pas de rejeu.</p>', opened.has('rejeux')));
+
+  out.push(section('n8n', 'Créations et exécutions n8n (étape 4)', `${d.n8n.length} récentes`, d.n8n.map((f) => `<h3 class="mono">${escapeHtml(f.file)}</h3>${pre(f.events.map((e) => JSON.stringify(e)).join('\n'))}`).join('')
+    || '<p class="meta">Rien pour l\'instant.</p>', opened.has('n8n')));
+
+  out.push(section('tuto', 'Dernier tuto vidéo', d.tuto ? `${d.tuto.name} · ${d.tuto.error ? 'erreur' : d.tuto.phase}` : 'aucun',
+    d.tuto ? pre(d.tuto) : '<p class="meta">Pas de tuto fabriqué depuis le démarrage du serveur.</p>', opened.has('tuto')));
+
+  document.getElementById('root').innerHTML = out.join('');
+  document.getElementById('updated').textContent = `Actualisé à ${new Date().toLocaleTimeString('fr-FR')}`;
+}
+document.getElementById('refresh').addEventListener('click', load);
+load();
+
+// --- Temps 0 : cadrage du dirigeant ---
+const OBJ = [['gagner_du_temps', 'Gagner du temps'], ['reduire_les_erreurs', 'Réduire les erreurs'], ['absorber_plus_de_volume', 'Absorber plus de volume sans recruter'],
+             ['preparer_facturation_electronique', 'Préparer la facturation électronique']];
+const IRR = ['Ressaisies entre logiciels', 'Relances clients ou fournisseurs', 'Dossiers administratifs trop longs', 'Erreurs de saisie', 'Pics d\'activité difficiles à absorber', 'Reporting fait à la main'];
+let dir = null;
+const pill = (on, txt, attr) => `<button type="button" class="${on ? 'primary' : ''}" ${attr}>${escapeHtml(txt)}</button>`;
+function drawDir() {
+  document.getElementById('dObj').innerHTML = OBJ.map(([k, l]) => pill(dir.objectif === k, l, `data-obj="${k}"`)).join('');
+  document.getElementById('dIrr').innerHTML = IRR.map((l) => pill(dir.irritants.includes(l), l, `data-irr="${escapeHtml(l)}"`)).join('');
+  document.querySelectorAll('[data-obj]').forEach((b) => b.onclick = () => { dir.objectif = b.dataset.obj; drawDir(); });
+  document.querySelectorAll('[data-irr]').forEach((b) => b.onclick = () => {
+    const v = b.dataset.irr; dir.irritants = dir.irritants.includes(v) ? dir.irritants.filter((x) => x !== v) : [...dir.irritants, v]; drawDir();
+  });
+}
+fetch('/api/audit/dirigeant').then((r) => r.json()).then((d) => {
+  dir = d.dirigeant;
+  document.getElementById('dCout').value = dir.cout_horaire; document.getElementById('dCoutVal').textContent = dir.cout_horaire;
+  document.getElementById('dConsent').checked = !!dir.consentement_entreprise;
+  document.querySelectorAll('[data-src]').forEach((c) => { if (!c.disabled) c.checked = (dir.sources_autorisees || []).includes(c.dataset.src); });
+  document.getElementById('dIrrLibre').value = dir.irritants.filter((x) => !IRR.includes(x)).join('\n');
+  document.getElementById('dMeta').textContent = d.defaut ? 'pas encore fait · valeurs par défaut' : 'fait';
+  drawDir();
+});
+document.getElementById('dCout').oninput = (e) => { document.getElementById('dCoutVal').textContent = e.target.value; };
+document.getElementById('dSave').onclick = async () => {
+  const libres = document.getElementById('dIrrLibre').value.split('\n').map((x) => x.trim()).filter(Boolean);
+  const body = { objectif: dir.objectif, irritants: [...dir.irritants.filter((x) => IRR.includes(x)), ...libres],
+                 cout_horaire: Number(document.getElementById('dCout').value), consentement_entreprise: document.getElementById('dConsent').checked,
+                 sources_autorisees: ['logiciel_installe', ...[...document.querySelectorAll('[data-src]')].filter((c) => !c.disabled && c.checked).map((c) => c.dataset.src)] };
+  const d = await (await fetch('/api/audit/dirigeant', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })).json();
+  dir = d.dirigeant; drawDir();
+  document.getElementById('dMsg').textContent = 'Enregistré.'; document.getElementById('dMeta').textContent = 'fait';
+};
+
+// --- Tester et casser (test par Holo) : outil de travail, hors parcours employé ---
+let tasks = [];
+const tTask = document.getElementById('tTask'), tSteps = document.getElementById('tSteps'), tStatus = document.getElementById('tStatus');
+fetch('/api/candidates').then((r) => r.json()).then((d) => {
+  tasks = d.workflows || [];
+  tTask.innerHTML = tasks.map((w, i) => `<option value="${i}">${escapeHtml(w.name)} (${(w.steps || []).length} étapes)</option>`).join('')
+    || '<option>Aucune tâche analysée</option>';
+  showTask();
+});
+function showTask() { const w = tasks[Number(tTask.value)]; tSteps.value = w ? (w.steps || []).join('\n') : ''; }
+tTask.addEventListener('change', showTask);
+const currentTask = () => ({ ...(tasks[Number(tTask.value)] || {}), steps: tSteps.value.split('\n').map((x) => x.trim()).filter(Boolean) });
+
+document.getElementById('tImprove').onclick = async (ev) => {
+  ev.target.disabled = true; tStatus.textContent = 'Précision des étapes pour Holo…';
+  try {
+    const d = await (await fetch('/api/improve', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ workflow: currentTask() }) })).json();
+    if (d.error) throw new Error(d.error);
+    tSteps.value = d.workflow.steps.join('\n');
+    tStatus.textContent = `Étapes précisées (${d.workflow.steps.length})${d.cost_usd != null ? ` · ${d.cost_usd.toFixed(4)} $` : ''}. ` +
+      (d.changes || []).map((c) => `[${c.kind}] ${c.what}`).join(' · ');
+  } catch (e) { tStatus.textContent = `Impossible : ${e.message}`; }
+  ev.target.disabled = false;
+};
+
+document.getElementById('tRun').onclick = async () => {
+  const wf = currentTask();
+  if (!wf.steps.length) return;
+  if (!confirm(`Holo va refaire « ${wf.name} » (${wf.steps.length} étapes) sur ce Mac, avec la souris et le clavier. Lancer ?`)) return;
+  const r = await (await fetch('/api/replay', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ workflow: wf }) })).json();
+  if (r.error) { tStatus.textContent = r.error; return; }
+  const stop = document.getElementById('tStop'), run = document.getElementById('tRun'), out = document.getElementById('tOut');
+  stop.hidden = false; run.disabled = true; out.innerHTML = '';
+  stop.onclick = () => fetch('/api/replay/stop', { method: 'POST' });
+  let next = 0; const t0 = Date.now();
+  const timer = setInterval(async () => {
+    const d = await (await fetch(`/api/replay/events?since=${next}`)).json().catch(() => null);
+    if (!d) return;
+    next = d.next;
+    for (const e of d.events) {
+      if (e.type === 'step_start') out.insertAdjacentHTML('beforeend', `<p class="meta" data-i="${e.index}">⏳ ${escapeHtml(String(e.step).slice(0, 200))}</p>`);
+      else if (e.type === 'step_end') { const p = out.querySelector(`[data-i="${e.index}"]`); if (p) p.innerHTML = `${e.ok ? '✅' : '❌'} ${e.seconds} s · ${escapeHtml(String(typeof e.answer === 'string' ? e.answer : JSON.stringify(e.answer ?? '')).slice(0, 300))}`; }
+      else if (e.type === 'stalled' || e.type === 'restart') tStatus.textContent = `${e.type} (étape ${e.index})`;
+      else if (e.type === 'end') tStatus.textContent = `${e.ok ? 'Terminé' : e.status} en ${fmtDur(e.seconds)}${e.restarts ? ` · ${e.restarts} reprise(s)` : ''}`;
+      else if (e.type === 'session' && e.url) out.insertAdjacentHTML('beforeend', `<p class="meta"><a href="${e.url}" target="_blank" rel="noopener">Session chez H</a></p>`);
+    }
+    if (!d.running && Date.now() - t0 > 3000) { clearInterval(timer); stop.hidden = true; run.disabled = false; load(); }
+  }, 1000);
+};
+</script>
+</body>
+</html>

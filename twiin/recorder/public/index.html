@@ -12,6 +12,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Google+Sans+Flex:wght@300;400;500;600;700&display=swap">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="ui/twiin-ui.css">
 <style>
   /* Direction « Clair net » (cahier UX du 18/11) : blanc, un seul bleu d'action, coins arrondis, Google Sans Flex.
      Règle : UN SEUL bouton plein à l'écran (classe .primary), c'est la prochaine action. Tous les autres sont en contour. */
@@ -76,6 +77,13 @@
   .brand svg { width: 52px; height: 34px; display: block; }
   .brand b { font-weight: 700; }
   #themeBtn { font-size: 13px; padding: 7px 14px; color: var(--text-dim); }
+  .topbar .nav { display: flex; gap: 4px; flex-wrap: wrap; margin-right: auto; margin-left: 12px; }
+  .topbar .nav a { font-size: 13.5px; color: var(--text-dim); text-decoration: none; padding: 6px 10px; border-radius: 999px; white-space: nowrap; }
+  .topbar .nav { flex-wrap: nowrap; margin-left: 4px; }
+  body { max-width: 860px; }
+  .topbar .nav a:hover { color: var(--text); background: var(--panel-2); }
+  .topbar .nav a[aria-current="page"] { color: var(--accent); background: var(--accent-soft); font-weight: 600; }
+  @media (max-width: 640px) { .topbar { flex-wrap: wrap; } .topbar .nav { order: 3; width: 100%; margin-left: 0; } }
 
   h1 { font-size: 40px; font-weight: 400; letter-spacing: -0.03em; line-height: 1.1; margin: 0 0 10px; text-wrap: balance; }
   .subtitle { color: var(--text-dim); font-size: 15px; margin: 0 0 28px; max-width: 62ch; }
@@ -234,6 +242,49 @@
   .num-inline { width: 20px; height: 20px; font-size: 11px; margin-right: 4px; vertical-align: -4px; }
   .step-help { font-size: 13px; color: var(--text-dim); margin: 0 0 16px; }
   .card-step { font-size: 14px; font-weight: 600; color: var(--text); margin: 20px 0 4px; display: flex; align-items: center; gap: 8px; }
+  .tuto { margin-top: 12px; padding: 14px 16px; border-radius: 12px; background: var(--panel-2); border: 1px solid var(--panel-border); }
+  .tuto h4 { margin: 0 0 10px; font-size: 14px; }
+  .tuto-video video { width: 100%; border-radius: 10px; margin-top: 12px; background: #000; display: block; }
+  .link-btn { display: inline-block; font-size: 14px; font-weight: 500; padding: 9px 16px; border-radius: 999px; text-decoration: none;
+              border: 1px solid var(--panel-border); background: var(--panel); color: var(--text); }
+  .link-btn:hover { border-color: var(--accent); color: var(--accent); }
+  /* --- une page par étape : seule la vue de l'étape en cours est affichée --- */
+  .view { display: none; }
+  body[data-view="1"] .view[data-view~="1"], body[data-view="2"] .view[data-view~="2"],
+  body[data-view="3"] .view[data-view~="3"] { display: block; }
+  body[data-view="1"] #results { display: none; }
+  /* « Tester et casser » (test par Holo) est retiré du parcours employé : il vit dans le Back (travail de Lucas) */
+  .part-test { display: none !important; }
+  body[data-view="2"] .part-reco, body[data-view="3"] .part-relire { display: none; }
+  body[data-view="3"] .card-section { margin-top: 12px; padding-top: 0; border-top: 0; }
+  .card-section > .card-step.big { display: none; } /* le titre de l'étape est déjà en haut de la page */
+  #stepper li { cursor: pointer; }
+  #stepper li:hover { border-color: var(--accent); }
+  .pager { display: flex; justify-content: space-between; gap: 12px; margin-top: 32px; padding-top: 18px; border-top: 1px solid var(--panel-border); }
+  .pager button:empty { visibility: hidden; }
+  .no-task { text-align: center; padding: 32px 20px; margin-bottom: 16px; }
+  .no-task b { font-size: 17px; }
+  .no-task p { color: var(--text-dim); margin: 6px 0 0; }
+  .no-task .controls { justify-content: center; }
+  /* --- étape 4 · une seule recommandation, deux options --- */
+  .reco { margin-top: 14px; }
+  .verdict-head { padding: 14px 16px; border-radius: 12px; background: var(--accent-soft); margin-bottom: 12px; }
+  .verdict-head h4 { margin: 2px 0 6px; font-size: 18px; font-weight: 600; }
+  .eyebrow-small { margin: 0 !important; font-size: 11px !important; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--accent) !important; }
+  .options { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+  .option { position: relative; padding: 16px; border-radius: 14px; border: 1px solid var(--panel-border); background: var(--panel); display: flex; flex-direction: column; }
+  .option.rec { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent) inset; }
+  .option h4 { margin: 0; font-size: 16px; font-weight: 600; }
+  .option .sub { margin: 2px 0 10px !important; font-size: 13px !important; }
+  .option .wf-actions { margin-top: auto; padding-top: 12px; }
+  .option .tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); margin-bottom: 8px; }
+  .option .observed { font-size: 12px; color: var(--text-dim); margin-top: 2px; }
+  .rec-badge { position: absolute; top: -9px; right: 12px; font-size: 11px; font-weight: 600; color: var(--accent-ink); background: var(--accent);
+               border-radius: 999px; padding: 1px 9px; }
+  @media (max-width: 640px) { .options { grid-template-columns: minmax(0, 1fr); } }
+  .card-section { margin-top: 22px; padding-top: 16px; border-top: 1px solid var(--panel-border); }
+  .card-step.big { font-size: 16px; margin-top: 0; }
+  .card-help { font-size: 13px !important; color: var(--text-dim); margin: 2px 0 10px !important; max-width: 66ch; }
   .optional { margin-top: 20px; padding-top: 12px; border-top: 1px dashed var(--panel-border); }
   .optional .card-step { color: var(--text-dim); font-weight: 500; }
 
@@ -253,38 +304,239 @@
   .chip .ticon { width: 14px; height: 14px; vertical-align: -3px; margin-right: 4px; }
   .n8n h4 .ticon { width: 18px; height: 18px; }
 
+  /* --- étape 1 · audit --- */
+  .panel { background: var(--panel); border: 1px solid var(--panel-border); border-radius: 18px; padding: 18px 22px; margin: 0 0 16px; }
+  .panel-head { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; flex-wrap: wrap; margin-bottom: 8px; }
+  .panel-head h3 { margin: 0; font-size: 17px; font-weight: 600; }
+  .panel-meta { font-size: 12px; color: var(--text-dim); }
+  .panel .hint { font-size: 13px; color: var(--text-dim); margin: 0 0 10px; }
+  .panel .controls { margin: 12px 0 4px; }
+  .ob-stage { display: grid; grid-template-columns: 120px minmax(0, 1fr); gap: 18px; align-items: center; margin: 6px 0 10px; }
+  #obCells svg { width: 120px; height: 72px; display: block; }
+  .ob-question { font-size: 18px; font-weight: 500; letter-spacing: -0.01em; margin: 0; line-height: 1.35; }
+  .ob-hint { font-size: 13px; color: var(--text-dim); margin: 6px 0 0; min-height: 18px; }
+  .ob-hint .rec { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--bad); margin-right: 6px; animation: blink 1s ease-in-out infinite; }
+  @keyframes blink { 50% { opacity: 0.25; } }
+  .ob-input { display: flex; gap: 8px; flex-wrap: wrap; }
+  .ob-input input { flex: 1 1 260px; min-width: 0; font: 14px var(--font); padding: 10px 14px; border-radius: 999px;
+                    border: 1px solid var(--panel-border); background: var(--panel-2); color: var(--text); }
+  .ob-input input:focus { outline: none; border-color: var(--accent); background: var(--panel); }
+  .ob-answers { margin: 12px 0 0; padding: 0; list-style: none; display: grid; gap: 8px; counter-reset: q; }
+  .ob-answers li { counter-increment: q; display: grid; grid-template-columns: 22px minmax(0, 1fr); gap: 4px 10px; font-size: 13px; }
+  .ob-answers li::before { content: counter(q); grid-row: span 2; width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center;
+                           background: var(--accent-soft); color: var(--accent); font-size: 11px; font-weight: 600; }
+  .ob-answers .q { color: var(--text-dim); }
+  .ob-answers input { font: 13px var(--font); padding: 6px 10px; border-radius: 8px; border: 1px solid var(--panel-border);
+                      background: var(--panel-2); color: var(--text); min-width: 0; }
+  .ob-answers li.current input { border-color: var(--accent); }
+  #obAnswersBox > summary { cursor: pointer; font-size: 13px; color: var(--text-dim); margin-top: 12px; }
+  #obAnswersBox:not([open]) > summary { margin-bottom: 0; }
+  button.quiet { border-color: transparent; background: transparent; color: var(--text-dim); }
+  .scan-more { margin-top: 10px; }
+  .sphere-box { margin: 8px 0 4px; padding: 8px 0 4px; border-radius: 16px;
+                background: radial-gradient(60% 60% at 50% 45%, var(--accent-soft), transparent 70%); }
+  .sphere-caption { text-align: center; font-size: 13px; color: var(--text-dim); margin: 0 0 6px; min-height: 18px; }
+  .tool .days { color: var(--text-dim); font-weight: 500; font-variant-numeric: tabular-nums; }
+  .privacy { font-size: 12px; color: var(--text-dim); margin: 12px 0 0; }
+  #profileCard { margin-top: 14px; padding: 14px 16px; border-radius: 14px; background: var(--panel-2); border: 1px solid var(--panel-border); }
+  #profileCard h4 { margin: 0 0 2px; font-size: 18px; font-weight: 600; }
+  #profileCard .role { font-size: 14px; color: var(--text-dim); margin: 0 0 10px; }
+  #profileCard .resume { font-size: 14px; margin: 0 0 10px; }
+  #profileCard dl { display: grid; grid-template-columns: 150px minmax(0, 1fr); gap: 6px 12px; margin: 0; font-size: 13px; }
+  #profileCard dt { color: var(--text-dim); }
+  #profileCard dd { margin: 0; }
+  .tag-list { display: flex; flex-wrap: wrap; gap: 6px; }
+  .tag-list span { font-size: 12px; padding: 2px 9px; border-radius: 999px; background: var(--panel); border: 1px solid var(--panel-border); }
+  #profileCard .corrections { font-size: 12px; color: var(--text-dim); margin: 10px 0 0; }
+  .check { display: flex; gap: 8px; align-items: flex-start; font-size: 13px; color: var(--text); cursor: pointer; }
+  .check input { margin-top: 3px; accent-color: var(--accent); }
+  .scan-summary { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0; font-size: 13px; }
+  .scan-summary span { padding: 4px 10px; border-radius: 999px; background: var(--panel-2); border: 1px solid var(--panel-border); }
+  .scan-summary b { font-variant-numeric: tabular-nums; }
+  .tool-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(168px, 1fr)); gap: 8px; }
+  .tool { position: relative; display: grid; grid-template-columns: 32px minmax(0, 1fr); gap: 2px 10px; align-items: center;
+          padding: 10px 12px; border-radius: 12px; border: 1px solid var(--panel-border); background: var(--panel); }
+  .tool .ticon, .tool .noicon { grid-row: span 2; width: 32px; height: 32px; margin: 0; border-radius: 8px; }
+  .tool .noicon { display: grid; place-items: center; background: var(--panel-2); color: var(--text-dim); font-weight: 600; font-size: 14px; }
+  .tool b { font-size: 13px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .tool small { font-size: 11px; font-weight: 600; }
+  .tool small.api { color: var(--ok); } .tool small.noapi { color: var(--warn); } .tool small.unknown { color: var(--text-dim); }
+  .tool.cited { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent) inset; }
+  .tool .badge-cited { position: absolute; top: -8px; right: 8px; font-size: 10px; font-weight: 600; color: var(--accent-ink);
+                       background: var(--accent); border-radius: 999px; padding: 1px 7px; }
+  .tool.old { opacity: 0.5; }
+  .tool .recent { position: absolute; top: 8px; right: 8px; width: 7px; height: 7px; border-radius: 50%; background: var(--ok); }
+  .scan-cli { font-size: 12px; color: var(--text-dim); margin-top: 10px; }
+  .next-row { justify-content: flex-end; margin: 0 0 40px; }
+
+  /* --- étape 1 · audit v2 (temps 1 à 3) --- */
+  .a2-top { display: flex; align-items: center; gap: 12px; margin-bottom: 14px; }
+  .a2-progress { flex: 1; height: 6px; border-radius: 99px; background: var(--panel-2); overflow: hidden; }
+  .a2-progress span { display: block; height: 100%; width: 0; background: var(--accent); border-radius: 99px; transition: width .3s ease; }
+  .a2-meta { font-size: 12px; color: var(--text-dim); white-space: nowrap; font-variant-numeric: tabular-nums; }
+  .a2 h3.a2-q { font-size: 20px; font-weight: 500; letter-spacing: -0.01em; margin: 0 0 6px; line-height: 1.3; }
+  .a2 .a2-help { font-size: 13px; color: var(--text-dim); margin: 0 0 14px; }
+  .a2-nav { display: flex; align-items: center; gap: 10px; margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--panel-border); }
+  .a2-nav #a2Next { margin-left: auto; }
+  .a2-voice { display: flex; align-items: center; gap: 6px; font-size: 12px; }
+  .a2-voice .check { font-size: 12px; color: var(--text-dim); }
+  .a2-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+  .a2-chip { font-size: 13px; padding: 7px 13px; border-radius: 999px; border: 1px solid var(--panel-border); background: var(--panel); color: var(--text); cursor: pointer; }
+  .a2-chip[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); font-weight: 600; }
+  .a2-chip.dim { color: var(--text-dim); }
+  .a2-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 8px; }
+  .a2-tool { position: relative; display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 12px 8px; border-radius: 14px;
+             border: 1px solid var(--panel-border); background: var(--panel); cursor: pointer; text-align: center; font-size: 12.5px; color: var(--text); }
+  .a2-tool img, .a2-tool .noicon { width: 34px; height: 34px; border-radius: 8px; object-fit: contain; }
+  .a2-tool .noicon { display: grid; place-items: center; background: var(--panel-2); font-weight: 600; color: var(--text-dim); }
+  .a2-tool small { font-size: 11px; color: var(--text-dim); }
+  .a2-tool[aria-pressed="true"] { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent) inset; }
+  .a2-tool[aria-pressed="false"] { opacity: .45; }
+  .a2-tool .rank { position: absolute; top: 6px; left: 8px; width: 20px; height: 20px; border-radius: 50%; display: grid; place-items: center;
+                   background: var(--accent); color: var(--accent-ink); font-size: 11px; font-weight: 700; }
+  .a2-cards { display: grid; gap: 8px; }
+  .a2-card { display: flex; gap: 10px; align-items: center; padding: 11px 14px; border-radius: 12px; border: 1px solid var(--panel-border);
+             background: var(--panel); cursor: pointer; text-align: left; font-size: 14px; color: var(--text); width: 100%; }
+  .a2-card[aria-pressed="true"] { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent) inset; background: var(--accent-soft); }
+  .a2-card .box { width: 18px; height: 18px; border-radius: 5px; border: 1.5px solid var(--panel-border); flex: none; display: grid; place-items: center; font-size: 12px; }
+  .a2-card[aria-pressed="true"] .box { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+  .a2-card .icons { margin-left: auto; display: flex; gap: 3px; }
+  .a2-card .icons img { width: 16px; height: 16px; }
+  .a2-row { padding: 12px 0; border-bottom: 1px solid var(--panel-border); }
+  .a2-row:last-child { border-bottom: 0; }
+  .a2-row b { display: block; font-size: 14px; font-weight: 600; margin-bottom: 8px; }
+  .a2-row .lbl { font-size: 12px; color: var(--text-dim); margin: 6px 0 4px; }
+  .a2-input { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
+  .a2-input input, .a2 textarea { flex: 1 1 220px; min-width: 0; font: 14px var(--font); padding: 9px 13px; border-radius: 12px;
+                                  border: 1px solid var(--panel-border); background: var(--panel-2); color: var(--text); }
+  .a2 textarea { width: 100%; min-height: 80px; resize: vertical; }
+  .a2-intro ol { margin: 8px 0 14px; padding-left: 20px; font-size: 14px; display: grid; gap: 4px; }
+  .a2-consent { display: grid; gap: 8px; padding: 12px 14px; border-radius: 12px; background: var(--panel-2); margin: 10px 0; }
+  .a2-recap dl { display: grid; grid-template-columns: 170px minmax(0, 1fr); gap: 8px 14px; font-size: 13.5px; margin: 0; }
+  .a2-recap dt { color: var(--text-dim); } .a2-recap dd { margin: 0; }
+  .a2-recap .edit { font-size: 12px; margin-left: 6px; }
+  .a2-top3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin: 6px 0 16px; }
+  .a2-opp { position: relative; padding: 16px; border-radius: 14px; border: 1px solid var(--accent); background: var(--accent-soft); display: flex; flex-direction: column; gap: 6px; }
+  .a2-opp .n { font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--accent); }
+  .a2-opp b { font-size: 15px; line-height: 1.3; }
+  .a2-opp .big { font-size: 26px; font-weight: 600; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
+  .a2-opp .big small { font-size: 13px; font-weight: 500; color: var(--text-dim); }
+  .a2-opp .eur { font-size: 13px; color: var(--text); }
+  .a2-opp .tags { font-size: 12px; color: var(--text-dim); }
+  .a2-opp button { margin-top: auto; }
+  .a2-others li { font-size: 13.5px; margin: 6px 0; }
+  .a2-others .why { color: var(--text-dim); font-size: 12.5px; }
+  .a2-alerts { margin-top: 14px; padding: 12px 14px; border-radius: 12px; background: var(--warn-soft); }
+  .a2-alerts h4 { margin: 0 0 6px; font-size: 13px; color: var(--warn); }
+  .a2-alerts li { font-size: 13px; margin: 4px 0; }
+  .a2-total { font-size: 14px; margin: 0 0 12px; }
+  @media (max-width: 640px) { .a2-top3 { grid-template-columns: minmax(0, 1fr); } .a2-recap dl { grid-template-columns: minmax(0, 1fr); } .a2-voice .check { display: none; } }
+
   @media (max-width: 560px) {
     h1 { font-size: 30px; }
     #analysis { grid-template-columns: minmax(0, 1fr); }
     #reBtn { margin-left: 0; }
+    .ob-stage { grid-template-columns: minmax(0, 1fr); }
+    #profileCard dl { grid-template-columns: minmax(0, 1fr); }
   }
   @media (prefers-reduced-motion: reduce) { .phases li.active i { animation: none; } }
+</style>
+<link rel="stylesheet" href="theme.css">
+<style>
+  /* Parcours allégé : une seule navigation (la sidebar), pas de texte superflu */
+  #stepper, .pager, .a2-voice, #example, #journal, .nav-back, .step-help { display: none !important; }
+  .page-title { font-size: 30px !important; margin: 4px 0 18px !important; }
+  .page-hint { color: var(--text-dim); margin: -10px 0 18px; }
+  /* Enregistrer : un seul bouton tant qu'on n'enregistre pas ; Ajouter un écran et Terminer apparaissent pendant l'enregistrement */
+  body:not(.recording) #addBtn, body:not(.recording) #stopBtn { display: none !important; }
+  body.recording #startBtn, body.recording #reBtn { display: none !important; }
+  #reBtn.quiet { color: var(--text-dim) !important; font-size: 13px !important; }
+  #status:empty { display: none; }
+  .no-task b { display: block; margin-bottom: 12px; }
+  .relire-actions { display: flex; justify-content: space-between; align-items: center; margin-top: 14px; }
+  /* Recommandation : une carte, la décision et deux boutons ; le détail derrière « Pourquoi ? » */
+  .verdict-card { padding: 22px 24px; border-radius: var(--r-card); background: var(--panel-solid); border: 1px solid var(--panel-border); }
+  .verdict-card h3 { font-size: 26px; letter-spacing: -0.03em; margin: 2px 0 6px; }
+  .verdict-card .gain-line { color: var(--text-dim); margin: 0 0 16px; }
+  .verdict-card .wf-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+  .verdict-card .rec-primary { background: var(--accent) !important; color: var(--accent-ink) !important; border-color: var(--accent) !important;
+    font-weight: 600 !important; box-shadow: 0 10px 22px -10px rgba(18, 20, 24, .55) !important; }
+  .verdict-card.loading { display: flex; align-items: center; gap: 12px; color: var(--text-dim); }
+  .spin { width: 18px; height: 18px; border-radius: 50%; border: 2px solid var(--line); border-top-color: var(--blue); animation: twSpin .8s linear infinite; }
+  @keyframes twSpin { to { transform: rotate(360deg); } }
+  details.why { margin-top: 16px; }
+  details.why summary { cursor: pointer; color: var(--text-dim); font-size: 13.5px; }
+  details.why h4 { margin: 16px 0 6px; font-size: 14px; }
+  details.why .reasons { margin: 10px 0 0; padding-left: 18px; }
+  details.why .tiles { margin-top: 12px; }
+  body[data-view="3"] .workflow .apps-strip { margin-bottom: 14px; }
+  /* Audit : liste déroulante avec recherche (outils, tâches) */
+  .a2-combo { position: relative; margin-top: 14px; display: flex; gap: 8px; align-items: center; }
+  .a2-combo input { flex: 1; padding: 13px 18px !important; font-size: 15px !important; }
+  .a2-combo input:focus { outline: none; box-shadow: 0 0 0 3px var(--accent-soft) !important; }
+  .a2-pop { position: absolute; top: calc(100% + 6px); left: 0; right: 0; z-index: 30; max-height: 320px; overflow-y: auto; padding: 6px;
+    background: var(--panel-solid); border: 1px solid var(--panel-border); border-radius: 18px; box-shadow: 0 24px 50px -20px rgba(30, 40, 80, .35);
+    animation: a2Pop .16s ease-out; }
+  .a2-combo-big .a2-pop { right: 52px; }
+  @keyframes a2Pop { from { opacity: 0; transform: translateY(-4px); } }
+  .a2-opt { display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-radius: 12px; cursor: pointer; font-size: 14.5px; }
+  .a2-opt[aria-selected="true"] { background: var(--accent-soft); }
+  .a2-opt .ico { width: 24px; height: 24px; display: grid; place-items: center; flex: none; border-radius: 7px; }
+  .a2-opt .ico img { width: 22px; height: 22px; object-fit: contain; }
+  .a2-opt.free .ico { background: var(--accent); color: var(--accent-ink); font-weight: 700; border-radius: 50%; }
+  .a2-opt .txt { flex: 1; min-width: 0; color: var(--text); }
+  .a2-opt .txt b { font-weight: 700; }
+  .a2-opt small { color: var(--text-dim); font-size: 12px; white-space: nowrap; }
+  #a2OtherMic { width: 46px; height: 46px; padding: 0 !important; display: grid; place-items: center; font-size: 18px; flex: none; }
+  /* Audit : tâches ajoutées une par une */
+  .a2-added { list-style: none; padding: 0; margin: 14px 0 0; display: grid; gap: 8px; }
+  .a2-added li { display: flex; align-items: center; gap: 12px; padding: 10px 10px 10px 14px; border-radius: 16px; background: var(--panel-2);
+    border: 1px solid var(--panel-border); animation: a2Pop .2s ease-out; }
+  .a2-added .box { width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center; font-size: 12px; background: var(--accent); color: var(--accent-ink); flex: none; }
+  .a2-added .lib { flex: 1; min-width: 0; }
+  .a2-added .icons { display: flex; gap: 4px; }
+  .a2-added .icons img { width: 20px; height: 20px; object-fit: contain; }
+  .a2-added .rm { width: 32px; height: 32px; padding: 0 !important; display: grid; place-items: center; color: var(--text-dim) !important; flex: none; }
 </style>
 </head>
 <body>
   <header class="topbar">
     <div class="brand" aria-label="Twiin"><span id="logoCells"></span><span>Tw<b>ii</b>n</span></div>
+    <nav class="nav"><a href="/" aria-current="page">Analyser une tâche</a><a href="/videos.html">Mes vidéos</a><a href="/automatisations.html">Mes automatisations</a><a href="/back.html" class="nav-back">Back</a></nav>
     <button id="themeBtn" type="button">Thème sombre</button>
   </header>
 
-  <h1>Analyse tes tâches. Automatise tes process.</h1>
-  <p class="subtitle">Fais ta tâche comme d'habitude, Twiin regarde. Il la découpe en étapes, te montre où gagner du temps ou te propose une automatisation, et enfin la transforme en tuto vidéo. Le texte de l'écran est lu sur ton Mac ; seules les images et ce texte partent à l'analyse.</p>
 
   <ol id="stepper">
-    <li data-step="1"><span>1</span>Enregistrer</li>
-    <li data-step="2"><span>2</span>Relire les étapes</li>
-    <li data-step="3"><span>3</span>Améliorer mon process</li>
-    <li data-step="4"><span>4</span>Accélérer ou automatiser</li>
-    <li data-step="5"><span>5</span>Créer</li>
+    <li data-step="1"><span>1</span>Audit</li>
+    <li data-step="2"><span>2</span>Enregistrer</li>
+    <li data-step="3"><span>3</span>Reco</li>
   </ol>
 
-  <h2 class="step-title"><span class="num">1</span> Enregistre ta tâche</h2>
-  <p class="step-help">Plusieurs écrans ? Clique sur « Ajouter un écran » une fois par écran. Fais ta tâche normalement, puis « Terminer et analyser ».</p>
-  <div class="controls">
-    <button id="startBtn" class="primary">Enregistrer ma tâche</button>
+  <section class="view" data-view="1">
+  <h1 class="page-title">Audit de ton poste</h1>
+
+  <section class="panel a2" id="a2" aria-live="polite">
+    <div class="a2-top"><div class="a2-progress"><span id="a2Bar"></span></div><span class="a2-meta" id="a2Meta"></span></div>
+    <div id="a2Screen"></div>
+    <div class="sphere-box" id="sphereBox" hidden><div id="scanSphere"></div><p class="sphere-caption" id="sphereCaption"></p></div>
+    <div class="a2-nav"><button type="button" id="a2Back" class="quiet">← Retour</button>
+      <span class="a2-voice"><button type="button" id="a2Listen" class="quiet" title="Écouter la question">🔊 Écouter</button>
+        <label class="check"><input type="checkbox" id="a2Voice"> Lire les questions à voix haute</label></span>
+      <button type="button" id="a2Next">Suivant →</button></div>
+  </section>
+  <div class="controls next-row"><button id="toRecordBtn" type="button">Enregistrer une tâche →</button></div>
+  </section>
+
+  <section class="view" data-view="2">
+
+  <h1 class="page-title" id="recordTitle">Enregistre ta tâche</h1>
+  <p class="page-hint">Fais-la comme d'habitude : Twiin regarde.</p>
+  <div class="controls rec-controls">
+    <button id="startBtn">Enregistrer ma tâche</button>
     <button id="addBtn" disabled>+ Ajouter un écran</button>
     <button id="stopBtn" disabled>Terminer et analyser</button>
-    <button id="reBtn" title="Refaire l'analyse du dernier enregistrement, sans le refaire">Réanalyser le dernier enregistrement</button>
+    <button id="reBtn" class="quiet" title="Refaire l'analyse du dernier enregistrement, sans le refaire">Réanalyser</button>
   </div>
   <div id="screens"></div>
 
@@ -318,14 +570,36 @@
     <div>
       <h4 id="analysisTitle">Twiin analyse ta tâche</h4>
       <ol class="phases" id="phases"></ol>
-      <p class="phase-note" id="phaseNote">Compte 1 à 2 minutes. Tu peux laisser la page ouverte.</p>
+      <p class="phase-note" id="phaseNote">1 à 2 minutes.</p>
     </div>
   </section>
 
   <div id="frames"></div>
   <div id="journal"></div>
+  </section>
+
+  <section class="view" data-view="3">
+    <h1 class="page-title">Recommandation</h1>
+  </section>
+  <section class="view panel no-task" data-view="3" id="noTask" hidden>
+    <b>Pas encore de tâche analysée</b>
+    <div class="controls"><button type="button" data-go="2">Enregistrer une tâche</button>
+      <button type="button" id="noTaskExample" hidden>Ouvrir l'exemple</button></div>
+  </section>
+
   <div id="results"></div>
 
+  <nav class="pager" aria-label="Étapes">
+    <button type="button" id="prevBtn"></button>
+    <button type="button" id="nextBtn"></button>
+  </nav>
+
+  <script src="/vendor/supabase/supabase.js"></script>
+  <script src="shell.js" defer></script>
+  <script src="auth.js"></script>
+  <script src="banner.js"></script>
+  <script src="ui/twiin-ui.js"></script>
   <script src="app.js"></script>
+  <script src="audit2.js"></script>
 </body>
 </html>

@@ -92,7 +92,15 @@
     "name": "n8n Holo — note OneNote",
     "description": "Étape lancée par n8n",
     "steps": [
-      "Open Microsoft OneNote, go to the section « Groupe » and open the page « Veille concurrence ». The cursor starts in the page TITLE: type « Veille – L'Oréal (n8n 18/11/2026) », then press Enter so the cursor is in the BODY. Type this text in the body: « No.1 Beauty Group Worldwide. No.1 most innovative company in Europe (Fortune's ranking). ». Then press Enter twice and type: « Articles récents : Can a dupe fool your skin?,Building the Supply Chain of the future – a virtual conversation with MIT... ». Check that the title contains only the title, then stop. Do not modify any other page."
+      "Open Microsoft OneNote, go to the section « Groupe » and open the page « Veille concurrence ». The cursor starts in the page TITLE: type « Veille – L'Oréal (n8n 18/11/2026) », then press Enter so the cursor is in the BODY. Type this text in the body: « No.1 Beauty Group Worldwide. No.1 most innovative company in Europe (Fortune's ranking). ». Then press Enter twice and type: « Articles récents :  ». Check that the title contains only the title, then stop. Do not modify any other page."
+    ]
+  },
+  {
+    "id": "n8n-test-cloud-lire-linkedin",
+    "name": "n8n Test cloud — lire LinkedIn",
+    "description": "Étape lancée par n8n",
+    "steps": [
+      "open https://www.linkedin.com/company/loreal/about/ (the « À propos » tab of the L Oréal company page). Read the page only: do not follow, message or click any button other than navigation or closing a pop-up. Copy every value EXACTLY as written on the page. Then answer ONLY with a JSON object with exactly these keys, filled with the values you READ ON SCREEN (write « non trouvé » if a value is not visible): {\"entreprise\":\"company name\",\"secteur\":\"industry\",\"taille\":\"company size\",\"abonnes\":\"number of followers\"}"
     ]
   },
   {
@@ -105,6 +113,26 @@
       "Open KAYAK (kayak.fr) and run the same search: Paris (PAR) to New York (NYC), departing 10 December 2026 and returning 17 December 2026, 1 adult, economy, prices in EUR.",
       "Record the lowest round-trip price and the cheapest carrier/offer on KAYAK.",
       "Compare the Google Flights and KAYAK prices and report the cheapest option (site, airline, price) as a recommendation. Do not book anything and do not enter any personal or payment information."
+    ]
+  },
+  {
+    "id": "search-flights-amsterdam-to-bali-on-google-flights",
+    "name": "Search flights Amsterdam to Bali on Google Flights",
+    "description": "Started a Twiin screen recording, searched for Google Flights in Chrome, changed the destination from Hanoi to Bali, set travel dates to December 10–17, and stopped the recording.",
+    "steps": [
+      "On the Twiin page (localhost:3000), click « Enregistrer ma tâche » to start screen recording",
+      "Switch to Google Chrome and click the address bar",
+      "Type « google flights » in the address bar and press Enter to search",
+      "Click on the Google Flights result link to open the flights page",
+      "On the Google Flights page (showing Amsterdam to Hanoi, wo 8 jun – zo 12 jun), click on the destination field to edit it",
+      "Clear the destination and type « Bali » to replace Hanoi",
+      "Select Bali from the autocomplete suggestions",
+      "Click on the date field to open the calendar",
+      "Click on December 10 (€772) as the departure date",
+      "Click on December 17 as the return date",
+      "Click « Klaar » to confirm the dates",
+      "Wait for flight results to load (showing popular flights: Etihad €799, Etihad €818, Emirates €971)",
+      "Switch back to the Twiin page and click « Terminer et analyser » to stop the recording"
     ]
   },
   {

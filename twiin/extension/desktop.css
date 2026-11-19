@@ -1,0 +1,16 @@
+/* App Mac : fenêtre sans cadre, déplaçable par l'en-tête ; pastille compacte pendant un enregistrement */
+.top { -webkit-app-region: drag; user-select: none; }
+.top button, .top .chip { -webkit-app-region: no-drag; }
+body { padding-top: 12px; }
+
+.pill { display: none; }
+body.compact { padding: 0; min-height: 0; height: 100vh; overflow: hidden; background: transparent; }
+body.compact > :not(.pill):not(script) { display: none !important; }
+body.compact .pill { display: flex; align-items: center; gap: 10px; height: 100vh; padding: 0 10px 0 16px; -webkit-app-region: drag; }
+.pill .pdot { width: 10px; height: 10px; border-radius: 50%; background: var(--coral); animation: p 1.2s ease-in-out infinite; flex: none; }
+.pill .tw-logo { height: 18px; width: auto; }
+.pill b { font-size: 18px; font-weight: 800; letter-spacing: -.03em; font-variant-numeric: tabular-nums; }
+.pill .pinfo { color: var(--dim); font-size: 12px; flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pill button { -webkit-app-region: no-drag; }
+.pill .b { padding: 8px 14px; }
+.pill .round { width: 32px; height: 32px; }

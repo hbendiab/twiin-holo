@@ -13,7 +13,12 @@ dependencies = [
     "json-repair>=0.30",             # réparation des réponses JSON du modèle
     "pyobjc-framework-Vision>=10; sys_platform == 'darwin'",
     "pyobjc-framework-Quartz>=10; sys_platform == 'darwin'",
+    "pyyaml>=6",                     # brique Audit v2 : bibliothèque de tâches (audit/data/taches_par_role.yaml)
+    "jsonschema>=4.20",              # brique Audit v2 : validation de la fiche d'audit
 ]
+
+[project.optional-dependencies]
+test = ["pytest>=8"]                 # tests de la brique Audit : .venv/bin/python -m pytest audit/tests
 
 
 [build-system]

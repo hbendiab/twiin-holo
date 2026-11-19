@@ -1,0 +1,116 @@
+{
+  "audit_id": "aud_2026-11-17_001",
+  "date_audit": "2026-11-17T14:00:00+01:00",
+  "version_schema": "1.0",
+  "entreprise": { "nom": "École démo", "taille": "PME", "secteur": "Enseignement supérieur" },
+  "poste": { "id": "poste_a3f9", "os": "macos", "role_metier": "Assistant(e) de direction" },
+  "consentement": {
+    "obtenu": true,
+    "date": "2026-11-17T13:55:00+01:00",
+    "sources_autorisees": ["logiciel_installe", "telechargement", "historique_navigateur"]
+  },
+  "applications": [
+    {
+      "id": "google-drive",
+      "nom": "Google Drive",
+      "editeur": "Google",
+      "type": "saas_web",
+      "identifiant_technique": "drive.google.com",
+      "sources_detection": ["historique_navigateur"],
+      "usage": { "frequence": "quotidien" },
+      "filtre_metier": { "est_metier": true, "categorie": "documents_signature", "methode": "catalogue", "confiance": 0.95, "justification": "Stockage de documents pro", "a_valider": false },
+      "api": {
+        "disponibilite": "publique",
+        "type": "rest",
+        "doc_url": "https://developers.google.com/drive/api/reference/rest/v3",
+        "authentification": "oauth2",
+        "couverture_process": "Lecture/écriture de fichiers et dossiers",
+        "sources": ["https://developers.google.com/drive"],
+        "methode": "catalogue",
+        "confiance": 0.95,
+        "verifie_le": "2026-11-17"
+      },
+      "duplication": { "strategie": "mock_api", "dans_process_observe": true, "statut": "a_faire" }
+    },
+    {
+      "id": "docusign",
+      "nom": "DocuSign",
+      "editeur": "DocuSign",
+      "type": "saas_web",
+      "identifiant_technique": "app.docusign.com",
+      "sources_detection": ["historique_navigateur"],
+      "usage": { "frequence": "hebdomadaire" },
+      "filtre_metier": { "est_metier": true, "categorie": "documents_signature", "methode": "catalogue", "confiance": 0.95, "justification": "Signature électronique de contrats", "a_valider": false },
+      "api": {
+        "disponibilite": "payante_entreprise",
+        "type": "rest",
+        "doc_url": "https://developers.docusign.com/docs/esign-rest-api/",
+        "authentification": "oauth2",
+        "methode": "recherche_web_agent",
+        "confiance": 0.8,
+        "verifie_le": "2026-11-17"
+      },
+      "duplication": { "strategie": "mock_api", "dans_process_observe": true, "statut": "a_faire" }
+    },
+    {
+      "id": "logiciel-scolarite-interne",
+      "nom": "Logiciel de scolarité (exemple)",
+      "editeur": "Éditeur local",
+      "type": "desktop",
+      "identifiant_technique": "com.exemple.scolarite",
+      "version": "4.2",
+      "sources_detection": ["logiciel_installe"],
+      "usage": { "frequence": "quotidien" },
+      "filtre_metier": { "est_metier": true, "categorie": "scolarite_formation", "methode": "llm", "confiance": 0.82, "justification": "Nom et éditeur évoquent la gestion des étudiants", "a_valider": false },
+      "api": {
+        "disponibilite": "aucune",
+        "methode": "recherche_web_agent",
+        "confiance": 0.6,
+        "sources": [],
+        "verifie_le": "2026-11-17"
+      },
+      "duplication": { "strategie": "computer_use", "dans_process_observe": true, "statut": "a_faire" }
+    },
+    {
+      "id": "outil-inconnu",
+      "nom": "OutilX",
+      "type": "desktop",
+      "identifiant_technique": "com.outilx.app",
+      "sources_detection": ["telechargement"],
+      "usage": { "frequence": "rare" },
+      "filtre_metier": { "est_metier": true, "categorie": "autre", "methode": "llm", "confiance": 0.45, "justification": "Aucune info fiable trouvée", "a_valider": true },
+      "api": { "disponibilite": "inconnue", "confiance": 0.2 },
+      "duplication": { "strategie": "hors_perimetre", "dans_process_observe": false, "statut": "non_applicable" }
+    },
+    {
+      "id": "spotify",
+      "nom": "Spotify",
+      "editeur": "Spotify",
+      "type": "desktop",
+      "identifiant_technique": "com.spotify.client",
+      "sources_detection": ["logiciel_installe"],
+      "filtre_metier": { "est_metier": false, "categorie": "perso_loisir", "methode": "liste_exclusion", "confiance": 0.99, "a_valider": false },
+      "api": { "disponibilite": "non_recherchee", "confiance": 1 },
+      "duplication": { "strategie": "hors_perimetre", "dans_process_observe": false, "statut": "non_applicable" }
+    },
+    {
+      "id": "system-settings",
+      "nom": "Réglages Système",
+      "editeur": "Apple",
+      "type": "desktop",
+      "identifiant_technique": "com.apple.systempreferences",
+      "sources_detection": ["logiciel_installe"],
+      "filtre_metier": { "est_metier": false, "categorie": "systeme_utilitaire", "methode": "liste_exclusion", "confiance": 0.99, "a_valider": false },
+      "api": { "disponibilite": "non_recherchee", "confiance": 1 },
+      "duplication": { "strategie": "hors_perimetre", "dans_process_observe": false, "statut": "non_applicable" }
+    }
+  ],
+  "resume": {
+    "nb_detectees": 6,
+    "nb_metier": 4,
+    "nb_avec_api": 2,
+    "nb_sans_api": 1,
+    "nb_api_inconnue": 1,
+    "nb_a_valider": 1
+  }
+}

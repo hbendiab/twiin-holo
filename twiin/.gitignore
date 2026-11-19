@@ -41,3 +41,17 @@ automation/n8n-cli/n8n/workflows/
 
 # Logos des outils : extraits des applications installées sur CE Mac (scripts/fetch_icons.py), régénérés sur chaque poste
 recorder/public/icons/
+
+# Étape Audit : fiche employé (données personnelles), scans du poste, voix de Twiin en cache
+workflows/profile.json
+workflows/audit/
+workflows/voice-cache/
+workflows/n8n.log
+workflows/tuto-workflow.json
+workflows/hotkey.log
+workflows/server.log
+workflows/back-log.jsonl
+workflows/audit2/
+workflows/automations-programmees.json
+desktop/node_modules/
+tuto/video/public/pitch/

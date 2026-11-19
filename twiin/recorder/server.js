@@ -6,6 +6,9 @@ import fs from 'fs';
 import path from 'path';
 import { spawn } from 'child_process';
 import { fileURLToPath } from 'url';
+import crypto from 'crypto';
+import os from 'os';
+import { AsyncLocalStorage } from 'async_hooks';
 
 // recorder/ sits one level below the repo root, alongside the twiin/ Python package
 const REPO_ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
@@ -17,6 +20,66 @@ dotenv.config({ path: path.join(REPO_ROOT, '.env') });
 const app = express();
 app.use(express.json({ limit: '200mb' }));
 app.use(express.static('public'));
+// Panneau de l'extension Chrome, aussi utilisé tel quel par l'app Mac (desktop/, Electron) : /ext/desktop.html
+app.use('/ext', express.static(path.join(REPO_ROOT, 'extension')));
+// supabase-js pour la page (servi depuis le projet, sans CDN)
+app.use('/vendor/supabase', express.static(path.join(path.dirname(fileURLToPath(import.meta.url)), 'node_modules', '@supabase', 'supabase-js', 'dist', 'umd')));
+
+// ════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+// SUPABASE : comptes (Supabase Auth) et sauvegarde du parcours (fiches, scans, tâches, recos, tutos, automatisations,
+// journal technique). Texte et chiffres seulement : captures d'écran, audio et vidéos restent sur le Mac.
+// Le serveur agit AVEC LE JETON DE L'EMPLOYÉ connecté : la sécurité RLS de Supabase s'applique (chacun ses lignes).
+// Sans SUPABASE_URL / SUPABASE_ANON_KEY dans .env, Twiin marche comme avant, en local, sans comptes.
+// ════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+const SB_URL = (process.env.SUPABASE_URL || '').replace(/\/+$/, '');
+const SB_ANON = process.env.SUPABASE_PUBLISHABLE_KEY || process.env.SUPABASE_ANON_KEY || ''; // même clé publique, deux noms (équipe / Twiin)
+// Comptes activés seulement sur demande (TWIIN_COMPTES=1), une fois les tables créées : sinon Twiin reste en local.
+const SB_ON = !!(SB_URL && SB_ANON) && /^(1|true|oui)$/i.test(process.env.TWIIN_COMPTES || '');
+const als = new AsyncLocalStorage(); // l'employé de la requête en cours, disponible partout (même dans les tâches longues)
+const tokenCache = new Map();
+async function sbUserFromToken(token) {
+  const hit = tokenCache.get(token);
+  if (hit && hit.until > Date.now()) return hit.user;
+  const r = await fetch(`${SB_URL}/auth/v1/user`, { headers: { apikey: SB_ANON, Authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(8000) });
+  if (!r.ok) return null;
+  const u = await r.json();
+  const user = { id: u.id, email: u.email, token };
+  tokenCache.set(token, { user, until: Date.now() + 5 * 60 * 1000 });
+  return user;
+}
+// Appel à l'API REST de Supabase au nom de l'employé connecté. Ne casse jamais le parcours : en cas d'erreur, null.
+async function sb(pathname, { method = 'GET', body, prefer } = {}) {
+  const user = als.getStore();
+  if (!SB_ON || !user) return null;
+  try {
+    const r = await fetch(`${SB_URL}/rest/v1/${pathname}`, {
+      method, signal: AbortSignal.timeout(15000),
+      headers: { apikey: SB_ANON, Authorization: `Bearer ${user.token}`, 'Content-Type': 'application/json', ...(prefer ? { Prefer: prefer } : {}) },
+      body: body === undefined ? undefined : JSON.stringify(body),
+    });
+    const txt = await r.text();
+    if (!r.ok) { console.warn(`[supabase] ${method} ${pathname.split('?')[0]} : ${r.status} ${txt.slice(0, 200)}`); return null; }
+    return txt ? JSON.parse(txt) : null;
+  } catch (e) {
+    console.warn(`[supabase] ${method} ${pathname.split('?')[0]} : ${e.message}`);
+    return null;
+  }
+}
+const sbUser = () => als.getStore() || null;
+// Garde le contexte de l'employé dans un rappel lancé plus tard (fin d'un programme, minuterie…)
+const keepUser = (fn) => { const u = als.getStore(); return (...a) => (u ? als.run(u, () => fn(...a)) : fn(...a)); };
+
+app.get('/api/config', (req, res) => res.json({ supabase: SB_ON ? { url: SB_URL, anonKey: SB_ANON } : null }));
+// Toutes les routes /api demandent un employé connecté, sauf : la config, la voix (balise <audio>), le pont n8n → Holo
+// (il a son propre jeton) et les fichiers servis.
+const OPEN_API = ['/config', '/voice/say', '/holo/run'];
+app.use('/api', async (req, res, next) => {
+  if (!SB_ON || OPEN_API.some((p) => req.path.startsWith(p))) return next();
+  const token = (req.headers.authorization || '').replace(/^Bearer\s+/i, '');
+  const user = token ? await sbUserFromToken(token).catch(() => null) : null;
+  if (!user) return res.status(401).json({ error: 'Connecte-toi pour continuer.', login: true });
+  als.run(user, next);
+});
 
 // --- Hugging Face (routeur compatible OpenAI) ---------------------------------
 // Mets HF_TOKEN dans .env (ton token Hugging Face). HF_MODEL est optionnel.
@@ -175,6 +238,10 @@ so that an agent can reproduce it identically. Rules:
   recommendation, no summary or report step, no extra checks, no "next company on the list".
 - Do NOT generalize: no placeholders, no "for each", keep the concrete company, file, page and values of this session.
 - Do NOT invent values or steps you cannot see. If something is unclear, describe what is visible.
+- Ignore Twiin itself: starting or stopping the recording, the Twiin page, side panel or window, and its buttons
+  (« Enregistrer ma tâche », « Terminer et analyser »…) are not part of the task.
+- Write "name", "summary", "why_daily" and "steps" in French (the employee reads them), tutoiement not needed:
+  infinitive style (« Cliquer sur… »). Keep on-screen labels and values exactly as shown, in their own language.
 - If the user made a mistake and corrected it, keep only the corrected final action.
 - IGNORE the recording tool itself: the « Twiin · Enregistrement » recorder page (localhost), its Start/Stop/« Ajouter un écran »
   buttons and the browser's screen-sharing dialogs are NOT part of the task. Never write a step about them.
@@ -186,6 +253,15 @@ Inside JSON string values never use straight double quotes: quote typed text wit
 Return ONLY a JSON object, no prose, no markdown fences, exactly in this shape:
 {"workflows":[{"name":"short label","general_intent":"goal","summary":"one sentence","why_daily":"one sentence","steps":["step 1","step 2"]}]}`;
 
+// Journal technique (page Back) : chaque appel au modèle, coût, scan, tuto… — jamais montré dans le parcours de l'employé.
+const BACK_LOG = path.join(REPO_ROOT, 'workflows', 'back-log.jsonl');
+function backLog(kind, data = {}) {
+  sb('back_log', { method: 'POST', body: { kind, cost_usd: typeof data.cost_usd === 'number' ? data.cost_usd : null, data }, prefer: 'return=minimal' });
+  try {
+    fs.mkdirSync(path.dirname(BACK_LOG), { recursive: true });
+    fs.appendFileSync(BACK_LOG, JSON.stringify({ t: new Date().toISOString(), kind, ...data }) + '\n');
+  } catch { /* le journal ne doit jamais casser le parcours */ }
+}
 const SESSIONS_DIR = path.join(REPO_ROOT, 'workflows', 'sessions'); // images des enregistrements (local, ignoré par git)
 const MAX_OUTPUT_TOKENS = parseInt(process.env.HF_MAX_OUTPUT_TOKENS || '16000', 10);
 const REASONING_EFFORT = process.env.HF_REASONING_EFFORT || 'low'; // le modèle réfléchit moins : la réponse n'est plus coupée
@@ -320,7 +396,7 @@ const setPhase = (phase) => { analysisProgress = { phase, at: Date.now() }; };
 app.get('/api/analysis/progress', (req, res) => res.json(analysisProgress));
 
 // Analyse commune : nouvel enregistrement (images + OCR) ou relance (images gardées, ou texte OCR seul).
-async function analyze({ frames, transcript, actionLog = '', ocrLines = 0, screens = 1, textOnly = false }) {
+async function analyze({ frames, transcript, actionLog = '', ocrLines = 0, screens = 1, textOnly = false, session = null }) {
   const used = textOnly ? [] : sampleFrames(frames);
   const header = textOnly
     ? `No images are available for this session: only the OCR transcript of its ${frames?.length ?? 'several'} kept frames over ${screens} screen(s). Return the JSON described in the system prompt.`
@@ -365,6 +441,15 @@ async function analyze({ frames, transcript, actionLog = '', ocrLines = 0, scree
   }
   const { result, repaired } = parseWorkflows(raw);
   meta.json_repaired = repaired;
+  meta.session = session;
+  for (const w of result.workflows || []) w.session = session; // la tâche garde le lien vers SON enregistrement
+  if (sbUser()) {
+    const rows = await sb('tasks', { method: 'POST', prefer: 'return=representation', body: (result.workflows || []).map((w) => ({
+      name: w.name || 'Tâche', summary: w.summary || null, why: w.why_daily || null, steps: w.steps || [], session, source: 'analyse',
+      meta: { model: HF_MODEL, provider, tokens_in: usage.prompt_tokens, tokens_out: usage.completion_tokens, cost_usd,
+              images_sent: used.length, ocr_lines: ocrLines, screens } })) });
+    (rows || []).forEach((row, i) => { if (result.workflows[i]) result.workflows[i].task_id = row.id; });
+  }
   if (!Array.isArray(result.workflows) || !result.workflows.length) {
     throw new Error('Le modèle n\'a renvoyé aucun workflow. Réponse brute : ' + raw.slice(0, 300));
   }
@@ -373,6 +458,9 @@ async function analyze({ frames, transcript, actionLog = '', ocrLines = 0, scree
   fs.writeFileSync(CANDIDATES_PATH, JSON.stringify(result, null, 2) + '\n');
   fs.writeFileSync(LAST_RUN_PATH, JSON.stringify({ meta, action_log: actionLog, ocr_transcript: transcript }, null, 2) + '\n');
   console.log(`Wrote ${result.workflows.length} candidate workflow(s) to ${CANDIDATES_PATH}`);
+  backLog('analyse', { model: HF_MODEL, provider, tokens_in: usage.prompt_tokens, tokens_out: usage.completion_tokens, cost_usd,
+                       images_sent: meta.images_sent, ocr_lines: ocrLines, actions: meta.action_lines, json_repaired: repaired,
+                       workflows: result.workflows.map((w) => `${w.name} (${(w.steps || []).length} étapes)`) });
   return { ...result, _meta: meta };
 }
 
@@ -387,7 +475,7 @@ async function analyzeSessionDir(dir) {
   const ocrLines = ocr.reduce((n, o) => n + (o.lines?.length || 0), 0);
   console.log(`OCR local : ${ocr.length} image(s), ${ocrLines} lignes, ${transcript.length} caractères gardés, ${((Date.now() - t0) / 1000).toFixed(1)} s · journal : ${actionLog ? actionLog.split('\n').length : 0} action(s)`);
   const screens = new Set(frames.map((f) => f.screen ?? 1)).size;
-  return analyze({ frames, transcript, actionLog, ocrLines, screens });
+  return analyze({ frames, transcript, actionLog, ocrLines, screens, session: path.basename(dir) });
 }
 
 app.post('/api/generate-workflows', async (req, res) => {
@@ -425,7 +513,7 @@ app.post('/api/reanalyze', async (req, res) => {
     console.log('Relance sur le texte OCR du dernier enregistrement (images non gardées)');
     res.json(await analyze({ frames: Array.from({ length: last.meta?.images_kept || 0 }), transcript: last.ocr_transcript,
                              actionLog: last.action_log || '', ocrLines: last.meta?.ocr_lines || 0,
-                             screens: last.meta?.screens || 1, textOnly: true }));
+                             screens: last.meta?.screens || 1, textOnly: true, session: last.meta?.session || null }));
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: err.message });
@@ -462,7 +550,11 @@ Return ONLY a JSON object, no prose, no markdown fences. Inside string values ne
 Write the steps in English (the agent works best in English) and the "changes" in French.`;
 
 // Dernier workflow analysé (affiché au chargement de la page, pour l'améliorer ou le rejouer sans réenregistrer)
-app.get('/api/candidates', (req, res) => {
+app.get('/api/candidates', async (req, res) => {
+  if (sbUser()) { // connecté : SES dernières tâches analysées
+    const rows = await sb('tasks?select=*&source=eq.analyse&order=created_at.desc&limit=5');
+    return res.json({ workflows: (rows || []).map((t) => ({ task_id: t.id, name: t.name, summary: t.summary, why_daily: t.why, steps: t.steps, session: t.session })) });
+  }
   res.json(fs.existsSync(CANDIDATES_PATH) ? JSON.parse(fs.readFileSync(CANDIDATES_PATH, 'utf8')) : { workflows: [] });
 });
 
@@ -495,6 +587,28 @@ app.post('/api/improve', async (req, res) => {
 });
 
 // --- 💡 Améliorer mon process : bilan chiffré + recommandations POUR L'EMPLOYÉ (ne touche pas aux étapes) -------
+// L'enregistrement d'une tâche : celui noté dans la tâche ; à défaut (anciennes tâches), le dernier enregistrement.
+function sessionDirFor(wf) {
+  if (wf?.session) {
+    const dir = path.join(SESSIONS_DIR, path.basename(String(wf.session)));
+    return fs.existsSync(dir) ? dir : null; // enregistrement absent (autre Mac) : pas de mesures plutôt que de fausses
+  }
+  return latestSessionDir();
+}
+function taskContext(wf) {
+  const dir = sessionDirFor(wf);
+  const events = dir ? readActions(dir) : [];
+  const last = fs.existsSync(LAST_RUN_PATH) ? JSON.parse(fs.readFileSync(LAST_RUN_PATH, 'utf8')) : {};
+  const same = dir && last.meta?.session === path.basename(dir);
+  let actionLog = same ? last.action_log : '';
+  if (!actionLog && dir && events.length) {
+    let started = null;
+    try { started = JSON.parse(fs.readFileSync(path.join(dir, 'session.json'), 'utf8')).startedAt; } catch { /* rien */ }
+    try { actionLog = actionTranscript(events, started || events[0].ts * 1000, []); } catch { actionLog = ''; }
+  }
+  return { dir, events, actionLog: actionLog || '', ocr: same ? last.ocr_transcript || '' : '' };
+}
+
 function latestSessionDir() {
   if (!fs.existsSync(SESSIONS_DIR)) return null;
   const hasFrames = (d) => ['frames.jsonl', 'frames.json'].some((f) => fs.existsSync(path.join(SESSIONS_DIR, d, f)));
@@ -537,6 +651,9 @@ counts, apps); never invent facts. Typical levers: fewer back-and-forths between
 bookmarks instead of searching, templates (Excel row, OneNote page), keyboard shortcuts, built-in features (Excel paste
 values, data import, LinkedIn export), removing useless steps, and which parts are repetitive enough to delegate to Twiin
 (an AI agent that replays the task). Say clearly when a step is already efficient.
+WRITING FOR THE EMPLOYEE (not for an engineer): plain, friendly French (tutoiement), short sentences, no jargon
+(never « API », « n8n », « webhook », « JSON », « rule-based », « microsoft-graph », « script »). At most 3 recommendations,
+the most useful first. headline ≤ 25 words; observed ≤ 20 words; suggestion ≤ 30 words.
 Return ONLY a JSON object, no prose, no markdown fences; in string values use « » instead of straight double quotes. French.
 Shape: {"headline":"one sentence summary of the main opportunity",
  "recommendations":[{"title":"short","observed":"what was observed, with numbers","suggestion":"what to do instead",
@@ -546,16 +663,16 @@ Shape: {"headline":"one sentence summary of the main opportunity",
 app.post('/api/process-advice', async (req, res) => {
   try {
     const wf = req.body?.workflow || {};
-    const dir = latestSessionDir();
-    const actions = dir ? readActions(dir) : [];
-    const stats = processStats(actions);
-    const last = fs.existsSync(LAST_RUN_PATH) ? JSON.parse(fs.readFileSync(LAST_RUN_PATH, 'utf8')) : {};
+    const ctx = taskContext(wf);
+    const stats = processStats(ctx.events);
+    const last = { action_log: ctx.actionLog, ocr_transcript: ctx.ocr };
     const user = [
       `TASK\nName: ${wf.name || ''}\nSummary: ${wf.summary || ''}\nSteps:\n` + (wf.steps || []).map((st, i) => `${i + 1}. ${st}`).join('\n'),
       `MEASURES (from the action log)\n${stats ? JSON.stringify(stats, null, 1) : '(no action log)'}`,
       `ACTION LOG\n${(last.action_log || '(none)').slice(0, 12000)}`,
       `OCR TEXT\n${(last.ocr_transcript || '(none)').slice(0, 8000)}`,
-    ].join('\n\n');
+      profileContext(),
+    ].filter(Boolean).join('\n\n');
     const { data: resp } = await client.chat.completions.create({
       model: HF_MODEL, max_tokens: MAX_OUTPUT_TOKENS, temperature: 0, reasoning_effort: REASONING_EFFORT,
       messages: [{ role: 'system', content: ADVICE_PROMPT }, { role: 'user', content: user }],
@@ -564,11 +681,21 @@ app.post('/api/process-advice', async (req, res) => {
     if (!raw.trim()) throw new Error('Réponse vide du modèle : réessaie.');
     const { result } = parseWorkflows(raw);
     console.log(`Conseils process : ${result.recommendations?.length ?? 0} recommandation(s), ≈ ${(resp.usage?.cost ?? 0).toFixed(4)} $`);
+    backLog('conseils', { model: HF_MODEL, cost_usd: resp.usage?.cost ?? null, recommendations: result.recommendations?.length ?? 0, task: wf.name });
     res.json({ stats, ...result, cost_usd: resp.usage?.cost ?? null });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: err.message });
   }
+});
+
+app.post('/api/recommendations', async (req, res) => {
+  const { task_id, verdict: v = {}, advice: a = {} } = req.body || {};
+  const row = await sb('recommendations', { method: 'POST', prefer: 'return=representation', body: {
+    task_id: task_id || null, verdict: v.verdict || null, confidence: v.confidence || null, reasons: v.reasons || null,
+    frequency_hint: v.frequency_hint || null, time_saved: v.time_saved || null, plan: v.plan || null,
+    advice: { headline: a.headline, recommendations: a.recommendations }, stats: a.stats || null } });
+  res.json({ ok: !!row, id: row?.[0]?.id || null });
 });
 
 // --- 🧭 Verdict : « accélérer » (tuto) ou « automatiser » (n8n + Holo) — Twiin recommande, l'employé valide ---------
@@ -608,6 +735,10 @@ const VERDICT_PROMPT = `You decide what Twiin should propose for a task an emplo
   on screen) for the tools WITHOUT an API.
 You receive the steps, measures from the action log and the list of tools used, each marked with/without API (from
 Twiin's tool registry). Be concrete, cite the measures. French. Never invent facts.
+The "reasons", "frequency_hint", "time_saved" and "plan[].what" fields are SHOWN TO THE EMPLOYEE: plain, friendly French
+(tutoiement), no jargon (never « API », « n8n », « webhook », « rule-based », « microsoft-graph », « connecteur »): say
+« Twiin s'en charge » or « Twiin remplit ton fichier Excel » instead. At most 3 reasons, each ≤ 20 words; frequency_hint
+and time_saved ≤ 15 words each; plan[].what ≤ 15 words. The "how" field stays technical (API n8n|Holo|manuel): it is not shown.
 Return ONLY a JSON object, no prose, no fences, using « » instead of straight double quotes inside strings:
 {"verdict":"accélérer|automatiser","confidence":"élevée|moyenne|faible","reasons":["…","…"],
  "frequency_hint":"how often such a task is probably done, and that the employee should confirm",
@@ -617,16 +748,15 @@ Return ONLY a JSON object, no prose, no fences, using « » instead of straight 
 app.post('/api/verdict', async (req, res) => {
   try {
     const wf = req.body?.workflow || {};
-    const dir = latestSessionDir();
-    const events = dir ? readActions(dir) : [];
-    const last = fs.existsSync(LAST_RUN_PATH) ? JSON.parse(fs.readFileSync(LAST_RUN_PATH, 'utf8')) : {};
-    const stats = processStats(events);
-    const tools = toolsUsed(events, last.ocr_transcript);
+    const ctx = taskContext(wf);
+    const stats = processStats(ctx.events);
+    const tools = toolsUsed(ctx.events, ctx.ocr);
     const user = [
       `TASK\nName: ${wf.name || ''}\nSteps:\n` + (wf.steps || []).map((st, i) => `${i + 1}. ${st}`).join('\n'),
       `MEASURES\n${stats ? JSON.stringify(stats) : '(no action log)'}`,
       `TOOLS USED (from Twiin registry)\n${tools.map((t) => `- ${t.name} (${t.kind}) : ${t.known ? `${t.tool}, ${t.api ? `API (${t.connector})` : 'pas d\'API'}` : 'inconnu du registre, pas d\'API connue'}`).join('\n') || '(none)'}`,
-    ].join('\n\n');
+      profileContext(),
+    ].filter(Boolean).join('\n\n');
     const { data: resp } = await client.chat.completions.create({
       model: HF_MODEL, max_tokens: MAX_OUTPUT_TOKENS, temperature: 0, reasoning_effort: REASONING_EFFORT,
       messages: [{ role: 'system', content: VERDICT_PROMPT }, { role: 'user', content: user }],
@@ -635,6 +765,8 @@ app.post('/api/verdict', async (req, res) => {
     if (!raw.trim()) throw new Error('Réponse vide du modèle : réessaie.');
     const { result } = parseWorkflows(raw);
     console.log(`Verdict : ${result.verdict} (${result.confidence}), ≈ ${(resp.usage?.cost ?? 0).toFixed(4)} $`);
+    backLog('recommandation', { model: HF_MODEL, cost_usd: resp.usage?.cost ?? null, verdict: result.verdict, confidence: result.confidence,
+                                tools: tools.map((t) => `${t.name}${t.api ? ' (API)' : ''}`), task: wf.name });
     res.json({ ...result, tools, stats, cost_usd: resp.usage?.cost ?? null });
   } catch (err) {
     console.error(err);
@@ -650,7 +782,10 @@ let n8nRun = null; // { proc, events, running }
 const PLAN_PROMPT = `You design an n8n automation for a task an employee recorded. Tools WITH an API are handled by normal
 n8n nodes; tools WITHOUT an API (LinkedIn pages, OneNote, internal software such as comptarex) are handled by a Holo block
 (a computer-use agent that works on the employee's Mac). Use ONLY these block types, in order:
-- {"type":"holo","name":"Holo — <verb> <tool>","steps":["one precise instruction in English"],"expect":{"key":"what to read"}}
+- {"type":"holo","name":"Holo — <verb> <tool>","env":"cloud|mac","steps":["one precise instruction in English"],"expect":{"key":"what to read"}}
+   "env": "cloud" for a public website reachable on the internet (Holo uses H's own cloud browser: the employee keeps using
+   their computer); "mac" for an installed desktop app (OneNote, Excel desktop…), a local site (127.0.0.1) or a page that
+   needs the employee's logged-in session. In cloud steps, give the full https:// address and never mention Chrome.
    Holo reads or does things on screen; with "expect" it returns the values it READ as data.<key>. Ask it to copy values
    EXACTLY as written. Reference values from a previous Holo block in later steps or fields as {{<block name>.<key>}}.
 - {"type":"row","name":"Préparer la ligne","fields":{"<Column>":"text with {{<block name>.<key>}}, {{today}}, {{execution}}"}}
@@ -663,46 +798,53 @@ AVAILABLE RESOURCES:
 - Google Sheet "factures" columns: Facture, Fournisseur, Numéro, Date, Total HT, TVA, Total TTC, Statut comptarex, Vérification, Exécution n8n
 - comptarex (fake accounting software, http://127.0.0.1:8042, NO public API for entering invoices → Holo), but a read-only
   admin API GET http://127.0.0.1:8042/api/invoices (auth "comptarex") lists saved invoices for checking.
-RELIABILITY RULES (a computer-use agent is unreliable on long multi-step instructions):
-- ONE Holo block per item and per site: never chain several searches or products in one block (a block = one search, one product page, one value).
-- Repeat EVERY option the employee chose (size, color, variant, filter, country) explicitly in the step of EACH item; if a site shows prices per option (e.g. per size), the step must say which option to select before reading the price.
-- If the recording shows an option for some items only, apply the same option logic to the other items and note the gap in an optional top-level "warnings" array of short strings (e.g. "taille non enregistrée pour le pull, à confirmer").
-- Check identity before reading a value: tell Holo to verify the product name and color in the page title.
-- If the task text mentions a frequency (every Monday, daily...), set schedule_cron accordingly (e.g. "0 8 * * 1"); use null only when none is mentioned.
 SAFETY: never send, publish, pay, validate, delete, follow or message anything; in accounting software always stop at
 « Enregistrer le brouillon ». Only write to the resources above or to new pages.
-Return ONLY JSON, no fences: {"name":"short title","schedule_cron":"cron or null","warnings":[],"blocks":[…]}.
+Return ONLY JSON, no fences: {"name":"short title","schedule_cron":"cron or null","blocks":[…]}.
 Use « » instead of straight double quotes inside strings. Example of a good plan:
 `;
+
+// n8n tourne sur le Mac de l'employé, et c'est Twiin qui le démarre au besoin : l'employé n'a rien à lancer.
+const N8N_URL = process.env.N8N_LOCAL_URL || 'http://localhost:5678';
+const N8N_START = path.join(REPO_ROOT, 'automation', 'n8n-runtime', 'start.sh');
+async function n8nUp() {
+  try { return (await fetch(`${N8N_URL}/healthz`, { signal: AbortSignal.timeout(2000) })).ok; } catch { return false; }
+}
+async function ensureN8n() {
+  if (await n8nUp()) return;
+  if (!fs.existsSync(path.join(REPO_ROOT, 'automation', 'n8n-runtime', 'node_modules', '.bin', 'n8n'))) {
+    throw new Error('n8n n\'est pas installé sur ce Mac (voir « Automatisations n8n » dans le README).');
+  }
+  console.log('n8n arrêté : Twiin le démarre…');
+  const logFd = fs.openSync(path.join(WORKFLOWS_DIR, 'n8n.log'), 'a');
+  spawn('bash', [N8N_START], { cwd: path.dirname(N8N_START), detached: true, stdio: ['ignore', logFd, logFd] }).unref();
+  for (let i = 0; i < 60; i++) { // n8n met 10 à 30 s à démarrer
+    await new Promise((r) => setTimeout(r, 1500));
+    if (await n8nUp()) return console.log('n8n démarré.');
+  }
+  throw new Error('n8n ne démarre pas : voir twiin/workflows/n8n.log');
+}
+app.get('/api/n8n/status', async (req, res) => res.json({ up: await n8nUp(), url: N8N_URL }));
+app.post('/api/n8n/start', async (req, res) => {
+  try { await ensureN8n(); res.json({ up: true }); } catch (e) { res.status(500).json({ error: e.message }); }
+});
 
 app.post('/api/n8n/create', async (req, res) => {
   try {
     if (n8nRun?.running) return res.status(409).json({ error: 'Une automatisation est déjà en cours de création.' });
     if (replay?.running) return res.status(409).json({ error: 'Holo est occupé par un rejeu.' });
+    if (!req.body?.dryRun) await ensureN8n();
     const wf = req.body?.workflow || {};
     const example = fs.readFileSync(path.join(N8N_PLANS, 'veille-loreal.json'), 'utf8');
     const user = `TASK\nName: ${wf.name || ''}\nSummary: ${wf.summary || ''}\nSteps:\n` +
       (wf.steps || []).map((x, i) => `${i + 1}. ${x}`).join('\n') +
       (req.body?.verdict ? `\n\nTWIIN ANALYSIS\n${JSON.stringify(req.body.verdict).slice(0, 3000)}` : '');
-    // Le modèle rend parfois un JSON invalide (guillemets droits dans un texte, virgule en trop) : jusqu'à 3 essais,
-    // et la réponse brute est gardée dans workflows/runs/ pour comprendre ce qui a cloché.
-    let resp, plan, lastErr;
-    for (let attempt = 1; attempt <= 3 && !plan; attempt++) {
-      const hint = attempt === 1 ? '' : '\n\nYour previous answer was not valid JSON. Return ONLY valid JSON. Use « » instead of straight double quotes inside strings, no trailing commas, no comments.';
-      ({ data: resp } = await client.chat.completions.create({
-        model: HF_MODEL, max_tokens: MAX_OUTPUT_TOKENS, temperature: attempt === 1 ? 0 : 0.2, reasoning_effort: REASONING_EFFORT,
-        messages: [{ role: 'system', content: PLAN_PROMPT + example }, { role: 'user', content: user + hint }],
-      }).withResponse());
-      const raw = resp.choices?.[0]?.message?.content || '';
-      try { plan = parseWorkflows(raw).result; }
-      catch (err) {
-        lastErr = err;
-        console.warn(`Plan n8n : essai ${attempt}/3 invalide (${err.message})`);
-        fs.mkdirSync(path.join(REPO_ROOT, 'workflows', 'runs'), { recursive: true });
-        fs.writeFileSync(path.join(REPO_ROOT, 'workflows', 'runs', `${new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)}-plan-brut-essai${attempt}.txt`), raw);
-      }
-    }
-    if (!plan) throw new Error(`Le modèle n'a pas rendu un plan lisible après 3 essais (${lastErr?.message}). Réessaie.`);
+    const { data: resp } = await client.chat.completions.create({
+      model: HF_MODEL, max_tokens: MAX_OUTPUT_TOKENS, temperature: 0, reasoning_effort: REASONING_EFFORT,
+      messages: [{ role: 'system', content: PLAN_PROMPT + example }, { role: 'user', content: user }],
+    }).withResponse();
+    const raw = resp.choices?.[0]?.message?.content || '';
+    const { result: plan } = parseWorkflows(raw);
     if (!Array.isArray(plan.blocks) || !plan.blocks.length) throw new Error('Plan vide : réessaie.');
     const known = ['holo', 'row', 'verify', 'sheets_append', 'http'];
     const bad = plan.blocks.filter((b) => !known.includes(b.type));
@@ -718,7 +860,14 @@ app.post('/api/n8n/create', async (req, res) => {
     const proc = spawn(PYTHON, ['-u', N8N_GEN, planFile, '--events', events], { cwd: REPO_ROOT });
     proc.stderr.on('data', (d) => process.stderr.write(`[n8n] ${d}`));
     n8nRun = { proc, events, running: true };
-    proc.on('close', () => { n8nRun.running = false; spawn('osascript', ['-e', 'tell application "Google Chrome" to activate']); });
+    proc.on('close', keepUser(async () => {
+      n8nRun.running = false;
+      spawn('osascript', ['-e', 'tell application "Google Chrome" to activate']);
+      const evs = readJsonl(events);
+      const imported = evs.find((e) => e.type === 'imported');
+      if (imported) await sb('automations?on_conflict=user_id,n8n_id', { method: 'POST', prefer: 'resolution=merge-duplicates,return=minimal',
+        body: { task_id: wf.task_id || null, n8n_id: imported.id, name: plan.name || wf.name, blocks: plan.blocks, freq: 'manual', active: false } });
+    }));
     console.log(`Automatisation n8n : ${plan.name} (${plan.blocks.length} blocs)`);
     res.json({ plan, file: path.basename(planFile) });
   } catch (err) {
@@ -738,39 +887,7 @@ app.get('/api/n8n/events', (req, res) => {
     holo = fs.readFileSync(replay.events, 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l))
       .filter((e) => ['step_start', 'step_end', 'stalled', 'restart'].includes(e.type)).slice(-3);
   }
-  res.json({ events: all.slice(since), next: all.length, running: n8nRun.running, holo, holoRunning: !!replay?.running });
-});
-
-// --- Lancer un workflow n8n déjà créé (plan dans automation/plans/), sans regénérer le plan -----------------------
-// Même suivi que « Créer l'automatisation » : n8n_twiin.py importe le plan puis le teste (sans --no-run).
-app.get('/api/n8n/plans', (req, res) => {
-  const plans = fs.existsSync(N8N_PLANS)
-    ? fs.readdirSync(N8N_PLANS).filter((f) => f.endsWith('.json')).sort()
-    : [];
-  res.json({ plans });
-});
-
-app.post('/api/n8n/launch', (req, res) => {
-  try {
-    if (n8nRun?.running) return res.status(409).json({ error: 'Une automatisation est déjà en cours.' });
-    if (replay?.running) return res.status(409).json({ error: 'Holo est occupé par un rejeu.' });
-    const name = path.basename(String(req.body?.plan || ''));            // pas de chemin : un nom de fichier seul
-    const planFile = path.join(N8N_PLANS, name);
-    if (!name.endsWith('.json') || !fs.existsSync(planFile)) return res.status(404).json({ error: 'Plan introuvable.' });
-    const plan = JSON.parse(fs.readFileSync(planFile, 'utf8'));
-    const events = path.join(REPO_ROOT, 'workflows', 'runs', `${new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)}-n8n-launch.jsonl`);
-    fs.mkdirSync(path.dirname(events), { recursive: true });
-    fs.writeFileSync(events, JSON.stringify({ type: 'plan', plan }) + '\n');    // la page affiche les blocs comme pour une création
-    const proc = spawn(PYTHON, ['-u', N8N_GEN, planFile, '--events', events], { cwd: REPO_ROOT });
-    proc.stderr.on('data', (d) => process.stderr.write(`[n8n] ${d}`));
-    n8nRun = { proc, events, running: true };
-    proc.on('close', () => { n8nRun.running = false; spawn('osascript', ['-e', 'tell application "Google Chrome" to activate']); });
-    console.log(`Lancement n8n : ${plan.name || name}`);
-    res.json({ plan: name });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: err.message });
-  }
+  res.json({ events: all.slice(since), next: all.length, running: n8nRun.running, holo, holoRunning: !!replay?.running, holoEnv: replay?.env || 'mac' });
 });
 
 // --- Rejouer un workflow sur ce Mac avec Holo (scripts/run_live.py), suivi en direct par la page ----------------
@@ -823,7 +940,19 @@ app.post('/api/replay', (req, res) => {
   }
 });
 
-// --- Pont n8n → Holo : n8n envoie des étapes, Holo les fait sur ce Mac, la réponse revient à n8n -----------------
+// Où Holo travaille pour un bloc : « cloud » = navigateur hébergé chez H (l'employé garde son Mac), « mac » = ce Mac.
+// Un logiciel installé ou un site local (127.0.0.1, comptarex) ne sont pas joignables depuis le cloud : ils restent sur le Mac.
+const HOLO_DESKTOP = /\b(onenote|excel|word|powerpoint|outlook|keynote|numbers|pages|finder|comptarex|desktop app|application de bureau|logiciel install)/i;
+const HOLO_LOCAL = /(localhost|127\.0\.0\.1|0\.0\.0\.0|\.local\b)/i;
+const HOLO_WEB = /(https?:\/\/|www\.|\.com\b|\.fr\b|linkedin|website|web page|site web|portail|portal)/i;
+function holoEnv(steps, asked) {
+  const text = steps.join(' ');
+  if (HOLO_LOCAL.test(text) || HOLO_DESKTOP.test(text)) return 'mac'; // même si on demande le cloud : il ne pourrait pas
+  if (asked === 'mac' || asked === 'cloud') return asked;
+  return HOLO_WEB.test(text) ? 'cloud' : 'mac';
+}
+
+// --- Pont n8n → Holo : n8n envoie des étapes, Holo les fait (cloud ou Mac), la réponse revient à n8n -------------
 // Appel SYNCHRONE (n8n attend la fin). Réservé aux appels locaux portant le jeton TWIIN_LOCAL_TOKEN.
 app.post('/api/holo/run', async (req, res) => {
   try {
@@ -832,9 +961,11 @@ app.post('/api/holo/run', async (req, res) => {
       return res.status(403).json({ error: 'Accès refusé (appel local avec jeton Twiin uniquement).' });
     }
     if (replay?.running) return res.status(409).json({ error: 'Holo est déjà occupé par un autre rejeu.' });
-    const { name, steps: raw, expect } = req.body || {};
-    const steps = (raw || []).map((x) => String(x).trim()).filter(Boolean);
+    const { name, steps: raw, expect, env: asked } = req.body || {};
+    let steps = (raw || []).map((x) => String(x).trim()).filter(Boolean);
     if (!steps.length) return res.status(400).json({ error: 'Aucune étape.' });
+    const env = holoEnv(steps, asked);
+    if (env === 'cloud') steps = steps.map((x) => x.replace(/^(in|dans)\s+(google\s+)?chrome\s*,\s*/i, '')); // le cloud a son propre navigateur
     if (expect && Object.keys(expect).length) {
       // la dernière étape demande à Holo de rendre les valeurs lues sous forme de JSON, exploitable par n8n
       steps[steps.length - 1] += ' Then answer ONLY with a JSON object with exactly these keys, filled with the values you READ ON SCREEN '
@@ -845,27 +976,26 @@ app.post('/api/holo/run', async (req, res) => {
     fs.mkdirSync(dir, { recursive: true });
     const events = path.join(dir, `${new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)}-n8n-events.jsonl`);
     fs.writeFileSync(events, '');
-    spawn('osascript', ['-e', 'tell application "System Events" to set visible of process "Code" to false']);
+    if (env === 'mac') spawn('osascript', ['-e', 'tell application "System Events" to set visible of process "Code" to false']);
     const t0 = Date.now();
-    const proc = spawn(PYTHON, ['-u', RUN_LIVE, id, '--no-open', '--events', events], { cwd: REPO_ROOT });
+    const proc = spawn(PYTHON, ['-u', RUN_LIVE, id, '--no-open', '--events', events, ...(env === 'cloud' ? ['--remote'] : [])], { cwd: REPO_ROOT });
     proc.stdout.on('data', (d) => process.stdout.write(`[n8n→holo] ${d}`));
     proc.stderr.on('data', (d) => process.stderr.write(`[n8n→holo] ${d}`));
-    replay = { proc, events, id, running: true };
-    console.log(`n8n → Holo : ${id} (${steps.length} étape(s))`);
+    replay = { proc, events, id, running: true, env };
+    console.log(`n8n → Holo : ${id} (${steps.length} étape(s), ${env === 'cloud' ? 'navigateur cloud de H' : 'sur ce Mac'})`);
     await new Promise((resolve) => proc.on('close', resolve));
     replay.running = false;
     const evs = fs.readFileSync(events, 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l));
     const end = evs.find((e) => e.type === 'end') || {};
-    // la réponse de Holo est tantôt un texte, tantôt un objet { content: "…" } : on la ramène toujours à un texte
-    const asText = (a) => (typeof a === 'string' ? a : (a && typeof a.content === 'string' ? a.content : (a == null ? '' : JSON.stringify(a))));
-    const answers = evs.filter((e) => e.type === 'step_end').map((e) => asText(e.answer));
+    const answers = evs.filter((e) => e.type === 'step_end').map((e) => e.answer || '');
     let data = null;
     const last = answers.at(-1) || '';
     const a = last.indexOf('{'), b = last.lastIndexOf('}');
     if (expect && a >= 0 && b > a) {
       try { data = JSON.parse(jsonrepair(last.slice(a, b + 1))); } catch { data = null; }
     }
-    res.status(end.ok ? 200 : 502).json({ ok: !!end.ok, status: end.status || 'inconnu', seconds: Math.round((Date.now() - t0) / 1000),
+    backLog('holo-bloc', { name, env, ok: !!end.ok, seconds: Math.round((Date.now() - t0) / 1000), usage: end.usage || {} });
+    res.json({ ok: !!end.ok, status: end.status || 'inconnu', seconds: Math.round((Date.now() - t0) / 1000), env,
                answers, data, usage: end.usage || {}, restarts: end.restarts || 0 });
   } catch (err) {
     if (replay) replay.running = false;
@@ -887,4 +1017,720 @@ app.post('/api/replay/stop', (req, res) => {
 });
 
 const PORT = process.env.PORT || 3000;
+// ════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+// ÉTAPE 1 · AUDIT : « Présente-toi » (accueil vocal) + « Les logiciels de ton poste » (scan de l'ordinateur)
+// ════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+const WORKFLOWS_DIR = path.join(REPO_ROOT, 'workflows');
+const PROFILE_PATH = path.join(WORKFLOWS_DIR, 'profile.json');       // fiche employé (reste sur le Mac, exclue de git)
+const AUDIT_DIR = path.join(WORKFLOWS_DIR, 'audit');                 // résultats du scan (exclus de git)
+const VOICE_CACHE = path.join(WORKFLOWS_DIR, 'voice-cache');         // phrases de Twiin déjà dites (évite de repayer la voix)
+const ELEVEN_KEY = process.env.ELEVENLABS_API_KEY;
+// Voix de l'audit : Lucie (française native, ton de conseillère, qualité studio). ELEVENLABS_AUDIT_VOICE_ID pour en changer.
+const ELEVEN_VOICE = process.env.ELEVENLABS_AUDIT_VOICE_ID || 'YxrwjAKoUKULGd0g8K9Y';
+const ELEVEN_STT_MODEL = process.env.ELEVENLABS_STT_MODEL || 'scribe_v2';
+
+// La voix et la transcription coûtent des crédits ElevenLabs : réservées à ce Mac (pas aux autres postes du réseau).
+const isLocal = (req) => ['127.0.0.1', '::1', '::ffff:127.0.0.1'].includes(req.socket.remoteAddress);
+
+// Dictionnaire de l'accueil vocal (lexicon.json, relu à chaque réponse : l'équipe peut le compléter sans redémarrer).
+const LEXICON_PATH = path.join(path.dirname(fileURLToPath(import.meta.url)), 'lexicon.json');
+function lexicon() {
+  try { return JSON.parse(fs.readFileSync(LEXICON_PATH, 'utf8')); } catch { return { services: [], postes: [], logiciels: [], corrections: [], mots_parasites: [] }; }
+}
+// Mots que la transcription doit privilégier, selon la question (jamais pour le nom : un dictionnaire le déformerait).
+function keytermsFor(qid) {
+  const L = lexicon();
+  const pick = { poste: [...L.postes, ...L.services], service: L.services, taches: L.logiciels, tache_prioritaire: L.logiciels,
+                 outils: L.logiciels, attentes: L.logiciels }[qid] || [];
+  return [...new Set(pick)].filter((w) => w.length <= 40).slice(0, 100);
+}
+const escRe = (w) => w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+// Nettoyage d'une réponse transcrite : mots parasites, corrections connues, répétitions. Renvoie aussi ce qui a changé.
+function cleanAnswer(text, qid) {
+  const L = lexicon();
+  const changes = [];
+  let t = ` ${text} `;
+  for (const f of L.mots_parasites || []) t = t.replace(new RegExp(`[\\s,]*\\b${escRe(f)}\\b[\\s,.…]*`, 'giu'), ' ');
+  for (const c of L.corrections || []) {
+    if (c.questions && !c.questions.includes(qid)) continue;
+    const re = new RegExp(`(^|[^\\p{L}\\p{N}])${escRe(c.entendu)}(?=$|[^\\p{L}\\p{N}])`, 'giu');
+    if (re.test(t)) { t = t.replace(re, `$1${c.corrige}`); changes.push({ entendu: c.entendu, corrige: c.corrige }); }
+  }
+  // Répétitions : une phrase déjà dite (ou contenue dans une phrase précédente) n'est gardée qu'une fois.
+  const kept = [];
+  const norm = (x) => x.toLowerCase().replace(/[^\p{L}\p{N} ]/gu, '').replace(/\s+/g, ' ').trim();
+  for (const sentence of t.split(/(?<=[.!?])\s+/)) {
+    const n = norm(sentence);
+    if (!n) continue;
+    if (kept.some((k) => norm(k).includes(n))) { changes.push({ entendu: sentence.trim(), corrige: '(répétition retirée)' }); continue; }
+    kept.push(sentence.trim());
+  }
+  t = kept.join(' ').replace(/\s+([,.!?])/g, '$1').replace(/,{2,}/g, ',').replace(/^[\s,.]+/, '').replace(/\s{2,}/g, ' ').trim();
+  if (t) t = t[0].toUpperCase() + t.slice(1);
+  return { text: t, changes };
+}
+
+// Questions d'accueil : chaque réponse remplit un champ de la fiche employé.
+const ONBOARDING = {
+  hello: "Bonjour, je suis Twiin, ton assistant automatisation. Avant de commencer, j'aimerais mieux connaître ton travail. "
+       + "Je vais te poser huit questions rapides. Tu peux répondre à voix haute, ou par écrit si tu préfères.",
+  questions: [
+    // Les noms propres sont souvent mal entendus (« Amine Benjab ») : l'employé vérifie l'orthographe avant de continuer.
+    { id: 'identite', text: "Pour commencer, quels sont ton prénom et ton nom ?", confirm: "Vérifie l'orthographe de ton nom à l'écran, puis valide." },
+    { id: 'poste', text: "Quel est ton poste ?" },
+    { id: 'service', text: "Dans quel service ou quelle équipe travailles-tu ?" },
+    { id: 'anciennete', text: "Depuis combien de temps travailles-tu ici ?" },
+    { id: 'taches', text: "Quelles sont les tâches que tu fais le plus souvent ?" },
+    { id: 'tache_prioritaire', text: "Laquelle te prend le plus de temps, ou t'ennuie le plus ? Et tu la fais tous les combien ?" },
+    { id: 'outils', text: "Quels logiciels utilises-tu au quotidien ?" },
+    { id: 'attentes', text: "Enfin, qu'est-ce que tu attends de Twiin ?" },
+  ],
+  bye: "Merci ! J'ai tout noté. Maintenant, je peux regarder quels logiciels sont installés sur ton ordinateur : "
+     + "seulement leur nom, jamais tes fichiers.",
+};
+app.get('/api/onboarding/voix-v1', (req, res) => res.json(ONBOARDING)); // ancien accueil vocal (8 questions)
+
+// Twiin parle : texte → voix (ElevenLabs), gardée en cache sur le disque.
+app.get('/api/voice/say', async (req, res) => {
+  try {
+    if (!isLocal(req)) return res.status(403).end();
+    const text = String(req.query.text || '').trim().slice(0, 600);
+    if (!text) return res.status(400).end();
+    if (!ELEVEN_KEY) return res.status(503).json({ error: 'ELEVENLABS_API_KEY manquante dans .env' });
+    fs.mkdirSync(VOICE_CACHE, { recursive: true });
+    const file = path.join(VOICE_CACHE, crypto.createHash('sha1').update(`${ELEVEN_VOICE}|${text}`).digest('hex') + '.mp3');
+    if (!fs.existsSync(file)) {
+      const r = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${ELEVEN_VOICE}?output_format=mp3_44100_128`, {
+        method: 'POST', headers: { 'xi-api-key': ELEVEN_KEY, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text, model_id: 'eleven_multilingual_v2' }),
+      });
+      if (!r.ok) throw new Error(`ElevenLabs (voix) : ${r.status} ${(await r.text()).slice(0, 200)}`);
+      fs.writeFileSync(file, Buffer.from(await r.arrayBuffer()));
+    }
+    res.type('audio/mpeg').sendFile(file);
+  } catch (err) {
+    console.error(err.message);
+    res.status(502).json({ error: err.message });
+  }
+});
+
+// L'employé répond : audio (enregistré par le navigateur) → texte (ElevenLabs Scribe). L'audio n'est pas gardé.
+app.post('/api/voice/transcribe', express.raw({ type: '*/*', limit: '25mb' }), async (req, res) => {
+  try {
+    if (!isLocal(req)) return res.status(403).end();
+    if (!ELEVEN_KEY) return res.status(503).json({ error: 'ELEVENLABS_API_KEY manquante dans .env' });
+    if (!req.body?.length) return res.status(400).json({ error: 'Aucun son reçu.' });
+    const form = new FormData();
+    form.append('model_id', ELEVEN_STT_MODEL);
+    form.append('language_code', 'fra');
+    form.append('tag_audio_events', 'false');
+    const qid = String(req.query.q || '');
+    for (const k of keytermsFor(qid)) form.append('keyterms', k);
+    form.append('file', new Blob([req.body], { type: req.headers['content-type'] || 'audio/webm' }), 'reponse.webm');
+    let r = await fetch('https://api.elevenlabs.io/v1/speech-to-text', { method: 'POST', headers: { 'xi-api-key': ELEVEN_KEY }, body: form });
+    if (!r.ok && form.has('keyterms')) { // liste de mots refusée : on retranscrit sans elle plutôt que d'échouer
+      form.delete('keyterms');
+      r = await fetch('https://api.elevenlabs.io/v1/speech-to-text', { method: 'POST', headers: { 'xi-api-key': ELEVEN_KEY }, body: form });
+    }
+    const d = await r.json();
+    if (!r.ok) throw new Error(`ElevenLabs (transcription) : ${r.status} ${JSON.stringify(d).slice(0, 200)}`);
+    const raw = (d.text || '').trim();
+    const { text, changes } = cleanAnswer(raw, qid);
+    res.json({ text, raw, changes });
+  } catch (err) {
+    console.error(err.message);
+    res.status(502).json({ error: err.message });
+  }
+});
+
+// Fiche employé : les réponses (orales ou écrites) mises au propre par le modèle, gardées sur le Mac.
+const PROFILE_PROMPT = `You turn the answers of an employee's onboarding interview (in French) into a clean profile.
+The answers were SPOKEN then transcribed automatically: they may contain filler words, repetitions and mis-heard words.
+Use ONLY what the employee said; never invent. Unknown → null (or [] for lists).
+Clean-up rules:
+- remove filler words (euh, bah, hum…) and repetitions: a job title said three times is written once;
+- write departments, job titles and software with the canonical spelling of the DICTIONARY given in the user message
+  (« informatique » → « IT », « power point » → « PowerPoint »);
+- a word that makes no sense in context but SOUNDS like a dictionary entry was probably mis-heard: correct it
+  (« Haïti » as a department → « IT »). If you are not sure, keep what was said. List every correction in "corrections";
+- keep the employee's own words for tasks, shortened to a few words each; never translate job titles.
+Return ONLY a JSON object, no prose, no markdown fences, never straight double quotes inside strings (use « »):
+{"prenom":null,"nom":null,"poste":null,"service":null,"anciennete":"as said, e.g. « 3 ans »",
+ "taches_frequentes":["…"],"tache_prioritaire":{"tache":null,"frequence":null,"pourquoi":null},
+ "outils_declares":["software names as said"],"attentes":null,
+ "resume":"one friendly French sentence addressed to the employee (tutoiement) summing up their job",
+ "corrections":[{"entendu":"what was transcribed","corrige":"what you wrote instead"}]}`;
+app.post('/api/onboarding/profile', async (req, res) => {
+  try {
+    // réponses nettoyées (mots parasites, répétitions, erreurs d'écoute connues) : c'est ce qui s'affiche et ce qui est gardé
+    const answers = (req.body?.answers || []).filter((a) => a && a.question)
+      .map((a) => ({ ...a, answer: cleanAnswer(a.answer || '', a.id).text }));
+    if (!answers.length) return res.status(400).json({ error: 'Aucune réponse.' });
+    const L = lexicon();
+    const user = `DICTIONARY\nDepartments: ${L.services.join(', ')}\nJob titles: ${L.postes.join(', ')}\nSoftware: ${L.logiciels.join(', ')}\n\nINTERVIEW\n`
+      + answers.map((a) => `Q: ${a.question}\nA: ${a.answer || '(pas de réponse)'}`).join('\n\n');
+    const { data: resp } = await client.chat.completions.create({
+      model: HF_MODEL, max_tokens: 4000, temperature: 0, reasoning_effort: REASONING_EFFORT,
+      messages: [{ role: 'system', content: PROFILE_PROMPT }, { role: 'user', content: user }],
+    }).withResponse();
+    const raw = resp.choices?.[0]?.message?.content || '';
+    if (!raw.trim()) throw new Error('Réponse vide du modèle : réessaie.');
+    const { result } = parseWorkflows(raw);
+    const profile = { ...result, answers, updated_at: new Date().toISOString() };
+    fs.mkdirSync(WORKFLOWS_DIR, { recursive: true });
+    fs.writeFileSync(PROFILE_PATH, JSON.stringify(profile, null, 2) + '\n');
+    if (sbUser()) {
+      profileCache.set(sbUser().id, result);
+      const tp = result.tache_prioritaire || null;
+      await sb('profiles', { method: 'POST', prefer: 'resolution=merge-duplicates,return=minimal', body: {
+        id: sbUser().id, prenom: result.prenom || null, nom: result.nom || null, poste: result.poste || null, service: result.service || null,
+        anciennete: result.anciennete || null, taches_frequentes: result.taches_frequentes || [], tache_prioritaire: tp,
+        outils_declares: result.outils_declares || [], attentes: result.attentes || null, resume: result.resume || null,
+        answers, corrections: result.corrections || [], updated_at: profile.updated_at } });
+    }
+    console.log(`Fiche employé enregistrée (${answers.length} réponses), ≈ ${(resp.usage?.cost ?? 0).toFixed(4)} $`);
+    backLog('fiche', { model: HF_MODEL, cost_usd: resp.usage?.cost ?? null, corrections: result.corrections || [] });
+    res.json({ profile, cost_usd: resp.usage?.cost ?? null });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: err.message });
+  }
+});
+app.get('/api/onboarding/profile', async (req, res) => {
+  if (sbUser()) { // connecté : SA fiche (plusieurs collègues peuvent passer sur le même Mac)
+    const rows = await sb(`profiles?id=eq.${sbUser().id}&select=*`);
+    if (rows?.[0]) profileCache.set(sbUser().id, rows[0]);
+    return res.json({ profile: rows?.[0] || null });
+  }
+  res.json({ profile: fs.existsSync(PROFILE_PATH) ? JSON.parse(fs.readFileSync(PROFILE_PATH, 'utf8')) : null });
+});
+// La fiche, en quelques lignes, pour les conseils et la recommandation (rôle, fréquence, attentes)
+let profileCache = new Map(); // fiche de l'employé connecté, pour les conseils et la recommandation
+function profileContext() {
+  try {
+    const p = (sbUser() && profileCache.get(sbUser().id)) || JSON.parse(fs.readFileSync(PROFILE_PATH, 'utf8'));
+    return `EMPLOYEE PROFILE (from the onboarding interview)\nJob: ${p.poste || '?'} · Team: ${p.service || '?'} · Seniority: ${p.anciennete || '?'}\n`
+      + `Frequent tasks: ${(p.taches_frequentes || []).join('; ') || '?'}\n`
+      + `Most painful task: ${p.tache_prioritaire?.tache || '?'} (frequency: ${p.tache_prioritaire?.frequence || '?'})\n`
+      + `Expectations: ${p.attentes || '?'}`;
+  } catch { return ''; }
+}
+
+// Scan du poste : la liste des outils installés (noms, versions, catégories) — ni fichiers, ni historique.
+// « usage » (choix de l'employé) : ajoute pour chaque appli « ouverte ces 30 derniers jours » oui / non.
+const AUDIT_SCRIPT = path.join(REPO_ROOT, '..', 'capture', 'scripts', 'audit_poste.py');
+app.post('/api/audit/scan', (req, res) => {
+  const out = path.join(AUDIT_DIR, new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19));
+  const args = [AUDIT_SCRIPT, '--out', out, ...(req.body?.usage ? ['--usage'] : [])];
+  const t0 = Date.now();
+  const proc = spawn(PYTHON, args);
+  let err = '';
+  proc.stderr.on('data', (d) => { err += d; });
+  proc.on('close', (code) => {
+    try {
+      if (code !== 0) throw new Error(err.trim().split('\n').at(-1) || `code ${code}`);
+      const audit = JSON.parse(fs.readFileSync(path.join(out, 'audit_poste.json'), 'utf8'));
+      console.log(`Audit du poste : ${audit.summary.outils} outils en ${((Date.now() - t0) / 1000).toFixed(1)} s` + (req.body?.usage ? ' (avec ouverture récente)' : ''));
+      backLog('scan', { seconds: (Date.now() - t0) / 1000, usage: !!req.body?.usage, ...audit.summary });
+      sb('audits', { method: 'POST', prefer: 'return=minimal', body: { with_usage: !!req.body?.usage, scope: audit.scope, summary: audit.summary, tools: audit.tools } });
+      res.json({ audit, seconds: (Date.now() - t0) / 1000 });
+    } catch (e) {
+      res.status(500).json({ error: `Scan impossible : ${e.message}` });
+    }
+  });
+});
+app.get('/api/audit/latest', async (req, res) => {
+  if (sbUser()) { // connecté : SON dernier scan
+    const rows = await sb('audits?select=*&order=created_at.desc&limit=1');
+    const a = rows?.[0];
+    return res.json({ audit: a ? { schema: 'twiin/audit-poste@1', generated_at: a.created_at, scope: a.scope, summary: a.summary, tools: a.tools,
+                                   excluded_personal: [], extensions: {} } : null });
+  }
+  const dirs = fs.existsSync(AUDIT_DIR) ? fs.readdirSync(AUDIT_DIR).sort() : [];
+  const f = dirs.length ? path.join(AUDIT_DIR, dirs.at(-1), 'audit_poste.json') : null;
+  res.json({ audit: f && fs.existsSync(f) ? JSON.parse(fs.readFileSync(f, 'utf8')) : null });
+});
+
+// ════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+// 🎬 TUTO VIDÉO (étape 4 · Reco « accélérer ») : images de l'enregistrement + voix off ElevenLabs + montage Remotion.
+// La vidéo s'affiche ensuite directement dans la page Twiin.
+// ════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+const TUTO_SCRIPT = path.join(REPO_ROOT, 'tuto', 'build_tuto.py');
+const VIDEO_DIR = path.join(REPO_ROOT, 'tuto', 'video');
+const VIDEO_OUT = path.join(VIDEO_DIR, 'out');
+app.use('/tutos-video', express.static(VIDEO_OUT));
+let tutoJob = null; // { name, phase, percent, log, url, error, running, startedAt }
+
+function runStep(cmd, args, cwd, onLine) {
+  return new Promise((resolve, reject) => {
+    const p = spawn(cmd, args, { cwd });
+    let tail = '';
+    const feed = (d) => { tail = (tail + d).slice(-4000); String(d).split(/[\r\n]+/).forEach((l) => l.trim() && onLine(l.trim())); };
+    p.stdout.on('data', feed);
+    p.stderr.on('data', feed);
+    p.on('close', (code) => (code === 0 ? resolve() : reject(new Error(tail.trim().split('\n').at(-1) || `code ${code}`))));
+  });
+}
+
+app.post('/api/tuto/create', async (req, res) => {
+  if (tutoJob?.running) return res.status(409).json({ error: 'Un tuto est déjà en cours de fabrication.' });
+  const wf = req.body?.workflow || {};
+  const example = !!req.body?.example;
+  const name = example ? 'veille-loreal' : `${slugify(wf.name).slice(0, 40)}-${new Date().toISOString().slice(5, 16).replace(/[-:T]/g, '')}`;
+  const props = path.join(VIDEO_DIR, 'public', 'tutos', name, 'props.json');
+  const mp4 = path.join(VIDEO_OUT, `${name}.mp4`);
+  const job = tutoJob = { name, phase: 'images', percent: 0, log: [], url: null, error: null, running: true, startedAt: Date.now() };
+  res.json({ ok: true, name });
+  const log = (l) => { job.log.push(l); job.log = job.log.slice(-30); };
+  try {
+    if (!(example && fs.existsSync(props))) {
+      // l'exemple réutilise son tuto déjà fait ; une vraie tâche part de son enregistrement
+      const dir = sessionDirFor(wf);
+      if (!dir) throw new Error('L\'enregistrement de cette tâche n\'est pas sur ce Mac : enregistre-la d\'abord (étape 2).');
+      if (!(wf.steps || []).length) throw new Error('La tâche n\'a pas d\'étapes.');
+      const wfFile = path.join(WORKFLOWS_DIR, 'tuto-workflow.json');
+      fs.writeFileSync(wfFile, JSON.stringify({ name: wf.name, steps: wf.steps }));
+      await runStep(PYTHON, [TUTO_SCRIPT, '--session', dir, '--workflow', wfFile, '--name', name], REPO_ROOT, (l) => {
+        log(l);
+        if (/^voix off/.test(l)) job.phase = 'voice';
+      });
+    }
+    if (!(example && fs.existsSync(mp4))) {
+      job.phase = 'render';
+      await runStep('npx', ['remotion', 'render', 'TwiinTuto', `out/${name}.mp4`, `--props=${JSON.stringify({ dataFile: `tutos/${name}/props.json` })}`],
+        VIDEO_DIR, (l) => {
+          const m = l.match(/(\d+)\s*\/\s*(\d+)/);
+          if (m && Number(m[2]) > 0) job.percent = Math.min(100, Math.round((100 * Number(m[1])) / Number(m[2])));
+        });
+    }
+    job.phase = 'done';
+    job.percent = 100;
+    job.url = `/tutos-video/${name}.mp4?v=${Date.now()}`;
+    console.log(`Tuto vidéo prêt : ${mp4} (${((Date.now() - job.startedAt) / 1000).toFixed(0)} s)`);
+    backLog('tuto', { name, seconds: Math.round((Date.now() - job.startedAt) / 1000), log: job.log.slice(-20) });
+    try {
+      const pr = JSON.parse(fs.readFileSync(props, 'utf8'));
+      const frames = pr.introFrames + pr.outroFrames + pr.scenes.reduce((n, sc) => n + sc.durationInFrames, 0);
+      await sb('tutos', { method: 'POST', prefer: 'return=minimal', body: { task_id: wf.task_id || null, name, title: pr.title,
+        seconds: Math.round(frames / 30), steps: pr.scenes.map((sc) => ({ title: sc.title, narration: sc.narration, tip: sc.tip })) } });
+    } catch { /* données du tuto illisibles : la vidéo reste quand même */ }
+  } catch (e) {
+    job.error = e.message;
+    console.error('Tuto vidéo :', e.message);
+    backLog('tuto-erreur', { name, error: e.message, log: job.log.slice(-20) });
+  } finally {
+    job.running = false;
+  }
+});
+app.get('/api/tuto/status', (req, res) => res.json(tutoJob || { phase: 'idle' }));
+
+// ════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+// Pages « Mes vidéos » et « Mes automatisations »
+// ════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+app.get('/api/tutos', (req, res) => {
+  const list = (fs.existsSync(VIDEO_OUT) ? fs.readdirSync(VIDEO_OUT) : []).filter((f) => f.endsWith('.mp4')).map((f) => {
+    const name = f.replace(/\.mp4$/, '');
+    const st = fs.statSync(path.join(VIDEO_OUT, f));
+    let props = null;
+    try { props = JSON.parse(fs.readFileSync(path.join(VIDEO_DIR, 'public', 'tutos', name, 'props.json'), 'utf8')); } catch { /* sans données */ }
+    const frames = props ? props.introFrames + props.outroFrames + props.scenes.reduce((n, sc) => n + sc.durationInFrames, 0) : null;
+    return {
+      name, url: `/tutos-video/${f}?v=${Math.round(st.mtimeMs)}`, created: st.mtime, size_mb: +(st.size / 1e6).toFixed(1),
+      title: props?.title || name, intro: props?.intro || '', seconds: frames ? Math.round(frames / 30) : null,
+      steps: (props?.scenes || []).map((sc) => ({ title: sc.title, narration: sc.narration, tip: sc.tip })),
+      thumb: props?.scenes?.[0]?.shots?.[0]?.src ? `/tutos-media/${props.scenes[0].shots[0].src.replace(/^tutos\//, '')}` : null,
+    };
+  }).sort((a, b) => new Date(b.created) - new Date(a.created));
+  res.json({ tutos: list });
+});
+app.use('/tutos-media', express.static(path.join(VIDEO_DIR, 'public', 'tutos')));
+
+// n8n piloté depuis Twiin (API publique de n8n) : l'employé n'a pas besoin d'ouvrir n8n.
+async function n8nApi(pathname, opts = {}) {
+  const r = await fetch(`${N8N_URL}/api/v1${pathname}`, {
+    ...opts, headers: { 'X-N8N-API-KEY': process.env.N8N_LOCAL_API_KEY || '', 'Content-Type': 'application/json', ...(opts.headers || {}) },
+    signal: AbortSignal.timeout(15000),
+  });
+  const d = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(`n8n : ${r.status} ${d.message || ''}`.trim());
+  return d;
+}
+// Fréquence × heure. Les heures proposées sont des créneaux où le Mac est souvent libre (avant l'arrivée, déjeuner, soir).
+const FREQS = { manual: null, daily: '* * *', weekly: '* * 1', monthly: '1 * *' };   // jour du mois, mois, jour de semaine
+const FREQ_TXT = { manual: 'Manuelle', daily: 'Chaque jour', weekly: 'Chaque lundi', monthly: 'Le 1er du mois' };
+const HEURES = ['08:30', '09:00', '12:30', '18:30'];
+const cronOf = (freq, heure = '09:00') => { const [h, m] = heure.split(':').map(Number); return FREQS[freq] ? `${m} ${h} ${FREQS[freq]}` : null; };
+function freqOfCron(cron) {
+  const m = /^(\d+) (\d+) (.+)$/.exec(cron || '');
+  if (!m) return { freq: cron ? 'custom' : 'manual', heure: null };
+  const freq = Object.keys(FREQS).find((k) => FREQS[k] === m[3]) || 'custom';
+  return { freq, heure: `${m[2].padStart(2, '0')}:${m[1].padStart(2, '0')}` };
+}
+const heureTxt = (h) => (h ? h.replace(':', ' h ').replace(' h 00', ' h') : '');
+const freqLabel = (freq, heure) => (freq === 'manual' ? 'Manuelle' : freq === 'custom' ? 'Personnalisée' : `${FREQ_TXT[freq]} à ${heureTxt(heure)}`);
+const BLOCK_KIND = (n) => (/api\/holo\/run/.test(n.parameters?.url || '') ? 'holo' : n.type.endsWith('.googleSheets') ? 'sheets'
+  : n.type.endsWith('.code') ? (/Vérification|rules/.test(n.parameters?.jsCode || '') ? 'verify' : 'code') : n.type.endsWith('.httpRequest') ? 'http' : 'other');
+let automationRun = null; // { id, proc, startedAt }
+
+async function automationSummary(w) {
+  const sched = w.nodes.find((n) => n.type.endsWith('.scheduleTrigger'));
+  const cron = sched && !sched.disabled ? sched.parameters?.rule?.interval?.[0]?.expression : null;
+  const { freq, heure } = freqOfCron(cron);
+  const sheetNode = w.nodes.find((n) => n.type.endsWith('.googleSheets'));
+  const sheetId = sheetNode?.parameters?.documentId?.value;
+  const gid = sheetNode?.parameters?.sheetName?.value;
+  let execs = [];
+  try { execs = (await n8nApi(`/executions?workflowId=${encodeURIComponent(w.id)}&limit=20`)).data || []; } catch { /* historique indisponible */ }
+  const done = execs.filter((e) => e.stoppedAt);
+  const dur = done.map((e) => (new Date(e.stoppedAt) - new Date(e.startedAt)) / 1000);
+  return {
+    id: w.id, name: w.name.replace(/^Twiin — /, ''), active: w.active, freq, heure, freq_label: freqLabel(freq, heure), cron,
+    blocks: w.nodes.filter((n) => !/(webhook|scheduleTrigger|manualTrigger)$/i.test(n.type)).map((n) => {
+      const kind = BLOCK_KIND(n);
+      if (kind !== 'holo') return { name: n.name, kind };
+      const body = String(n.parameters?.jsonBody || '');
+      const asked = (body.match(/env:\s*"(cloud|mac)"/) || [])[1];
+      return { name: n.name, kind, env: holoEnv([body.replace(/\\"/g, '"')], asked) };
+    }),
+    sheet: sheetId ? { id: sheetId, url: `https://docs.google.com/spreadsheets/d/${sheetId}/edit${gid ? `#gid=${gid}` : ''}` } : null,
+    executions: execs.map((e) => ({ id: e.id, status: e.status, mode: e.mode, startedAt: e.startedAt, stoppedAt: e.stoppedAt,
+                                    url: `${N8N_URL}/workflow/${w.id}/executions/${e.id}` })),
+    stats: { total: execs.length, success: execs.filter((e) => e.status === 'success').length,
+             avg_s: dur.length ? Math.round(dur.reduce((a, b) => a + b, 0) / dur.length) : null, last: execs[0]?.startedAt || null },
+    running: automationRun?.id === w.id,
+    plan: lirePlans().find((p) => p.id === w.id)?.at || null,
+    n8n_url: `${N8N_URL}/workflow/${w.id}`, created: w.createdAt, updated: w.updatedAt,
+  };
+}
+
+app.get('/api/automations', async (req, res) => {
+  if (!(await n8nUp())) return res.json({ up: false, automations: [] });
+  try {
+    const all = (await n8nApi('/workflows?limit=100')).data || [];
+    const mine = all.filter((w) => w.id.startsWith('twiin') && !/\(outil\)/.test(w.name));
+    const list = await Promise.all(mine.map(automationSummary));
+    const runs = list.flatMap((a) => a.executions.map((e) => ({ n8n_id: a.id, n8n_execution_id: String(e.id), status: e.status, mode: e.mode,
+                                                                  started_at: e.startedAt, stopped_at: e.stoppedAt })));
+    if (runs.length) sb('automation_runs?on_conflict=user_id,n8n_execution_id', { method: 'POST', prefer: 'resolution=merge-duplicates,return=minimal', body: runs });
+    res.json({ up: true, n8n_url: N8N_URL, automations: list });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+app.get('/api/automations/:id', async (req, res, next) => {
+  if (req.params.id === 'etat') return next(); // route du bandeau, déclarée plus bas
+  try { res.json(await automationSummary(await n8nApi(`/workflows/${encodeURIComponent(req.params.id)}`))); }
+  catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Fréquence : on règle le déclencheur planifié du workflow, puis on l'active (ou on le met en pause si « manuelle »).
+app.post('/api/automations/:id/schedule', async (req, res) => {
+  try {
+    const freq = req.body?.freq;
+    const heure = HEURES.includes(req.body?.heure) ? req.body.heure : '09:00';
+    if (!(freq in FREQS)) return res.status(400).json({ error: 'Fréquence inconnue.' });
+    const id = encodeURIComponent(req.params.id);
+    const w = await n8nApi(`/workflows/${id}`);
+    const sched = w.nodes.find((n) => n.type.endsWith('.scheduleTrigger'));
+    if (!sched && freq !== 'manual') throw new Error('Cette automatisation n\'a pas de déclencheur planifié.');
+    if (sched) {
+      sched.disabled = freq === 'manual';
+      if (FREQS[freq]) sched.parameters = { rule: { interval: [{ field: 'cronExpression', expression: cronOf(freq, heure) }] } };
+    }
+    const keep = ['executionOrder', 'timezone', 'saveDataErrorExecution', 'saveDataSuccessExecution', 'saveManualExecutions',
+                  'saveExecutionProgress', 'executionTimeout', 'errorWorkflow', 'callerPolicy'];
+    const settings = Object.fromEntries(Object.entries(w.settings || {}).filter(([k]) => keep.includes(k)));
+    await n8nApi(`/workflows/${id}`, { method: 'PUT', body: JSON.stringify({ name: w.name, nodes: w.nodes, connections: w.connections, settings }) });
+    await n8nApi(`/workflows/${id}/${freq === 'manual' ? 'deactivate' : 'activate'}`, { method: 'POST' });
+    console.log(`Automatisation ${w.id} : ${freqLabel(freq, heure)}`);
+    await sb(`automations?n8n_id=eq.${encodeURIComponent(w.id)}`, { method: 'PATCH', prefer: 'return=minimal', body: { freq, active: freq !== 'manual' } });
+    res.json(await automationSummary(await n8nApi(`/workflows/${id}`)));
+  } catch (e) {
+    console.error(e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Lancer maintenant (une exécution de test, comme à la création). Les blocs Holo prennent la souris du Mac.
+// Notification macOS (Centre de notifications) : l'employé est prévenu même s'il n'est pas sur la page Twiin.
+function notifier(titre, texte) {
+  const q = (x) => String(x).replace(/["\\]/g, ' ');
+  spawn('osascript', ['-e', `display notification "${q(texte)}" with title "${q(titre)}" sound name "Glass"`]);
+}
+// Durée estimée : la moyenne des exécutions passées, sinon ~2 min 30 par bloc Holo sur le Mac
+const estimation = (a) => a.stats?.avg_s || Math.max(60, a.blocks.filter((b) => b.kind === 'holo').length * 150);
+
+async function lancerAutomatisation(id, origine = 'à la main') {
+  if (automationRun || n8nRun?.running) throw new Error('Une automatisation tourne déjà.');
+  if (replay?.running) throw new Error('Holo est occupé par un rejeu.');
+  await ensureN8n();
+  const a = await automationSummary(await n8nApi(`/workflows/${encodeURIComponent(id)}`));
+  const surMac = a.blocks.filter((b) => b.kind === 'holo' && b.env !== 'cloud').length;
+  const est = estimation(a);
+  const proc = spawn(PYTHON, ['-u', N8N_GEN, '--run', id], { cwd: REPO_ROOT });
+  proc.stderr.on('data', (d) => process.stderr.write(`[n8n] ${d}`));
+  automationRun = { id, name: a.name, proc, startedAt: Date.now(), estimate_s: est, sur_mac: surMac, stopped: false };
+  notifier('Twiin', surMac
+    ? `« ${a.name} » utilise ton Mac pendant environ ${Math.ceil(est / 60)} min. Ne touche à rien, double Échap pour arrêter.`
+    : `« ${a.name} » tourne en arrière-plan : tu peux continuer à travailler.`);
+  proc.on('close', (code) => {
+    const run = automationRun;
+    automationRun = null;
+    const ok = code === 0 && !run?.stopped;
+    console.log(`Automatisation ${id} (${origine}) : ${run?.stopped ? 'arrêtée' : ok ? 'succès' : 'échec'}`);
+    backLog('automatisation', { id, origine, ok, arretee: !!run?.stopped, seconds: Math.round((Date.now() - (run?.startedAt || Date.now())) / 1000) });
+    notifier('Twiin', run?.stopped ? `« ${a.name} » arrêtée.` : ok ? `« ${a.name} » terminée. Ton Mac est libre.`
+      : `« ${a.name} » n'a pas abouti. Détails dans Mes automatisations.`);
+  });
+  return automationRun;
+}
+app.post('/api/automations/:id/run', async (req, res) => {
+  try { await lancerAutomatisation(req.params.id); res.json({ ok: true }); }
+  catch (e) { res.status(409).json({ error: e.message }); }
+});
+
+// Arrêter : Holo ET l'exécution n8n (sinon n8n relance le bloc suivant)
+async function arreterTout() {
+  if (automationRun) { automationRun.stopped = true; automationRun.proc.kill('SIGTERM'); }
+  if (n8nRun?.running) n8nRun.proc.kill('SIGTERM');
+  if (replay?.running) replay.proc.kill('SIGTERM');
+  let stoppees = 0;
+  try {
+    const en = (await n8nApi('/executions?status=running&limit=20')).data || [];
+    for (const e of en) { await n8nApi(`/executions/${e.id}/stop`, { method: 'POST' }).catch(() => {}); stoppees++; }
+  } catch { /* n8n arrêté : rien à couper */ }
+  setTimeout(() => { if (replay?.running) replay.proc.kill('SIGKILL'); }, 5000);
+  return stoppees;
+}
+app.post('/api/automations/stop', async (req, res) => res.json({ ok: true, executions_arretees: await arreterTout() }));
+
+// Lancement programmé à un créneau (une fois) : pause déjeuner, fin de journée, demain matin…
+const PLANS_PATH = path.join(REPO_ROOT, 'workflows', 'automations-programmees.json');
+const lirePlans = () => { try { return JSON.parse(fs.readFileSync(PLANS_PATH, 'utf8')); } catch { return []; } };
+const ecrirePlans = (p) => { fs.mkdirSync(path.dirname(PLANS_PATH), { recursive: true }); fs.writeFileSync(PLANS_PATH, JSON.stringify(p, null, 2)); };
+app.post('/api/automations/:id/plan', (req, res) => {
+  const at = new Date(req.body?.at);
+  if (Number.isNaN(at.getTime()) || at.getTime() < Date.now() - 60000) return res.status(400).json({ error: 'Heure invalide.' });
+  const plans = lirePlans().filter((p) => p.id !== req.params.id);
+  plans.push({ id: req.params.id, name: req.body?.name || req.params.id, at: at.toISOString(), prevenu: false });
+  ecrirePlans(plans);
+  res.json({ ok: true, at: at.toISOString() });
+});
+app.delete('/api/automations/:id/plan', (req, res) => { ecrirePlans(lirePlans().filter((p) => p.id !== req.params.id)); res.json({ ok: true }); });
+setInterval(async () => {
+  const plans = lirePlans();
+  if (!plans.length) return;
+  let change = false;
+  for (const p of plans) {
+    const reste = new Date(p.at).getTime() - Date.now();
+    if (!p.prevenu && reste <= 2 * 60000 && reste > 0) { // prévenir 2 min avant
+      notifier('Twiin', `Dans 2 min, « ${p.name} » va utiliser ton Mac. Pour reporter : Mes automatisations.`);
+      p.prevenu = true; change = true;
+    }
+    if (reste <= 0 && !automationRun && !n8nRun?.running && !replay?.running) {
+      p.lance = true; change = true;
+      lancerAutomatisation(p.id, 'programmée').catch((e) => notifier('Twiin', `« ${p.name} » n'a pas pu démarrer : ${e.message}`));
+    }
+  }
+  if (change) ecrirePlans(plans.filter((p) => !p.lance));
+}, 20000);
+
+// État pour le bandeau commun des pages : ce qui tourne, depuis quand, temps estimé, prochain lancement programmé
+app.get('/api/automations/etat', (req, res) => {
+  const r = automationRun;
+  const prochain = lirePlans().sort((x, y) => x.at.localeCompare(y.at))[0] || null;
+  if (r) return res.json({ running: true, name: r.name, sur_mac: r.sur_mac, elapsed_s: Math.round((Date.now() - r.startedAt) / 1000), estimate_s: r.estimate_s, prochain });
+  if (n8nRun?.running) return res.json({ running: true, name: 'Création d\'une automatisation', sur_mac: replay?.running && replay.env !== 'cloud' ? 1 : 0, elapsed_s: null, estimate_s: null, prochain });
+  if (replay?.running) return res.json({ running: true, name: 'Holo', sur_mac: replay.env !== 'cloud' ? 1 : 0, elapsed_s: null, estimate_s: null, prochain });
+  res.json({ running: false, prochain });
+});
+
+// ════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+// BACK : tout ce qui est technique (coûts, modèles, journaux, scans complets, rejeux, n8n) — hors parcours employé
+// ════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+const readJson = (f, dflt = null) => { try { return JSON.parse(fs.readFileSync(f, 'utf8')); } catch { return dflt; } };
+const readJsonl = (f) => { try { return fs.readFileSync(f, 'utf8').split('\n').filter(Boolean).map((l) => { try { return JSON.parse(l); } catch { return null; } }).filter(Boolean); } catch { return []; } };
+app.get('/api/back', async (req, res) => {
+  const runsDir = path.join(WORKFLOWS_DIR, 'runs');
+  const runFiles = fs.existsSync(runsDir) ? fs.readdirSync(runsDir).sort().reverse() : [];
+  const last = readJson(LAST_RUN_PATH, {});
+  const sessions = (fs.existsSync(SESSIONS_DIR) ? fs.readdirSync(SESSIONS_DIR).sort().reverse().slice(0, 10) : []).map((id) => {
+    const dir = path.join(SESSIONS_DIR, id);
+    let frames = 0;
+    try { frames = fs.existsSync(path.join(dir, 'frames.jsonl')) ? fs.readFileSync(path.join(dir, 'frames.jsonl'), 'utf8').split('\n').filter(Boolean).length
+                                                                   : (readJson(path.join(dir, 'frames.json'), {}).frames || []).length; } catch { /* rien */ }
+    const actions = readActions(dir);
+    const start = actions.find((e) => e.type === 'start');
+    return { id, frames, actions: actions.length, clicks: actions.filter((e) => e.type === 'click').length,
+             displays: start?.displays?.length ?? null, permissions: start ? { clics_clavier: !!start.clicks_and_keys, accessibilite: !!start.accessibility } : null };
+  });
+  const auditDirs = fs.existsSync(AUDIT_DIR) ? fs.readdirSync(AUDIT_DIR).sort() : [];
+  const log = readJsonl(BACK_LOG);
+  const costs = {};
+  for (const e of log) if (typeof e.cost_usd === 'number') costs[e.kind] = (costs[e.kind] || 0) + e.cost_usd;
+  res.json({
+    services: {
+      twiin: true, n8n: await n8nUp(), n8n_url: N8N_URL,
+      cles: { HF_TOKEN: !!process.env.HF_TOKEN, HAI_API_KEY: !!process.env.HAI_API_KEY, ELEVENLABS_API_KEY: !!process.env.ELEVENLABS_API_KEY,
+              N8N_LOCAL_API_KEY: !!process.env.N8N_LOCAL_API_KEY, TWIIN_LOCAL_TOKEN: !!process.env.TWIIN_LOCAL_TOKEN },
+      modele: HF_MODEL, mode: RECORDER_MODE, voix: ELEVEN_VOICE, transcription: ELEVEN_STT_MODEL,
+      raccourci: ((fs.existsSync(path.join(WORKFLOWS_DIR, 'hotkey.log')) ? fs.readFileSync(path.join(WORKFLOWS_DIR, 'hotkey.log'), 'utf8').trim().split('\n').at(-1) : null)),
+    },
+    costs, log: log.slice(-80).reverse(),
+    last_analysis: last.meta ? { ...last.meta, action_log: (last.action_log || '').split('\n').slice(0, 300), ocr_chars: (last.ocr_transcript || '').length,
+                                 ocr_extract: (last.ocr_transcript || '').slice(0, 3000) } : null,
+    sessions,
+    profile: readJson(PROFILE_PATH),
+    audit: auditDirs.length ? readJson(path.join(AUDIT_DIR, auditDirs.at(-1), 'audit_poste.json')) : null,
+    replays: runFiles.filter((f) => /-(local|cloud)\.json$/.test(f)).slice(0, 10).map((f) => {
+      const r = readJson(path.join(runsDir, f), {});
+      return { file: f, workflow: r.workflow, mode: r.mode, status: r.status, seconds: r.seconds, restarts: r.restarts,
+               share_urls: r.share_urls, usage: r.usage, blocked: r.blocked_actions, screen_switches: (r.screen_switches || []).length,
+               steps: (r.steps || []).map((s) => ({ step: s.step, status: s.status, seconds: s.seconds, answer: s.answer })) };
+    }),
+    n8n: runFiles.filter((f) => /n8n-(create|events)\.jsonl$/.test(f)).slice(0, 10).map((f) => ({ file: f, events: readJsonl(path.join(runsDir, f)).slice(-40) })),
+    tuto: tutoJob,
+  });
+});
+
+// ════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+// BRIQUE AUDIT v2 (twiin/audit, voir son CLAUDE.md) : temps 0 dirigeant, temps 1 outils, temps 2 onboarding, temps 3
+// résultat. Les calculs (catalogue, score, croisement, questions) sont dans le module Python twiin_audit : une seule
+// version des règles. Tout reste sur le poste (workflows/audit2/), dont la transcription de la question 7.
+// ════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+const AUDIT2_DIR = path.join(REPO_ROOT, 'workflows', 'audit2');
+const AUDIT_PKG = path.join(REPO_ROOT, 'audit');
+const POSTE_ID = 'poste_' + crypto.createHash('sha256').update(`${os.hostname()}|${os.userInfo().username}`).digest('hex').slice(0, 6); // pseudonyme
+const a2 = (f) => path.join(AUDIT2_DIR, f);
+const readA2 = (f, d = null) => { try { return JSON.parse(fs.readFileSync(a2(f), 'utf8')); } catch { return d; } };
+const writeA2 = (f, v) => { fs.mkdirSync(AUDIT2_DIR, { recursive: true }); fs.writeFileSync(a2(f), JSON.stringify(v, null, 2) + '\n'); };
+
+function auditPy(args, input) {
+  return new Promise((resolve, reject) => {
+    const p = spawn(PYTHON, ['-m', 'twiin_audit.cli', ...args], { cwd: AUDIT_PKG });
+    let out = '', err = '';
+    p.stdout.on('data', (d) => { out += d; });
+    p.stderr.on('data', (d) => { err += d; });
+    p.on('close', (code) => {
+      if (code !== 0) return reject(new Error(err.trim().split('\n').at(-1) || `code ${code}`));
+      try { resolve(JSON.parse(out)); } catch (e) { reject(e); }
+    });
+    if (input !== undefined) p.stdin.end(JSON.stringify(input)); else p.stdin.end();
+  });
+}
+
+const DIRIGEANT_DEFAUT = { objectif: 'gagner_du_temps', irritants: [], cout_horaire: 35, consentement_entreprise: false,
+                           sources_autorisees: ['logiciel_installe'] };
+// Temps 0 · dirigeant (une fois par entreprise) : objectif, irritants, coût horaire, consentement et sources autorisées
+app.get('/api/audit/dirigeant', (req, res) => res.json({ dirigeant: readA2('dirigeant.json', DIRIGEANT_DEFAUT), defaut: !readA2('dirigeant.json') }));
+app.post('/api/audit/dirigeant', (req, res) => {
+  const d = req.body || {};
+  const dirigeant = {
+    objectif: ['gagner_du_temps', 'reduire_les_erreurs', 'absorber_plus_de_volume', 'preparer_facturation_electronique'].includes(d.objectif) ? d.objectif : 'gagner_du_temps',
+    irritants: (d.irritants || []).map(String).filter(Boolean).slice(0, 20),
+    cout_horaire: Math.max(0, Math.min(500, Number(d.cout_horaire) || 35)),
+    consentement_entreprise: !!d.consentement_entreprise,
+    sources_autorisees: (d.sources_autorisees || []).filter((x) => ['logiciel_installe', 'historique_navigateur', 'connecteur_google_workspace', 'telechargement'].includes(x)),
+  };
+  writeA2('dirigeant.json', dirigeant);
+  backLog('audit-dirigeant', { objectif: dirigeant.objectif, cout_horaire: dirigeant.cout_horaire, sources: dirigeant.sources_autorisees });
+  res.json({ dirigeant });
+});
+
+// Temps 1 · audit outils passif : logiciels installés (+ jours d'utilisation), outils web vus dans Chrome (domaines seulement)
+app.get('/api/audit/outils', (req, res) => res.json(readA2('outils.json', { applications: [], resume: null })));
+app.post('/api/audit/outils', async (req, res) => {
+  try {
+    const dir = readA2('dirigeant.json', DIRIGEANT_DEFAUT);
+    const autorise = (s) => (dir.sources_autorisees || []).includes(s);
+    const navigateur = !!req.body?.navigateur && autorise('historique_navigateur');
+    const usage = !!req.body?.usage;
+    const out = path.join(AUDIT2_DIR, 'scan');
+    fs.mkdirSync(out, { recursive: true });
+    const t0 = Date.now();
+    await new Promise((resolve, reject) => {
+      const p = spawn(PYTHON, [AUDIT_SCRIPT, '--out', out, ...(usage ? ['--usage'] : [])]);
+      let err = '';
+      p.stderr.on('data', (d) => { err += d; });
+      p.on('close', (code) => (code === 0 ? resolve() : reject(new Error(err.trim().split('\n').at(-1) || `code ${code}`))));
+    });
+    const r = await auditPy(['outils', '--scan', path.join(out, 'audit_poste.json'), ...(navigateur ? ['--navigateur'] : [])]);
+    const result = { ...r, genere_le: new Date().toISOString(), avec_usage: usage, avec_navigateur: navigateur,
+                     navigateur_refuse: !!req.body?.navigateur && !navigateur };
+    writeA2('outils.json', result);
+    backLog('audit-outils', { seconds: (Date.now() - t0) / 1000, usage, navigateur, ...r.resume });
+    res.json(result);
+  } catch (e) {
+    res.status(500).json({ error: `Audit des outils impossible : ${e.message}` });
+  }
+});
+
+// La fiche v2 en cours : poste pseudonymisé, consentement, dirigeant, outils (confirmés ou ajoutés par l'employé), tâches
+function ficheEnCours(rep = readA2('reponses.json', {})) {
+  const dir = readA2('dirigeant.json', DIRIGEANT_DEFAUT);
+  const outils = readA2('outils.json', { applications: [] });
+  const confirmes = new Set(rep.outils_confirmes || []);
+  const apps = (outils.applications || []).map((a) => (a.filtre_metier?.est_metier && rep.outils_confirmes
+    ? { ...a, confirmee_par_employe: confirmes.has(a.id) } : a));
+  for (const x of rep.outils_ajoutes || []) { // « + ajouter » : déclaré par l'employé
+    if (apps.some((a) => a.id === x.id)) continue;
+    apps.push({ id: x.id, nom: x.nom, type: 'saas_web', sources_detection: ['declaration_employe'], usage: { frequence: 'inconnu' },
+                filtre_metier: { est_metier: true, categorie: 'autre', methode: 'validation_humaine', confiance: 0.8, a_valider: false },
+                api: { disponibilite: 'inconnue', confiance: 0.3 }, duplication: { strategie: 'hybride', dans_process_observe: false, statut: 'a_faire' },
+                confirmee_par_employe: true });
+  }
+  const metier = apps.filter((a) => a.filtre_metier?.est_metier);
+  const disp = metier.map((a) => a.api?.disponibilite);
+  return {
+    audit_id: `aud_${new Date().toISOString().slice(0, 10)}_${POSTE_ID.slice(-4)}`, date_audit: new Date().toISOString(), version_schema: '2.0',
+    entreprise: { nom: rep.entreprise || 'Entreprise démo', taille: 'PME' },
+    poste: { id: POSTE_ID, os: 'macos', ...(rep.role_metier ? { role_metier: rep.role_metier } : {}) },
+    consentement: { obtenu: !!dir.consentement_entreprise, sources_autorisees: dir.sources_autorisees?.length ? dir.sources_autorisees : ['logiciel_installe'] },
+    dirigeant: dir, applications: apps,
+    resume: { nb_detectees: apps.length, nb_metier: metier.length, nb_avec_api: disp.filter((d) => ['publique', 'partenaire', 'payante_entreprise'].includes(d)).length,
+              nb_sans_api: disp.filter((d) => d === 'aucune').length, nb_api_inconnue: disp.filter((d) => d === 'inconnue').length,
+              nb_a_valider: apps.filter((a) => a.filtre_metier?.a_valider).length },
+    taches: rep.taches || [],
+  };
+}
+
+// Temps 2 · questions pré-remplies (outils du temps 1, tâches de la bibliothèque selon le rôle et les outils)
+app.get('/api/onboarding/questions', async (req, res) => {
+  try {
+    const rep = readA2('reponses.json', {});
+    const fiche = ficheEnCours({ ...rep, role_metier: req.query.role || rep.role_metier });
+    const q = await auditPy(['questions'], fiche);
+    res.json({ questions: q, roles: ROLES_AUDIT, brouillon: rep, temps1: { resume: fiche.resume, genere_le: readA2('outils.json', {}).genere_le || null } });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+const ROLES_AUDIT = ['Assistant(e) de direction', 'Gestion de la scolarité', 'Comptable', 'RH', 'Commercial'];
+// Les 3 tâches les plus lourdes (fréquence × durée) : les questions 5 à 7 ne portent que sur elles
+app.post('/api/onboarding/lourdes', async (req, res) => {
+  try { res.json({ ids: await auditPy(['lourdes'], req.body?.taches || []) }); } catch (e) { res.status(500).json({ error: e.message }); }
+});
+// Réponses (brouillon à chaque écran : on peut reprendre plus tard ; envoi final après le récap)
+app.get('/api/onboarding/reponses', (req, res) => res.json({ reponses: readA2('reponses.json', null) }));
+app.post('/api/onboarding/reponses', (req, res) => {
+  const r = req.body || {};
+  const rep = { ...readA2('reponses.json', {}), ...r, mis_a_jour: new Date().toISOString() };
+  writeA2('reponses.json', rep);
+  res.json({ ok: true });
+});
+
+// Temps 3 · croisement + score : la fiche v2 complète (alertes, opportunités triées, top 3 à observer)
+app.get('/api/audit/resultat', async (req, res) => {
+  try {
+    const { fiche, erreurs_schema } = await auditPy(['resultat'], ficheEnCours());
+    writeA2('fiche-audit.json', fiche);
+    const top = fiche.opportunites.filter((o) => o.a_observer);
+    backLog('audit-resultat', { taches: fiche.taches.length, top3: top.map((o) => o.tache_id), alertes: fiche.alertes.map((a) => a.type),
+                                heures_semaine_top3: top.reduce((n, o) => n + (o.gain_heures_semaine || 0), 0), erreurs_schema: erreurs_schema.length });
+    res.json({ fiche, erreurs_schema });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 app.listen(PORT, () => console.log(`workflow-recorder (Hugging Face) running at http://localhost:${PORT}`));

@@ -1,0 +1,208 @@
+# Bibliothèque des tâches suggérées à l'employé (temps 2, question 2).
+# Une tâche est proposée si son rôle correspond au rôle de l'employé OU si au moins une de ses applis a été détectée
+# au temps 1 (audit passif). Ces suggestions sont écrites ici, à la main : aucune n'est inventée par un LLM.
+# Les identifiants d'applis sont ceux de applications[].id dans la fiche d'audit.
+
+roles:
+  assistant_direction:
+    libelle: "Assistant(e) de direction"
+    alias: ["assistant de direction", "assistante de direction", "assistant(e) de direction", "office manager", "assistant administratif", "assistante administrative", "secrétaire de direction"]
+  scolarite:
+    libelle: "Gestion de la scolarité"
+    alias: ["gestion scolarité", "gestionnaire de scolarité", "scolarité", "chargé(e) de scolarité", "chargée des relations entreprises", "chargé des relations entreprises", "assistante pédagogique", "assistant pédagogique"]
+  comptable:
+    libelle: "Comptable"
+    alias: ["comptable", "aide-comptable", "assistant comptable", "assistante comptable", "daf", "responsable administratif et financier"]
+  rh:
+    libelle: "RH"
+    alias: ["rh", "ressources humaines", "chargé(e) rh", "chargée rh", "chargé rh", "gestionnaire paie", "responsable rh", "chargé de recrutement", "chargée de recrutement"]
+  commercial:
+    libelle: "Commercial"
+    alias: ["commercial", "commerciale", "business developer", "account manager", "chargé d'affaires", "chargée d'affaires", "adv", "administration des ventes"]
+
+taches:
+  # ── Assistant(e) de direction ──────────────────────────────────────────────────────────────────────────────────
+  - id: ad_agenda
+    libelle: "Organiser l'agenda et les rendez-vous de la direction"
+    roles: [assistant_direction]
+    applis: [outlook, google-agenda, gmail, teams]
+  - id: ad_courriers
+    libelle: "Rédiger et envoyer des courriers types"
+    roles: [assistant_direction]
+    applis: [word, google-docs-sheets, outlook, gmail]
+  - id: ad_comptes_rendus
+    libelle: "Rédiger les comptes rendus de réunion"
+    roles: [assistant_direction]
+    applis: [word, google-docs-sheets, teams, notion]
+  - id: ad_factures_fournisseurs
+    libelle: "Classer et transmettre les factures fournisseurs"
+    roles: [assistant_direction, comptable]
+    applis: [gmail, outlook, google-drive, pennylane, excel]
+  - id: ad_notes_de_frais
+    libelle: "Collecter et vérifier les notes de frais"
+    roles: [assistant_direction, comptable]
+    applis: [excel, gmail, pennylane, qonto]
+  - id: ad_deplacements
+    libelle: "Réserver les déplacements (trains, hôtels)"
+    roles: [assistant_direction]
+    applis: [gmail, outlook, excel]
+  - id: ad_tableaux_de_bord
+    libelle: "Mettre à jour les tableaux de suivi (Excel)"
+    roles: [assistant_direction, comptable, commercial]
+    applis: [excel, google-docs-sheets]
+  - id: ad_contrats_signature
+    libelle: "Préparer des documents et les envoyer en signature électronique"
+    roles: [assistant_direction, rh, scolarite]
+    applis: [word, docusign, yousign, google-drive]
+  - id: ad_mails_tri
+    libelle: "Trier la boîte mail partagée et répondre aux demandes courantes"
+    roles: [assistant_direction, scolarite]
+    applis: [outlook, gmail]
+  - id: ad_archivage
+    libelle: "Classer et archiver les documents dans le Drive"
+    roles: [assistant_direction, scolarite]
+    applis: [google-drive, onedrive, sharepoint]
+
+  # ── Gestion de la scolarité (cas de démo : contrats d'alternance) ─────────────────────────────────────────────
+  - id: sco_contrats_alternance
+    libelle: "Saisir les contrats d'alternance (Cerfa) et les faire signer"
+    roles: [scolarite, assistant_direction]
+    applis: [logiciel-scolarite-interne, gmail, docusign, google-drive, excel]
+  - id: sco_conventions_stage
+    libelle: "Préparer les conventions de stage"
+    roles: [scolarite]
+    applis: [logiciel-scolarite-interne, word, docusign, gmail]
+  - id: sco_inscriptions
+    libelle: "Enregistrer les inscriptions et dossiers des apprenants"
+    roles: [scolarite]
+    applis: [logiciel-scolarite-interne, excel, gmail]
+  - id: sco_attestations
+    libelle: "Éditer les attestations de scolarité et de présence"
+    roles: [scolarite]
+    applis: [logiciel-scolarite-interne, word, gmail]
+  - id: sco_absences
+    libelle: "Suivre les absences et prévenir les entreprises"
+    roles: [scolarite]
+    applis: [logiciel-scolarite-interne, excel, gmail, outlook]
+  - id: sco_opco
+    libelle: "Déposer les dossiers de prise en charge sur le portail de l'OPCO"
+    roles: [scolarite, assistant_direction]
+    applis: [logiciel-scolarite-interne, google-drive, excel]
+  - id: sco_relances_entreprises
+    libelle: "Relancer les entreprises pour les pièces manquantes"
+    roles: [scolarite]
+    applis: [gmail, outlook, excel]
+  - id: sco_plannings
+    libelle: "Mettre à jour les plannings de formation"
+    roles: [scolarite]
+    applis: [logiciel-scolarite-interne, excel, google-docs-sheets]
+  - id: sco_notes
+    libelle: "Saisir les notes et éditer les bulletins"
+    roles: [scolarite]
+    applis: [logiciel-scolarite-interne, excel]
+  - id: sco_facturation_formation
+    libelle: "Facturer les formations aux entreprises ou à l'OPCO"
+    roles: [scolarite, comptable]
+    applis: [logiciel-scolarite-interne, pennylane, excel]
+
+  # ── Comptable ──────────────────────────────────────────────────────────────────────────────────────────────────
+  - id: cpt_saisie_factures
+    libelle: "Saisir les factures d'achat"
+    roles: [comptable]
+    applis: [pennylane, sage, cegid, excel, gmail]
+  - id: cpt_rapprochement
+    libelle: "Faire le rapprochement bancaire"
+    roles: [comptable]
+    applis: [qonto, pennylane, sage, excel]
+  - id: cpt_relances_clients
+    libelle: "Relancer les clients pour les factures impayées"
+    roles: [comptable, commercial]
+    applis: [pennylane, excel, gmail, outlook]
+  - id: cpt_facturation_clients
+    libelle: "Émettre les factures clients"
+    roles: [comptable, commercial]
+    applis: [pennylane, sage, excel]
+  - id: cpt_tva
+    libelle: "Préparer la déclaration de TVA"
+    roles: [comptable]
+    applis: [pennylane, sage, excel]
+  - id: cpt_paiements
+    libelle: "Préparer les virements fournisseurs"
+    roles: [comptable]
+    applis: [qonto, pennylane, excel]
+  - id: cpt_justificatifs
+    libelle: "Récupérer et rattacher les justificatifs manquants"
+    roles: [comptable]
+    applis: [pennylane, qonto, gmail]
+  - id: cpt_reporting
+    libelle: "Préparer le reporting mensuel pour la direction"
+    roles: [comptable]
+    applis: [excel, google-docs-sheets, pennylane]
+
+  # ── RH ─────────────────────────────────────────────────────────────────────────────────────────────────────────
+  - id: rh_onboarding
+    libelle: "Préparer l'arrivée d'un nouveau salarié (comptes, documents)"
+    roles: [rh]
+    applis: [lucca, payfit, gmail, google-drive]
+  - id: rh_contrats
+    libelle: "Rédiger les contrats de travail et avenants"
+    roles: [rh]
+    applis: [word, docusign, yousign, google-drive]
+  - id: rh_variables_paie
+    libelle: "Collecter et saisir les variables de paie"
+    roles: [rh]
+    applis: [payfit, excel, lucca]
+  - id: rh_conges
+    libelle: "Valider les congés et suivre les absences"
+    roles: [rh]
+    applis: [lucca, excel, outlook]
+  - id: rh_recrutement_tri
+    libelle: "Trier les candidatures et répondre aux candidats"
+    roles: [rh]
+    applis: [welcome-to-the-jungle, indeed, linkedin, gmail]
+  - id: rh_entretiens
+    libelle: "Planifier les entretiens"
+    roles: [rh]
+    applis: [outlook, google-agenda, gmail, teams]
+  - id: rh_attestations
+    libelle: "Éditer les attestations employeur"
+    roles: [rh]
+    applis: [word, payfit, gmail]
+  - id: rh_registre
+    libelle: "Mettre à jour le registre du personnel"
+    roles: [rh]
+    applis: [excel, payfit, lucca]
+
+  # ── Commercial ─────────────────────────────────────────────────────────────────────────────────────────────────
+  - id: com_crm
+    libelle: "Mettre à jour le CRM après les rendez-vous"
+    roles: [commercial]
+    applis: [hubspot, salesforce, excel]
+  - id: com_devis
+    libelle: "Préparer les devis"
+    roles: [commercial]
+    applis: [word, excel, pennylane, hubspot]
+  - id: com_prospection
+    libelle: "Rechercher et qualifier des prospects"
+    roles: [commercial]
+    applis: [linkedin, hubspot, salesforce, excel]
+  - id: com_relances
+    libelle: "Relancer les devis en attente"
+    roles: [commercial]
+    applis: [gmail, outlook, hubspot]
+  - id: com_commandes
+    libelle: "Saisir les commandes clients"
+    roles: [commercial]
+    applis: [sage, cegid, excel]
+  - id: com_reporting
+    libelle: "Préparer le reporting des ventes"
+    roles: [commercial]
+    applis: [excel, google-docs-sheets, hubspot, salesforce]
+  - id: com_veille
+    libelle: "Faire la veille concurrentielle"
+    roles: [commercial]
+    applis: [linkedin, excel, onenote]
+  - id: com_rdv
+    libelle: "Planifier les rendez-vous clients"
+    roles: [commercial]
+    applis: [outlook, google-agenda, gmail]

@@ -1,0 +1,91 @@
+# Filtre « appli métier ou non » (brief, couches 1 et 2) et catalogue des applis connues.
+# - exclusion : jamais métier (navigateurs, loisirs, utilitaires) → est_metier false, methode liste_exclusion
+# - applis    : applis métier connues → catégorie + disponibilité de l'API ; reconnues par nom d'appli, identifiant
+#               d'appli (bundle id) ou domaine web. Les identifiants (id) sont ceux de la bibliothèque de tâches.
+# Les domaines servent aussi de FILTRE de confidentialité : un domaine du navigateur qui n'est pas ici n'est jamais gardé.
+
+exclusion:
+  - {id: google-chrome, nom: "Google Chrome", noms: ["google chrome"], categorie: systeme_utilitaire}
+  - {id: safari, nom: "Safari", noms: ["safari"], categorie: systeme_utilitaire}
+  - {id: firefox, nom: "Firefox", noms: ["firefox"], categorie: systeme_utilitaire}
+  - {id: microsoft-edge, nom: "Microsoft Edge", noms: ["microsoft edge"], categorie: systeme_utilitaire}
+  - {id: arc, nom: "Arc", noms: ["arc"], categorie: systeme_utilitaire}
+  - {id: spotify, nom: "Spotify", noms: ["spotify"], categorie: perso_loisir}
+  - {id: steam, nom: "Steam", noms: ["steam"], categorie: perso_loisir}
+  - {id: netflix, nom: "Netflix", noms: ["netflix"], categorie: perso_loisir}
+  - {id: prime-video, nom: "Prime Video", noms: ["prime video"], categorie: perso_loisir}
+  - {id: vlc, nom: "VLC", noms: ["vlc"], categorie: perso_loisir}
+  - {id: solitaire, nom: "Solitaire", noms: ["solitaire epic", "solitaire"], categorie: perso_loisir}
+  - {id: messenger, nom: "Messenger", noms: ["messenger"], categorie: perso_loisir}
+  - {id: teleparty, nom: "Teleparty", noms: ["teleparty for safari", "teleparty"], categorie: perso_loisir}
+  - {id: trendyol, nom: "Trendyol Go", noms: ["trendyol go"], categorie: perso_loisir}
+  - {id: onyx, nom: "OnyX", noms: ["onyx"], categorie: systeme_utilitaire}
+  - {id: vpn-plus, nom: "VPN Plus", noms: ["vpn plus"], categorie: systeme_utilitaire}
+  - {id: rssfollower, nom: "RSSFollower", noms: ["rssfollower"], categorie: perso_loisir}
+
+applis:
+  # ── Google Workspace ──
+  - {id: gmail, nom: "Gmail", editeur: Google, categorie: communication_collab, api: publique, domaines: [mail.google.com]}
+  - {id: google-drive, nom: "Google Drive", editeur: Google, categorie: documents_signature, api: publique, domaines: [drive.google.com], noms: ["google drive"]}
+  - {id: google-docs-sheets, nom: "Google Docs et Sheets", editeur: Google, categorie: communication_collab, api: publique, domaines: [docs.google.com, sheets.google.com]}
+  - {id: google-agenda, nom: "Google Agenda", editeur: Google, categorie: communication_collab, api: publique, domaines: [calendar.google.com]}
+  - {id: google-meet, nom: "Google Meet", editeur: Google, categorie: communication_collab, api: publique, domaines: [meet.google.com]}
+  # ── Microsoft 365 ──
+  - {id: outlook, nom: "Microsoft Outlook", editeur: Microsoft, categorie: communication_collab, api: publique, domaines: [outlook.office.com, outlook.live.com, outlook.office365.com], noms: ["microsoft outlook", "outlook"], bundles: [com.microsoft.outlook]}
+  - {id: excel, nom: "Microsoft Excel", editeur: Microsoft, categorie: erp_gestion, api: publique, domaines: [excel.cloud.microsoft], noms: ["microsoft excel", "excel"], bundles: [com.microsoft.excel]}
+  - {id: word, nom: "Microsoft Word", editeur: Microsoft, categorie: documents_signature, api: publique, noms: ["microsoft word", "word"], bundles: [com.microsoft.word]}
+  - {id: powerpoint, nom: "Microsoft PowerPoint", editeur: Microsoft, categorie: communication_collab, api: publique, noms: ["microsoft powerpoint", "powerpoint"], bundles: [com.microsoft.powerpoint]}
+  - {id: onenote, nom: "Microsoft OneNote", editeur: Microsoft, categorie: communication_collab, api: publique, noms: ["microsoft onenote", "onenote"], bundles: [com.microsoft.onenote]}
+  - {id: teams, nom: "Microsoft Teams", editeur: Microsoft, categorie: communication_collab, api: publique, domaines: [teams.microsoft.com, teams.live.com], noms: ["microsoft teams", "teams"], bundles: [com.microsoft.teams]}
+  - {id: onedrive, nom: "OneDrive", editeur: Microsoft, categorie: documents_signature, api: publique, domaines: [onedrive.live.com], noms: ["onedrive"], bundles: [com.microsoft.onedrive]}
+  - {id: sharepoint, nom: "SharePoint", editeur: Microsoft, categorie: documents_signature, api: publique, domaines: [sharepoint.com]}
+  # ── Comptabilité, banque, ERP ──
+  - {id: pennylane, nom: "Pennylane", editeur: Pennylane, categorie: comptabilite_finance, api: publique, domaines: [pennylane.com]}
+  - {id: qonto, nom: "Qonto", editeur: Qonto, categorie: comptabilite_finance, api: publique, domaines: [qonto.com]}
+  - {id: sage, nom: "Sage", editeur: Sage, categorie: comptabilite_finance, api: partenaire, domaines: [sage.com, sageone.com], noms: ["sage"]}
+  - {id: cegid, nom: "Cegid", editeur: Cegid, categorie: erp_gestion, api: partenaire, domaines: [cegid.com, cegid.cloud], noms: ["cegid"]}
+  - {id: odoo, nom: "Odoo", editeur: Odoo, categorie: erp_gestion, api: publique, domaines: [odoo.com], noms: ["odoo"]}
+  - {id: quickbooks, nom: "QuickBooks", editeur: Intuit, categorie: comptabilite_finance, api: publique, domaines: [qbo.intuit.com, quickbooks.intuit.com]}
+  - {id: stripe, nom: "Stripe", editeur: Stripe, categorie: comptabilite_finance, api: publique, domaines: [dashboard.stripe.com]}
+  # ── Ventes, relation client ──
+  - {id: hubspot, nom: "HubSpot", editeur: HubSpot, categorie: crm_vente, api: publique, domaines: [app.hubspot.com, hubspot.com]}
+  - {id: salesforce, nom: "Salesforce", editeur: Salesforce, categorie: crm_vente, api: publique, domaines: [salesforce.com, force.com, lightning.force.com]}
+  - {id: pipedrive, nom: "Pipedrive", editeur: Pipedrive, categorie: crm_vente, api: publique, domaines: [pipedrive.com]}
+  - {id: linkedin, nom: "LinkedIn", editeur: LinkedIn, categorie: crm_vente, api: partenaire, domaines: [linkedin.com]}
+  - {id: shopify, nom: "Shopify", editeur: Shopify, categorie: crm_vente, api: publique, domaines: [admin.shopify.com, myshopify.com]}
+  - {id: zendesk, nom: "Zendesk", editeur: Zendesk, categorie: support_ticketing, api: publique, domaines: [zendesk.com]}
+  - {id: intercom, nom: "Intercom", editeur: Intercom, categorie: support_ticketing, api: publique, domaines: [app.intercom.com]}
+  # ── RH, paie ──
+  - {id: lucca, nom: "Lucca", editeur: Lucca, categorie: rh_paie, api: publique, domaines: [ilucca.net, lucca.fr]}
+  - {id: payfit, nom: "PayFit", editeur: PayFit, categorie: rh_paie, api: partenaire, domaines: [payfit.com]}
+  - {id: welcome-to-the-jungle, nom: "Welcome to the Jungle", editeur: WTTJ, categorie: rh_paie, api: partenaire, domaines: [welcometothejungle.com]}
+  - {id: indeed, nom: "Indeed", editeur: Indeed, categorie: rh_paie, api: partenaire, domaines: [indeed.com, indeed.fr]}
+  # ── Documents, signature ──
+  - {id: docusign, nom: "DocuSign", editeur: DocuSign, categorie: documents_signature, api: payante_entreprise, domaines: [docusign.net, docusign.com]}
+  - {id: yousign, nom: "Yousign", editeur: Yousign, categorie: documents_signature, api: publique, domaines: [yousign.app, yousign.com]}
+  - {id: adobe-acrobat, nom: "Adobe Acrobat", editeur: Adobe, categorie: documents_signature, api: payante_entreprise, noms: ["adobe acrobat", "adobe acrobat reader"]}
+  - {id: pdf-reader-pro, nom: "PDF Reader Pro", editeur: PDF Technologies, categorie: documents_signature, api: aucune, noms: ["pdf reader pro lite", "pdf reader pro"]}
+  - {id: pages, nom: "Pages", editeur: Apple, categorie: documents_signature, api: aucune, noms: ["pages", "pages creator studio"]}
+  - {id: numbers, nom: "Numbers", editeur: Apple, categorie: erp_gestion, api: aucune, noms: ["numbers", "numbers creator studio"]}
+  - {id: keynote, nom: "Keynote", editeur: Apple, categorie: communication_collab, api: aucune, noms: ["keynote", "keynote creator studio"]}
+  # ── Collaboration, organisation ──
+  - {id: notion, nom: "Notion", editeur: Notion, categorie: communication_collab, api: publique, domaines: [notion.so, notion.site], noms: ["notion", "notion web clipper"]}
+  - {id: slack, nom: "Slack", editeur: Salesforce, categorie: communication_collab, api: publique, domaines: [slack.com, app.slack.com], noms: ["slack"]}
+  - {id: trello, nom: "Trello", editeur: Atlassian, categorie: communication_collab, api: publique, domaines: [trello.com]}
+  - {id: asana, nom: "Asana", editeur: Asana, categorie: communication_collab, api: publique, domaines: [app.asana.com]}
+  - {id: monday, nom: "monday.com", editeur: monday.com, categorie: communication_collab, api: publique, domaines: [monday.com]}
+  - {id: airtable, nom: "Airtable", editeur: Airtable, categorie: erp_gestion, api: publique, domaines: [airtable.com]}
+  - {id: zoom, nom: "Zoom", editeur: Zoom, categorie: communication_collab, api: publique, domaines: [zoom.us], noms: ["zoom.us", "zoom"]}
+  - {id: loom, nom: "Loom", editeur: Atlassian, categorie: communication_collab, api: publique, domaines: [loom.com], noms: ["loom"]}
+  - {id: whatsapp, nom: "WhatsApp", editeur: Meta, categorie: communication_collab, api: partenaire, domaines: [web.whatsapp.com], noms: ["whatsapp"]}
+  - {id: canva, nom: "Canva", editeur: Canva, categorie: communication_collab, api: publique, domaines: [canva.com]}
+  - {id: figma, nom: "Figma", editeur: Figma, categorie: communication_collab, api: publique, domaines: [figma.com], noms: ["figma"]}
+  - {id: obsidian, nom: "Obsidian", editeur: Obsidian, categorie: communication_collab, api: aucune, noms: ["obsidian"]}
+  - {id: granola, nom: "Granola", editeur: Granola, categorie: communication_collab, api: publique, domaines: [granola.ai], noms: ["granola"]}
+  - {id: chatgpt, nom: "ChatGPT", editeur: OpenAI, categorie: autre, api: publique, domaines: [chatgpt.com], noms: ["chatgpt"]}
+  - {id: claude, nom: "Claude", editeur: Anthropic, categorie: autre, api: publique, domaines: [claude.ai], noms: ["claude"]}
+  - {id: visual-studio-code, nom: "Visual Studio Code", editeur: Microsoft, categorie: metier_specifique, api: aucune, noms: ["visual studio code", "code"]}
+  - {id: cursor, nom: "Cursor", editeur: Anysphere, categorie: metier_specifique, api: aucune, noms: ["cursor"]}
+  - {id: citrix-workspace, nom: "Citrix Workspace", editeur: Citrix, categorie: metier_specifique, api: aucune, noms: ["citrix workspace"]}
+  # ── Scolarité, formation (cas de démo) ──
+  - {id: logiciel-scolarite-interne, nom: "Logiciel de scolarité", editeur: "(interne)", categorie: scolarite_formation, api: aucune, noms: ["ypareo", "hyperplanning", "logiciel de scolarité"], domaines: [ypareo.fr]}

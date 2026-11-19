@@ -1,0 +1,278 @@
+/* ══════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+   Twiin · thème commun (inspiré de « Sugar CRM », RonDesignLab) — chargé APRÈS les styles de chaque page.
+   Fond en dégradé gris → lavande, panneaux en verre dépoli très arrondis, navigation en pilules (l'active en noir),
+   boutons ronds à icônes, rail vertical à gauche, police géométrique. Accents : bleu pervenche et corail.
+   ══════════════════════════════════════════════════════════════════════════════════════════════════════════════════ */
+@import url("https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap");
+
+:root {
+  --font: "Plus Jakarta Sans", "Google Sans Flex", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --bg: #e9ebef;
+  --bg-grad: linear-gradient(180deg, #eceef1 0%, #e6e9ef 38%, #d8dff0 72%, #c8d3ee 100%);
+  --panel: rgba(255, 255, 255, 0.52);
+  --panel-2: rgba(255, 255, 255, 0.78);
+  --panel-solid: #f7f8fa;
+  --panel-border: rgba(255, 255, 255, 0.75);
+  --line: rgba(22, 24, 29, 0.08);
+  --text: #16181d;
+  --text-dim: #6b7180;
+  --accent: #121418;          /* action principale : pilule noire */
+  --accent-hover: #2a2d34;
+  --accent-ink: #ffffff;
+  --accent-soft: rgba(125, 155, 227, 0.18);
+  --blue: #7d9be3;            /* accents de données */
+  --coral: #e56b6b;
+  --ok: #3f9b74;
+  --ok-soft: rgba(63, 155, 116, 0.14);
+  --warn: #b7791f;
+  --warn-soft: rgba(244, 196, 98, 0.22);
+  --bad: #e05a5a;
+  --bad-soft: rgba(229, 107, 107, 0.14);
+  --cell-a: #7d9be3;
+  --cell-b: #8fd6bd;
+  --nucleus: #16181d;
+  --r-panel: 30px;
+  --r-card: 22px;
+  --shadow: 0 1px 0 rgba(255, 255, 255, 0.7) inset, 0 18px 40px -18px rgba(54, 72, 120, 0.18);
+  --glass: blur(18px) saturate(140%);
+  color-scheme: light;
+}
+:root[data-theme="dark"] {
+  --bg: #13151a;
+  --bg-grad: linear-gradient(180deg, #121419 0%, #151820 45%, #1a2132 80%, #1d2740 100%);
+  --panel: rgba(255, 255, 255, 0.05);
+  --panel-2: rgba(255, 255, 255, 0.09);
+  --panel-solid: #1b1e25;
+  --panel-border: rgba(255, 255, 255, 0.08);
+  --line: rgba(255, 255, 255, 0.08);
+  --text: #eef0f4;
+  --text-dim: #9aa1b0;
+  --accent: #f1f2f5;
+  --accent-hover: #ffffff;
+  --accent-ink: #121418;
+  --accent-soft: rgba(125, 155, 227, 0.2);
+  --ok: #5fc59a; --ok-soft: rgba(95, 197, 154, 0.14);
+  --warn: #f0b95a; --warn-soft: rgba(240, 185, 90, 0.14);
+  --bad: #f07a7a; --bad-soft: rgba(240, 122, 122, 0.14);
+  --nucleus: #121418;
+  --shadow: 0 1px 0 rgba(255, 255, 255, 0.05) inset, 0 18px 40px -18px rgba(0, 0, 0, 0.6);
+  color-scheme: dark;
+}
+
+/* ── fond et mise en page ── */
+html { background: var(--bg-grad) fixed !important; background-color: var(--bg) !important; min-height: 100%; }
+body {
+  font-family: var(--font) !important;
+  background: transparent !important;
+  color: var(--text);
+  max-width: calc(1100px + var(--side-w) + 40px) !important; /* le contenu garde sa largeur, sidebar dépliée ou non */
+  transition-property: padding-left, max-width;
+  padding-left: calc(var(--side-w) + 40px + max(0px, env(safe-area-inset-left, 0px))) !important;
+  padding-right: max(24px, env(safe-area-inset-right, 0px)) !important;
+  padding-top: 28px !important;
+  letter-spacing: -0.005em;
+  transition-duration: .55s; transition-timing-function: cubic-bezier(.65, 0, .35, 1);
+}
+:root { --side-w: 236px; }
+:root.side-collapsed { --side-w: 64px; }
+/* la sidebar remplace l'ancien en-tête : logo, menu et boutons du haut ne s'affichent plus */
+body:not(.no-rail) .topbar { display: none !important; }
+body::before { display: none !important; }
+body.no-rail { padding-left: max(24px, env(safe-area-inset-left, 0px)) !important; }
+
+/* logo : vidéo des deux sphères */
+#logoCells { display: inline-flex; align-items: center; }
+.tw-logo { height: 26px; width: auto; aspect-ratio: 262 / 128; display: block; }
+.brand-big .tw-logo { height: 36px; }
+
+/* ── barre du haut : logo, navigation en pilules, boutons ronds ── */
+.topbar { gap: 18px !important; margin-bottom: 30px !important; flex-wrap: nowrap; }
+.topbar .brand { font-size: 23px !important; font-weight: 600 !important; letter-spacing: -0.03em; color: var(--text); text-decoration: none; }
+.topbar .brand b { font-weight: 800 !important; }
+.topbar .nav, .nav { margin: 0 auto !important; gap: 2px !important; flex-wrap: nowrap !important; }
+.topbar .nav a, .nav a {
+  font-size: 14.5px !important; font-weight: 500 !important; color: var(--text) !important; opacity: .82;
+  padding: 12px 22px !important; border-radius: 999px !important; background: transparent !important; white-space: nowrap;
+}
+.topbar .nav a:hover, .nav a:hover { opacity: 1; background: var(--panel-2) !important; }
+.topbar .nav a[aria-current="page"], .nav a[aria-current="page"] {
+  background: var(--accent) !important; color: var(--accent-ink) !important; opacity: 1; font-weight: 600 !important;
+}
+#themeBtn { display: none !important; }
+.tw-icons { display: flex; align-items: center; gap: 8px; flex: none; }
+.tw-round {
+  width: 46px; height: 46px; border-radius: 50%; display: grid; place-items: center; flex: none; position: relative;
+  background: var(--panel-2); border: 1px solid var(--panel-border); color: var(--text); cursor: pointer; text-decoration: none;
+  backdrop-filter: var(--glass); -webkit-backdrop-filter: var(--glass); box-shadow: var(--shadow); padding: 0 !important;
+  transition: transform .15s ease, background .15s ease;
+}
+.tw-round:hover { transform: translateY(-1px); background: var(--panel-solid); }
+.tw-round svg { width: 19px; height: 19px; stroke: currentColor; fill: none; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+.tw-round .tw-red { position: absolute; top: 11px; right: 12px; width: 7px; height: 7px; border-radius: 50%; background: var(--coral); }
+.tw-round.dark { background: var(--accent); color: var(--accent-ink); border-color: transparent; }
+.tw-avatar { font-weight: 700; font-size: 15px; background: linear-gradient(135deg, var(--cell-a), var(--cell-b)); color: #fff; border: 0; }
+.user-chip { display: none !important; } /* l'e-mail passe dans l'avatar rond */
+
+/* ── sidebar de gauche : dépliée (libellés) ou repliée (bulles) ── */
+.tw-side {
+  position: fixed; z-index: 60; left: max(14px, env(safe-area-inset-left, 0px)); top: 14px; bottom: 14px; width: calc(var(--side-w) + 12px);
+  display: flex; flex-direction: column; gap: 4px; padding: 14px 6px; overflow: hidden;
+  background: var(--panel); border: 1px solid var(--panel-border); border-radius: 30px; box-shadow: var(--shadow);
+  backdrop-filter: var(--glass); -webkit-backdrop-filter: var(--glass);
+  transition: width .55s cubic-bezier(.65, 0, .35, 1), background-color .4s ease, border-color .4s ease, box-shadow .4s ease;
+}
+/* repliée : le panneau s'efface derrière les bulles */
+:root.side-collapsed .tw-side { background: transparent; border-color: transparent; box-shadow: none; backdrop-filter: none; -webkit-backdrop-filter: none; }
+:root.side-noanim .tw-side, :root.side-noanim .tw-side *, :root.side-noanim body { transition: none !important; }
+
+.tw-brand { display: flex; align-items: center; gap: 10px; padding: 4px 8px 14px; text-decoration: none; color: var(--text); min-height: 44px; }
+.tw-brand .tw-logo { height: 26px; flex: none; transition: height .45s cubic-bezier(.65, 0, .35, 1); }
+:root.side-collapsed .tw-brand .tw-logo { height: 22px; }
+.tw-word { font-size: 22px; font-weight: 800; letter-spacing: -0.035em; }
+
+.tw-nav { display: flex; flex-direction: column; gap: 4px; flex: 1; }
+.tw-group { display: grid; grid-template-rows: 1fr; transition: grid-template-rows .45s cubic-bezier(.65, 0, .35, 1), opacity .25s ease; }
+.tw-group > span { overflow: hidden; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .08em; color: var(--text-dim);
+  padding: 12px 12px 6px; white-space: nowrap; }
+:root.side-collapsed .tw-group { grid-template-rows: 0fr; opacity: 0; }
+:root.side-collapsed .tw-group:not(:first-child) { grid-template-rows: 0fr; margin-top: 10px; }
+
+.tw-item { display: flex; align-items: center; gap: 12px; padding: 3px; border-radius: 999px; color: var(--text) !important; text-decoration: none;
+  background: transparent !important; border: 0 !important; box-shadow: none !important; font: 500 14.5px var(--font) !important; cursor: pointer;
+  width: 100%; text-align: left; position: relative; transition: background-color .2s ease; }
+.tw-item:hover { background: var(--panel-2) !important; }
+:root.side-collapsed .tw-item:hover { background: transparent !important; }
+.tw-item .tw-round { width: 44px; height: 44px; box-shadow: none; }
+.tw-item[aria-current="page"] .tw-round { background: var(--accent); color: var(--accent-ink); border-color: transparent; }
+.tw-item[aria-current="page"] .tw-lbl { font-weight: 700; }
+.tw-lbl { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0;
+  transition: opacity .3s ease calc(var(--i, 0) * 25ms + 120ms), transform .4s cubic-bezier(.2, .8, .2, 1) calc(var(--i, 0) * 25ms + 120ms); }
+:root.side-collapsed .tw-lbl { opacity: 0; transform: translateX(-10px); transition-delay: calc(var(--i, 0) * 18ms); pointer-events: none; }
+.tw-user .tw-lbl { display: flex; flex-direction: column; line-height: 1.2; }
+.tw-user .tw-mail { font-size: 12.5px; overflow: hidden; text-overflow: ellipsis; }
+.tw-user small { color: var(--text-dim); font-size: 11.5px; }
+
+.tw-foot { display: flex; flex-direction: column; gap: 4px; }
+.tw-collapse .tw-round svg { transition: transform .55s cubic-bezier(.34, 1.56, .64, 1); }
+:root.side-collapsed .tw-collapse .tw-round svg { transform: rotate(180deg); }
+
+/* repliée : le nom au survol */
+:root.side-collapsed .tw-item::after { content: attr(data-label); position: absolute; left: 54px; top: 50%; translate: 0 -50%; white-space: nowrap;
+  font-size: 12.5px; font-weight: 600; padding: 6px 10px; border-radius: 10px; background: var(--accent); color: var(--accent-ink);
+  opacity: 0; pointer-events: none; transition: opacity .15s ease; }
+:root.side-collapsed .tw-item:hover::after, :root.side-collapsed .tw-item:focus-visible::after { opacity: 1; }
+:root.side-collapsed .tw-side { overflow: visible; }
+
+/* petit rebond des bulles quand la sidebar se replie ou se déplie */
+.tw-side.bounce .tw-round { animation: twBounce .6s cubic-bezier(.34, 1.56, .64, 1) both; animation-delay: calc(var(--i, 0) * 30ms); }
+.tw-side.bounce .tw-item { --i: inherit; }
+@keyframes twBounce { 0% { scale: 1; } 35% { scale: .82; } 70% { scale: 1.08; } 100% { scale: 1; } }
+@media (prefers-reduced-motion: reduce) { .tw-side, .tw-side *, body { transition: none !important; animation: none !important; } }
+
+/* ── titres ── */
+h1 { font-size: 34px !important; font-weight: 700 !important; letter-spacing: -0.035em !important; color: var(--text); }
+.step-title { font-size: 24px !important; font-weight: 700 !important; letter-spacing: -0.03em; }
+.step-title .num, .num-inline { background: var(--accent) !important; color: var(--accent-ink) !important; }
+.lead, .subtitle, .step-help { color: var(--text-dim) !important; }
+h2, h3 { letter-spacing: -0.02em; }
+
+/* ── panneaux en verre dépoli ── */
+.panel, .workflow, #analysis, #example, .a2, .dash, details.panel, .player > div, .verdict-head, #profileCard, .tuto, .n8n,
+.changes, .replay, .advice, .verdict {
+  background: var(--panel) !important; border: 1px solid var(--panel-border) !important; border-radius: var(--r-panel) !important;
+  backdrop-filter: var(--glass); -webkit-backdrop-filter: var(--glass); box-shadow: var(--shadow) !important;
+}
+.workflow, .panel, .a2, .dash { padding: 26px 28px !important; }
+.player > div { padding: 24px 24px 20px !important; }
+.player video { border-radius: var(--r-panel) !important; }
+#example { border-style: solid !important; }
+.verdict-head { background: var(--accent-soft) !important; border-radius: var(--r-card) !important; box-shadow: none !important; }
+
+/* cartes intérieures, plus blanches (comme les colonnes du tableau Sugar) */
+.option, .item, .card, .tool, .a2-tool, .a2-card, .a2-opp, .kpi, .tile, .font, .tool-grid .tool, .rule, .no-task {
+  background: var(--panel-2) !important; border: 1px solid var(--panel-border) !important; border-radius: var(--r-card) !important;
+  box-shadow: 0 1px 0 rgba(255, 255, 255, .6) inset;
+}
+.a2-card, .item { border-radius: 999px !important; padding-left: 18px !important; padding-right: 18px !important; }
+.item { border-radius: var(--r-card) !important; }
+.option.rec, .item.on, .card.on, .a2-card[aria-pressed="true"], .a2-tool[aria-pressed="true"], .tool.cited {
+  border-color: var(--accent) !important; box-shadow: 0 0 0 1px var(--accent) inset !important; background: var(--panel-solid) !important;
+}
+.a2-card[aria-pressed="true"] .box { background: var(--accent) !important; border-color: var(--accent) !important; }
+.a2-opp { background: var(--panel-solid) !important; border-color: var(--panel-border) !important; }
+.a2-opp .n { color: var(--blue) !important; }
+.rec-badge, .badge-cited { background: var(--accent) !important; color: var(--accent-ink) !important; }
+
+/* ── boutons : pilules blanches, l'action principale en noir ── */
+button, .btn, .link-btn {
+  font-family: var(--font) !important; border-radius: 999px !important; border: 1px solid var(--panel-border) !important;
+  background: var(--panel-2) !important; color: var(--text) !important; font-weight: 500 !important; box-shadow: 0 1px 0 rgba(255, 255, 255, .6) inset;
+}
+button:hover:not(:disabled), .btn:hover, .link-btn:hover { background: var(--panel-solid) !important; color: var(--text) !important; border-color: var(--panel-border) !important; }
+button.primary, .btn.primary, .primary {
+  background: var(--accent) !important; color: var(--accent-ink) !important; border-color: var(--accent) !important; font-weight: 600 !important;
+  box-shadow: 0 10px 22px -10px rgba(18, 20, 24, .55) !important;
+}
+button.primary:hover:not(:disabled), .btn.primary:hover { background: var(--accent-hover) !important; color: var(--accent-ink) !important; }
+button.quiet, .a2-nav button.quiet { background: transparent !important; border-color: transparent !important; box-shadow: none !important; }
+.btn-stop, .danger { color: var(--bad) !important; border-color: var(--bad-soft) !important; }
+button:disabled { opacity: .45 !important; }
+
+/* ── parcours en pilules (comme « Pipelines / In Progress / Completed ») ── */
+#stepper { background: var(--panel); border: 1px solid var(--panel-border); border-radius: 999px; padding: 6px !important; display: inline-flex !important;
+  backdrop-filter: var(--glass); -webkit-backdrop-filter: var(--glass); gap: 4px !important; }
+#stepper li { border: 0 !important; background: transparent !important; padding: 10px 18px 10px 10px !important; font-weight: 500; }
+#stepper li.active { background: var(--accent) !important; color: var(--accent-ink) !important; }
+#stepper li.active span { background: var(--accent-ink) !important; color: var(--accent) !important; }
+#stepper li.done span { background: var(--accent-soft) !important; color: var(--text) !important; }
+
+/* puces, étiquettes, statuts */
+.a2-chip, .chip, .app-pill, .pill, .tag, .tag-list span, .scan-summary span, .facts span {
+  border-radius: 999px !important; border: 1px solid var(--panel-border) !important; background: var(--panel-2) !important;
+}
+.a2-chip[aria-pressed="true"] { background: var(--accent) !important; color: var(--accent-ink) !important; border-color: var(--accent) !important; }
+.pill.on { background: rgba(125, 155, 227, .9) !important; color: #fff !important; border-color: transparent !important; }
+.pill.bad { background: var(--coral) !important; color: #fff !important; border-color: transparent !important; }
+.pill.warn { background: var(--warn-soft) !important; color: var(--warn) !important; }
+.pill.run { background: var(--accent) !important; color: var(--accent-ink) !important; }
+.pill.on::before, .pill.bad::before, .pill.run::before { background: currentColor; }
+.chip-example { background: var(--accent) !important; color: var(--accent-ink) !important; }
+
+/* champs */
+input[type=text], input:not([type]), input[type=email], input[type=password], input[type=time], select, textarea, .steps textarea, .wf-name {
+  font-family: var(--font) !important; background: var(--panel-2) !important; border: 1px solid var(--panel-border) !important; border-radius: 16px !important;
+  color: var(--text) !important;
+}
+.wf-name { background: transparent !important; border: 0 !important; border-bottom: 1px dashed var(--line) !important; border-radius: 0 !important;
+  font-size: 24px !important; font-weight: 700 !important; letter-spacing: -0.02em; }
+.steps li::before { background: var(--accent) !important; color: var(--accent-ink) !important; }
+.steps textarea { border-radius: 18px !important; }
+
+/* barres de progression, tableaux */
+.a2-progress, .tw-bar { background: var(--panel-2) !important; }
+.a2-progress span { background: linear-gradient(90deg, var(--blue), var(--coral)) !important; }
+table th { color: var(--text-dim) !important; font-weight: 500 !important; text-transform: none !important; letter-spacing: 0 !important; font-size: 13px !important; }
+table td, table th { border-color: var(--line) !important; }
+.section { border-top-color: var(--line) !important; }
+.pager { border-top-color: var(--line) !important; }
+
+/* bandeau commun */
+.tw-banner { border-radius: 24px !important; background: var(--panel-solid) !important; backdrop-filter: var(--glass); }
+
+/* liens */
+a { color: var(--text); text-decoration-color: rgba(22, 24, 29, .3); }
+.edit, .nlinks a, .meta a { color: var(--blue) !important; }
+
+@media (max-width: 900px) {
+  body { padding-left: max(16px, env(safe-area-inset-left, 0px)) !important; padding-bottom: 110px !important; }
+  /* mobile : la sidebar devient une barre de bulles en bas de l'écran */
+  .tw-side, :root.side-collapsed .tw-side { top: auto; bottom: calc(12px + env(safe-area-inset-bottom, 0px)); left: 50%; translate: -50% 0; width: auto;
+    flex-direction: row; padding: 6px; border-radius: 999px; background: var(--panel); border: 1px solid var(--panel-border); overflow: visible; }
+  .tw-nav, .tw-foot { flex-direction: row; gap: 4px; }
+  .tw-brand, .tw-group, .tw-lbl, .tw-collapse, .tw-user, .tw-item::after { display: none !important; }
+  .tw-item { width: auto; }
+  .tw-banner { bottom: calc(84px + env(safe-area-inset-bottom, 0px)) !important; }
+  .topbar .nav, .nav { display: none !important; }
+  .topbar { justify-content: space-between; }
+  table { display: block; overflow-x: auto; max-width: 100%; }
+}

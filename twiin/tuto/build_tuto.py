@@ -1,13 +1,18 @@
 #!/usr/bin/env python3
-"""Construit les données d'un TUTO VIDÉO Twiin à partir d'un rejeu de Holo.
+"""Construit les données d'un TUTO VIDÉO Twiin, à partir d'un rejeu de Holo OU de l'enregistrement de l'employé.
 
     .venv/bin/python tuto/build_tuto.py workflows/runs/<rejeu>-local.json [--name veille-loreal] [--advice advice.json]
+    .venv/bin/python tuto/build_tuto.py --session workflows/sessions/<date> --workflow tache.json --name ma-tache
+
+Mode « enregistrement » (bouton « Créer le tuto vidéo » de la page Twiin) : les images viennent de l'enregistrement
+de l'employé (pas de crédit H, Holo ne prend pas la souris). Le modèle relie chaque étape à son moment dans le journal
+d'actions ; on garde les images de ce moment, avec la position des clics.
 
 1. récupère chez H, pour chaque étape du rejeu (une session par étape), les captures d'écran et les actions de Holo
    (clic avec sa position, saisie, raccourci) ;
 2. choisit quelques images par étape (avant chaque clic ou saisie) ;
 3. fait écrire la voix off en français (courte : le forfait gratuit ElevenLabs est de 10 000 caractères/mois) ;
-4. la fait dire par la voix ElevenLabs choisie (ELEVENLABS_VOICE_ID, modèle multilingue) ;
+4. la fait dire par une des 5 voix françaises de VOIX_TUTO (tirée du nom du tuto, modèle multilingue, qualité studio) ;
 5. écrit tout dans tuto/remotion/public/tutos/<nom>/ + un props.json pour la composition Remotion « TwiinTuto ».
 """
 import argparse
@@ -28,7 +33,7 @@ from twiin.clients.holo.holo_agent import HoloAgent  # noqa: E402
 ENV = dotenv_values(ROOT / ".env")
 REMOTION_PUBLIC = ROOT / "tuto" / "video" / "public" / "tutos"
 FPS = 30
-MAX_SHOTS_PER_STEP = 5
+MAX_SHOTS_PER_STEP = 2  # une image par étape, deux au plus : une vidéo calme, qui montre ce que dit la voix
 NARRATION_MAX_CHARS = 1500  # garde de la marge sur le quota gratuit ElevenLabs
 
 
@@ -107,32 +112,65 @@ def write_narration(task_name, steps, answers, advice):
         "Tu écris la voix off d'un tuto vidéo qui montre à un salarié comment faire sa tâche plus vite. "
         "Tutoiement, phrases courtes et naturelles, à l'oral. Total de TOUS les textes : moins de "
         f"{NARRATION_MAX_CHARS} caractères. Pour chaque étape : un titre court (≤ 40 caractères), une narration "
-        "(≤ 220 caractères) qui dit quoi faire, et une astuce (≤ 90 caractères) qui fait gagner du temps si elle existe.\n\n"
+        "(≤ 220 caractères) qui dit quoi faire en nommant ce qu'on voit à l'écran (bouton, menu, champ), et une astuce (≤ 90 caractères) qui fait gagner du temps si elle existe.\n\n"
         f"Tâche : {task_name}\nÉtapes :\n" + "\n".join(f"{i}. {s}" for i, s in enumerate(steps, 1)) +
-        "\n\nCe que l'agent a observé en faisant chaque étape :\n" +
+        "\n\nCe que l'employé a fait à chaque étape (ce que montre l'image) :\n" +
         "\n".join(f"{i}. {clean(a)[:300]}" for i, a in enumerate(answers, 1)) +
         (f"\n\nAstuces d'amélioration déjà identifiées :\n{tips}" if tips else "") +
         '\n\nRéponds UNIQUEMENT en JSON, sans guillemets droits dans les textes (utilise « ») : '
         '{"title":"titre du tuto","intro":"≤ 140 caractères","steps":[{"title":"","narration":"","tip":""}],'
         '"outro":"≤ 140 caractères"}'
     )
-    r = client.chat.completions.create(model=ENV.get("HF_MODEL") or "Qwen/Qwen3.8-27B", max_tokens=6000, temperature=0.3,
-                                       reasoning_effort="low", messages=[{"role": "user", "content": prompt}])
-    raw = re.sub(r"<think>.*?</think>", "", r.choices[0].message.content or "", flags=re.S)
-    raw = raw[raw.find("{"): raw.rfind("}") + 1]
-    try:
-        data = json.loads(raw)
-    except json.JSONDecodeError:
-        from json_repair import repair_json  # secours
-        data = json.loads(repair_json(raw))
-    if len(data.get("steps", [])) != len(steps):
-        raise SystemExit(f"La narration a {len(data.get('steps', []))} étapes au lieu de {len(steps)}.")
-    return data
+    # Le modèle renvoie parfois une réponse vide ou tronquée : 3 essais, puis un texte de secours tiré des étapes,
+    # pour que la vidéo sorte toujours.
+    for attempt in range(3):
+        try:
+            # Pas de raisonnement : sinon le modèle « réfléchit » jusqu'à la limite et ne renvoie aucun texte
+            r = client.chat.completions.create(model=ENV.get("HF_MODEL") or "Qwen/Qwen3.8-27B", max_tokens=6000, temperature=0.3,
+                                               reasoning_effort="none", messages=[{"role": "user", "content": prompt}])
+            raw = re.sub(r"<think>.*?</think>", "", r.choices[0].message.content or "", flags=re.S)
+            raw = raw[raw.find("{"): raw.rfind("}") + 1]
+            if not raw:
+                u = r.usage
+                raise ValueError(f"réponse vide (fin : {r.choices[0].finish_reason}, raisonnement : "
+                                 f"{getattr(u.completion_tokens_details, 'reasoning_tokens', '?') if u else '?'} jetons)")
+            try:
+                data = json.loads(raw)
+            except json.JSONDecodeError:
+                from json_repair import repair_json  # secours
+                data = json.loads(repair_json(raw) or "{}")
+            if len(data.get("steps", [])) == len(steps):
+                return data
+            print(f"voix off : {len(data.get('steps', []))} étapes au lieu de {len(steps)}, nouvel essai", flush=True)
+        except Exception as e:  # noqa: BLE001
+            print(f"voix off : essai {attempt + 1} raté ({e}), nouvel essai", flush=True)
+    print("voix off : texte de secours tiré des étapes", flush=True)
+    short = lambda t, n: t if len(t) <= n else t[: n - 1].rsplit(" ", 1)[0] + "…"
+    return {"title": short(task_name, 60), "intro": short(f"Voici comment faire : {task_name}.", 140),
+            "steps": [{"title": short(s, 40), "narration": short(s, 220), "tip": ""} for s in steps],
+            "outro": "Et voilà, à toi de jouer."}
 
 
-def tts(text, out: Path):
-    vid = (ENV.get("ELEVENLABS_VOICE_ID") or "").split("#")[0].strip()
-    r = requests.post(f"https://api.elevenlabs.io/v1/text-to-speech/{vid}?output_format=mp3_44100_128",
+# Voix françaises natives (bibliothèque ElevenLabs, qualité studio). Chaque tuto en reçoit une, toujours la même
+# pour un même tuto (tirée de son nom) : la voix ne change pas au milieu d'une vidéo, et les tutos varient entre eux.
+VOIX_TUTO = {
+    "Jeanne": "txtf1EDouKke753vN8SL",   # jeune femme parisienne, narration pédagogique
+    "Claire": "6vTyAgAT8PncODBcLjRf",   # femme, chaleureuse et posée
+    "Lucie": "YxrwjAKoUKULGd0g8K9Y",    # femme, ton de conseillère, empathique
+    "Nicolas": "aQROLel5sQbj1vuIVi6B",  # homme, narrateur parisien
+    "Léo": "AfbuxQ9DVtS4azaxN1W7",      # homme, rassurant et dynamique
+}
+
+
+def voix_pour(nom_tuto):
+    import hashlib
+    noms = list(VOIX_TUTO)
+    nom = noms[int(hashlib.sha1(nom_tuto.encode()).hexdigest(), 16) % len(noms)]
+    return nom, VOIX_TUTO[nom]
+
+
+def tts(text, out: Path, vid):
+    r = requests.post(f"https://api.elevenlabs.io/v1/text-to-speech/{vid}?output_format=mp3_44100_192",
                       headers={"xi-api-key": ENV["ELEVENLABS_API_KEY"].strip(), "Content-Type": "application/json"},
                       json={"text": text, "model_id": "eleven_multilingual_v2"}, timeout=120)
     if not r.ok:
@@ -141,23 +179,153 @@ def tts(text, out: Path):
     return MP3(out).info.length
 
 
+def load_session(session: Path):
+    """Images (dans l'ordre) + journal d'actions + début de l'enregistrement d'une session de la page Twiin."""
+    frames, started = [], None
+    if (session / "frames.jsonl").exists():
+        frames = [json.loads(l) for l in (session / "frames.jsonl").read_text().splitlines() if l.strip()]
+    elif (session / "frames.json").exists():
+        d = json.loads((session / "frames.json").read_text())
+        frames, started = d.get("frames", []), d.get("startedAt")
+    meta = session / "session.json"
+    if meta.exists():
+        started = json.loads(meta.read_text()).get("startedAt") or started
+    actions = []
+    if (session / "actions.jsonl").exists():
+        actions = [json.loads(l) for l in (session / "actions.jsonl").read_text().splitlines() if l.strip()]
+    started = (started or 0) / 1000 or (actions[0]["ts"] if actions else 0)
+    return sorted(frames, key=lambda f: f.get("seconds", 0)), actions, started
+
+
+def action_line(e, t0):
+    what = {"click": f"clic sur {e.get('element') or 'un élément'}", "typing": f"saisie ({e.get('keys', '?')} frappes) dans {e.get('element') or 'un champ'}",
+            "shortcut": f"raccourci {e.get('keys')}", "key": f"touche {e.get('keys')}",
+            "app": f"{e.get('app')} au premier plan — {e.get('window') or ''}"}.get(e["type"])
+    return f"t+{e['ts'] - t0:.1f}s · écran {e.get('display', '?')} · {e.get('app') or ''} · {what}" if what else None
+
+
+def map_steps_to_time(steps, actions, frames, t0):
+    """Le modèle relie chaque étape à son moment dans l'enregistrement (début et fin, en secondes)."""
+    from openai import OpenAI
+    client = OpenAI(base_url="https://router.huggingface.co/v1", api_key=ENV["HF_TOKEN"])
+    log = "\n".join(x for x in (action_line(e, t0) for e in actions) if x)
+    imgs = "\n".join(f"image {i}: t+{f.get('seconds', 0)}s écran {f.get('screen', 1)}" for i, f in enumerate(frames))
+    prompt = ("Voici les étapes d'une tâche et le journal horodaté de l'enregistrement où l'employé l'a faite. Pour chaque "
+              "étape, donne le moment où elle est faite (début et fin, en secondes depuis le début). Les étapes sont dans "
+              "l'ordre ; les moments aussi.\n\nÉTAPES\n" + "\n".join(f"{i}. {s}" for i, s in enumerate(steps, 1)) +
+              f"\n\nJOURNAL\n{log or '(vide)'}\n\nIMAGES GARDÉES\n{imgs}\n\n"
+              'Réponds UNIQUEMENT en JSON : {"steps":[{"start":0,"end":0}]} avec exactement une entrée par étape.')
+    spans = []
+    for attempt in range(2):  # le modèle renvoie parfois une réponse vide : un second essai, puis le découpage de secours
+        try:
+            r = client.chat.completions.create(model=ENV.get("HF_MODEL") or "Qwen/Qwen3.8-27B", max_tokens=12000, temperature=0,
+                                               reasoning_effort="low", messages=[{"role": "user", "content": prompt}])
+            raw = re.sub(r"<think>.*?</think>", "", r.choices[0].message.content or "", flags=re.S)
+            raw = raw[raw.find("{"): raw.rfind("}") + 1]
+            try:
+                spans = json.loads(raw).get("steps", [])
+            except json.JSONDecodeError:
+                from json_repair import repair_json
+                spans = json.loads(repair_json(raw) or "{}").get("steps", [])
+        except Exception as e:
+            print(f"(correspondance étapes ↔ images : essai {attempt + 1} raté, {e})", flush=True)
+        if len(spans) == len(steps):
+            break
+    if len(spans) != len(steps):  # secours : on découpe l'enregistrement en parts égales
+        print("(correspondance étapes ↔ images : découpage en parts égales)", flush=True)
+        end = frames[-1].get("seconds", 0) if frames else 0
+        spans = [{"start": end * i / len(steps), "end": end * (i + 1) / len(steps)} for i in range(len(steps))]
+    return spans
+
+
+def shots_from_recording(session: Path, steps, out_dir: Path, name: str):
+    """Pour chaque étape : jusqu'à MAX_SHOTS_PER_STEP images de ce moment, avec la position du clic qui suit."""
+    import base64
+    from PIL import Image
+    frames, actions, t0 = load_session(session)
+    if not frames:
+        raise SystemExit("Cet enregistrement n'a pas d'images.")
+    displays = {d["id"]: d for e in actions if e.get("type") == "start" for d in e.get("displays", [])}
+    spans = map_steps_to_time(steps, actions, frames, t0)
+    per_step = []
+    ft = lambda f: t0 + f.get("seconds", 0)  # moment de l'image (secondes, horloge du journal)
+    disp_of = lambda f: int(m.group(1)) if (m := re.match(r"screen:(\d+):", f.get("screen_label") or "")) else None
+
+    def click_in(f, e):
+        d = displays.get(e.get("display"))
+        if not d or (disp_of(f) is not None and e.get("display") != disp_of(f)):
+            return None
+        return {"x": max(0, min(1, (e["x"] - d["x"]) / d["w"])), "y": max(0, min(1, (e["y"] - d["y"]) / d["h"]))}
+
+    for n, (step, span) in enumerate(zip(steps, spans), 1):
+        a, b = float(span.get("start", 0)), float(span.get("end", 0))
+        inside = [f for f in frames if a - 0.5 <= f.get("seconds", 0) <= b + 1.5]
+        if not inside:
+            inside = [min(frames, key=lambda f: abs(f.get("seconds", 0) - (a + b) / 2))]
+        evs = [e for e in actions if t0 + a - 0.5 <= e.get("ts", 0) <= t0 + b + 1.5 and e.get("type") in ("click", "typing", "shortcut", "key")]
+        clicks = [e for e in evs if e["type"] == "click"]
+        typed = any(e["type"] != "click" for e in evs)
+        # Images retenues : celle qui montre l'action dont parle la voix off
+        #  - un clic : l'écran juste avant le clic (on voit où cliquer), avec le cercle sur l'endroit ;
+        #  - une saisie, un raccourci, ou rien : l'écran à la fin de l'étape (on voit le résultat).
+        chosen = []
+        if clicks:
+            c = clicks[0]
+            before = [f for f in frames if ft(f) <= c["ts"] + 0.3 and (disp_of(f) is None or disp_of(f) == c.get("display"))]
+            f1 = before[-1] if before else inside[0]
+            chosen.append((f1, click_in(f1, c), f"clic sur {c.get('element') or 'un élément'}"))
+        if typed or not clicks:
+            last = inside[-1]
+            if not chosen or last is not chosen[0][0]:
+                chosen.append((last, None, "résultat"))
+        chosen = chosen[:MAX_SHOTS_PER_STEP]
+        shots = []
+        for i, (f, click, action) in enumerate(chosen, 1):
+            data = (f.get("ocrUrl") or f.get("dataUrl") or "").split(",", 1)[-1]
+            if not data:
+                continue
+            dest = out_dir / f"etape{n}_{i}.jpg"
+            dest.write_bytes(base64.b64decode(data))
+            with Image.open(dest) as im:
+                w, h = im.size
+            shots.append({"src": f"tutos/{name}/{dest.name}", "w": w, "h": h, "click": click, "action": action})
+        # Ce que l'employé a vraiment fait pendant l'étape : la voix off décrit ce qu'on voit à l'image
+        faits = "; ".join(x for x in (action_line(e, t0) for e in evs[:5]) if x)
+        per_step.append({"step": step, "answer": faits, "shots": shots})
+        print(f"étape {n} : t+{a:.0f}-{b:.0f}s, {len(shots)} image(s) ({', '.join(s['action'] for s in shots)})", flush=True)
+    return per_step
+
+
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("run", type=Path, help="journal du rejeu (workflows/runs/<date>-local.json)")
+    ap.add_argument("run", type=Path, nargs="?", help="journal du rejeu (workflows/runs/<date>-local.json)")
+    ap.add_argument("--session", type=Path, help="dossier d'un enregistrement de la page Twiin (mode « enregistrement »)")
+    ap.add_argument("--workflow", type=Path, help="JSON {name, steps} de la tâche (avec --session)")
     ap.add_argument("--name", default="tuto")
     ap.add_argument("--advice", type=Path, help="JSON des conseils « Améliorer mon process » (facultatif)")
     ap.add_argument("--no-voice", action="store_true", help="ne pas appeler ElevenLabs (durées estimées)")
     a = ap.parse_args()
 
-    run = json.loads(a.run.read_text())
-    steps_done = [s for s in run["steps"] if s.get("status") in ("idle", "completed")]
-    if len(run["sessions"]) != len(steps_done):
-        print(f"(attention : {len(run['sessions'])} session(s) pour {len(steps_done)} étape(s) réussie(s))")
     out_dir = REMOTION_PUBLIC / a.name
     if out_dir.exists():
         shutil.rmtree(out_dir)
     out_dir.mkdir(parents=True)
 
+    if a.session:  # mode « enregistrement » : images de l'employé, pas de Holo
+        wf = json.loads(a.workflow.read_text())
+        per_step = shots_from_recording(a.session, wf["steps"], out_dir, a.name)
+        run = {"workflow": wf.get("name") or a.name}
+    else:
+        per_step = shots_from_holo_run(a, out_dir)
+        run = json.loads(a.run.read_text())
+    finish(a, run, per_step, out_dir)
+
+
+def shots_from_holo_run(a, out_dir):
+    run = json.loads(a.run.read_text())
+    steps_done = [s for s in run["steps"] if s.get("status") in ("idle", "completed")]
+    if len(run["sessions"]) != len(steps_done):
+        print(f"(attention : {len(run['sessions'])} session(s) pour {len(steps_done)} étape(s) réussie(s))")
     client = HoloAgent().client
     key = ENV["HAI_API_KEY"].strip()
     per_step = []
@@ -172,17 +340,22 @@ def main():
                 s["w"], s["h"] = im.size
         per_step.append({"step": st["step"], "answer": st.get("answer") or "", "shots": shots})
         print(f"étape {n} : {len(shots)} image(s)")
+    return per_step
 
+
+def finish(a, run, per_step, out_dir):
     advice = json.loads(a.advice.read_text()) if a.advice else None
     nar = write_narration(run.get("workflow", a.name), [p["step"] for p in per_step], [p["answer"] for p in per_step], advice)
     chars = len(nar.get("intro", "")) + len(nar.get("outro", "")) + sum(len(s["narration"]) + len(s.get("tip", "")) for s in nar["steps"])
     print(f"voix off : {chars} caractères")
+    voix_nom, voix_id = voix_pour(a.name)
+    print(f"voix off : {voix_nom}", flush=True)
 
     def voice(text, name):
         if a.no_voice or not text:
             return None, max(2.5, len(text) / 14)
         f = out_dir / f"{name}.mp3"
-        return f"tutos/{a.name}/{f.name}", tts(text, f)
+        return f"tutos/{a.name}/{f.name}", tts(text, f, voix_id)
 
     intro_audio, intro_s = voice(nar.get("intro", ""), "intro")
     outro_audio, outro_s = voice(nar.get("outro", ""), "outro")

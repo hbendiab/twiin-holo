@@ -71,7 +71,25 @@ def read_app(p: Path) -> dict | None:
         "bundle_id": info.get("CFBundleIdentifier", ""),
         "version": str(info.get("CFBundleShortVersionString", "")),
         "declared_category": (info.get("LSApplicationCategoryType") or "").replace("public.app-category.", ""),
+        "path": str(p),
     }
+
+
+def recent_use(app_path: str, days: int = 30) -> dict:
+    """Seulement si l'employé l'a accepté (--usage) : combien de JOURS l'appli a été ouverte ces `days` derniers jours.
+    Source : les métadonnées Spotlight de l'appli (kMDItemUsedDates), jamais ce qui a été fait dedans ni à quelle heure."""
+    raw = run(["mdls", "-name", "kMDItemUsedDates", app_path])
+    used = set()
+    now = datetime.utcnow()
+    for m in re.findall(r"(\d{4}-\d{2}-\d{2}) \d{2}:\d{2}:\d{2}", raw):
+        try:
+            d = datetime.strptime(m, "%Y-%m-%d")
+        except ValueError:
+            continue
+        if (now - d).days <= days:
+            used.add(m)
+    n = len(used)
+    return {"usage_days": n, "usage": "récente" if n else ("ancienne" if "(" in raw and "null" not in raw else "inconnue")}
 
 
 def cli_tools() -> list[dict]:
@@ -143,7 +161,7 @@ def entry(tool: dict | None, label: str, source: str, components: list[dict]) ->
     }
 
 
-def build(registry: list[dict]) -> dict:
+def build(registry: list[dict], usage: bool = False) -> dict:
     tools: dict[str, dict] = {}
     perso, apple_skipped = [], 0
 
@@ -153,6 +171,8 @@ def build(registry: list[dict]) -> dict:
             continue
         tool = match_app(a["file"], a["bundle_id"], registry) or match_app(a["name"], a["bundle_id"], registry)
         comp = {"name": a["file"], "version": a["version"], "bundle_id": a["bundle_id"]}
+        if usage:
+            comp.update(recent_use(a["path"]))
         if tool is None and a["bundle_id"].startswith("com.apple."):
             apple_skipped += 1  # apps système d'Apple (Musique, iMovie…) : pas des outils métier
             continue
@@ -175,11 +195,17 @@ def build(registry: list[dict]) -> dict:
             tools[key]["source"] += " + ligne de commande"
         tools[key]["components"].append({"name": c["name"], "version": c["version"], "via": c["via"]})
 
+    if usage:  # un outil vaut son appli la plus utilisée
+        for e in tools.values():
+            u = [c.get("usage") for c in e["components"] if c.get("usage")]
+            e["usage"] = "récente" if "récente" in u else ("ancienne" if "ancienne" in u else None)
+            e["usage_days"] = max([c.get("usage_days", 0) for c in e["components"]] or [0])
     ordered = sorted(tools.values(), key=lambda e: (e["type"] != "connu", e["category"] or "~", e["app"].lower()))
     return {
         "schema": "twiin/audit-poste@1",
         "generated_at": datetime.now().isoformat(timespec="seconds"),
-        "scope": "métadonnées d'outils uniquement (apps, CLI, extensions) ; ni fichiers, ni historique, ni activité",
+        "scope": ("métadonnées d'outils uniquement (apps, CLI, extensions) ; ni fichiers, ni historique"
+                  + ("; nombre de jours d'utilisation des applis sur 30 jours, à la demande de l'employé" if usage else ", ni activité")),
         "summary": {
             "outils": len(ordered),
             "connus": sum(e["type"] == "connu" for e in ordered),
@@ -228,12 +254,14 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--out", type=Path, help="dossier de sortie (défaut : capture/backend/data/audit_poste/<date>)")
     ap.add_argument("--print", action="store_true", help="affiche le tableau markdown")
+    ap.add_argument("--usage", action="store_true",
+                    help="indique aussi si chaque appli a été ouverte ces 30 derniers jours (choix de l'employé)")
     args = ap.parse_args()
     if sys.platform != "darwin":
         sys.exit("Audit du poste : macOS uniquement pour l'instant.")
 
     print("Audit du poste Twiin : lecture des métadonnées d'outils uniquement (apps, CLI, extensions).", flush=True)
-    audit = build(load_registry())
+    audit = build(load_registry(), usage=args.usage)
     out = args.out or OUT_BASE / datetime.now().strftime("%Y%m%d-%H%M%S")
     out.mkdir(parents=True, exist_ok=True)
     (out / "audit_poste.json").write_text(json.dumps(audit, ensure_ascii=False, indent=2))

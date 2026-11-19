@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Twiin · Connexion</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Google+Sans+Flex:wght@300;400;500;600;700&display=swap">
+<link rel="stylesheet" href="pages.css">
+<style>
+  body { max-width: 440px; padding-top: 72px; }
+  .brand-big { display: flex; align-items: center; gap: 12px; justify-content: center; font-size: 30px; font-weight: 500; letter-spacing: -0.02em; margin-bottom: 8px; }
+  .brand-big b { font-weight: 700; }
+  .brand-big svg { width: 72px; height: 46px; }
+  .tag { text-align: center; color: var(--text-dim); margin: 0 0 28px; }
+  form { display: grid; gap: 12px; }
+  label { display: grid; gap: 4px; font-size: 13px; color: var(--text-dim); }
+  input { font: 15px var(--font); padding: 11px 14px; border-radius: 12px; border: 1px solid var(--panel-border); background: var(--panel); color: var(--text); }
+  input:focus { outline: none; border-color: var(--accent); }
+  .row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 4px; }
+  .row button { flex: 1 1 160px; justify-content: center; }
+  .msg { font-size: 13px; min-height: 18px; margin: 4px 0 0; }
+  .msg.bad { color: var(--bad); } .msg.ok { color: var(--ok); }
+  .fine { font-size: 12px; color: var(--text-dim); margin-top: 18px; text-align: center; }
+</style>
+<link rel="stylesheet" href="theme.css">
+</head>
+<body class="no-rail">
+  <div class="brand-big"><span id="logoCells"></span><span>Tw<b>ii</b>n</span></div>
+  <p class="tag">Analyse tes tâches. Automatise tes process.</p>
+  <section class="panel">
+    <form id="form" autocomplete="on">
+      <label>E-mail<input id="email" type="email" required autocomplete="email" placeholder="prenom.nom@entreprise.fr"></label>
+      <label>Mot de passe<input id="password" type="password" required minlength="8" autocomplete="current-password" placeholder="8 caractères minimum"></label>
+      <div class="row">
+        <button type="submit" class="primary" id="loginBtn">Se connecter</button>
+        <button type="button" id="signupBtn">Créer mon compte</button>
+      </div>
+      <p class="msg" id="msg" role="status"></p>
+    </form>
+  </section>
+  <p class="fine">Ton compte sert à retrouver ta fiche, tes tâches et tes automatisations. Les captures d'écran restent sur ton Mac.</p>
+
+<script src="/vendor/supabase/supabase.js"></script>
+  <script src="shell.js" defer></script>
+<script src="auth.js"></script>
+<script src="common.js"></script>
+<script>
+const msg = document.getElementById('msg');
+const next = new URLSearchParams(location.search).get('next') || '/';
+const say = (text, kind = '') => { msg.textContent = text; msg.className = `msg ${kind}`; };
+const FR = { 'Invalid login credentials': 'E-mail ou mot de passe incorrect.', 'User already registered': 'Ce compte existe déjà : connecte-toi.',
+             'Email not confirmed': 'Confirme d\'abord ton e-mail (lien reçu par mail).' };
+(async () => {
+  const client = await window.twiinAuth;
+  if (!client) { say('Les comptes ne sont pas activés sur ce Twiin : tu peux l\'utiliser directement.', 'ok'); setTimeout(() => location.replace(next), 1500); return; }
+  const { data } = await client.auth.getSession();
+  if (data.session) return location.replace(next);
+  const creds = () => ({ email: document.getElementById('email').value.trim(), password: document.getElementById('password').value });
+  document.getElementById('form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    say('Connexion…');
+    const { error } = await client.auth.signInWithPassword(creds());
+    if (error) return say(FR[error.message] || error.message, 'bad');
+    location.replace(next);
+  });
+  document.getElementById('signupBtn').addEventListener('click', async () => {
+    const c = creds();
+    if (!c.email || c.password.length < 8) return say('Indique ton e-mail et un mot de passe d\'au moins 8 caractères.', 'bad');
+    say('Création du compte…');
+    const { data: d, error } = await client.auth.signUp(c);
+    if (error) return say(FR[error.message] || error.message, 'bad');
+    if (d.session) return location.replace(next);
+    say('Compte créé. Ouvre le lien reçu par e-mail pour le confirmer, puis connecte-toi.', 'ok');
+  });
+})();
+</script>
+</body>
+</html>

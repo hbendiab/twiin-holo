@@ -1,0 +1,620 @@
+{
+  "audit_id": "aud_2026-11-18_002",
+  "date_audit": "2026-11-18T10:00:00+01:00",
+  "version_schema": "2.0",
+  "entreprise": {
+    "nom": "École démo",
+    "taille": "PME",
+    "secteur": "Enseignement supérieur"
+  },
+  "poste": {
+    "id": "poste_a3f9",
+    "os": "macos",
+    "role_metier": "Assistant(e) de direction"
+  },
+  "consentement": {
+    "obtenu": true,
+    "date": "2026-11-17T13:55:00+01:00",
+    "sources_autorisees": [
+      "logiciel_installe",
+      "telechargement",
+      "historique_navigateur",
+      "connecteur_google_workspace"
+    ]
+  },
+  "applications": [
+    {
+      "id": "google-drive",
+      "nom": "Google Drive",
+      "editeur": "Google",
+      "type": "saas_web",
+      "identifiant_technique": "drive.google.com",
+      "sources_detection": [
+        "historique_navigateur"
+      ],
+      "usage": {
+        "frequence": "quotidien",
+        "jours_utilises_30": 22
+      },
+      "filtre_metier": {
+        "est_metier": true,
+        "categorie": "documents_signature",
+        "methode": "catalogue",
+        "confiance": 0.95,
+        "justification": "Stockage de documents pro",
+        "a_valider": false
+      },
+      "api": {
+        "disponibilite": "publique",
+        "type": "rest",
+        "doc_url": "https://developers.google.com/drive/api/reference/rest/v3",
+        "authentification": "oauth2",
+        "couverture_process": "Lecture/écriture de fichiers et dossiers",
+        "sources": [
+          "https://developers.google.com/drive"
+        ],
+        "methode": "catalogue",
+        "confiance": 0.95,
+        "verifie_le": "2026-11-17"
+      },
+      "duplication": {
+        "strategie": "mock_api",
+        "dans_process_observe": true,
+        "statut": "a_faire"
+      },
+      "confirmee_par_employe": true
+    },
+    {
+      "id": "docusign",
+      "nom": "DocuSign",
+      "editeur": "DocuSign",
+      "type": "saas_web",
+      "identifiant_technique": "app.docusign.com",
+      "sources_detection": [
+        "historique_navigateur"
+      ],
+      "usage": {
+        "frequence": "hebdomadaire",
+        "jours_utilises_30": 6
+      },
+      "filtre_metier": {
+        "est_metier": true,
+        "categorie": "documents_signature",
+        "methode": "catalogue",
+        "confiance": 0.95,
+        "justification": "Signature électronique de contrats",
+        "a_valider": false
+      },
+      "api": {
+        "disponibilite": "payante_entreprise",
+        "type": "rest",
+        "doc_url": "https://developers.docusign.com/docs/esign-rest-api/",
+        "authentification": "oauth2",
+        "methode": "recherche_web_agent",
+        "confiance": 0.8,
+        "verifie_le": "2026-11-17"
+      },
+      "duplication": {
+        "strategie": "mock_api",
+        "dans_process_observe": true,
+        "statut": "a_faire"
+      },
+      "confirmee_par_employe": true
+    },
+    {
+      "id": "logiciel-scolarite-interne",
+      "nom": "Logiciel de scolarité (exemple)",
+      "editeur": "Éditeur local",
+      "type": "desktop",
+      "identifiant_technique": "com.exemple.scolarite",
+      "version": "4.2",
+      "sources_detection": [
+        "logiciel_installe"
+      ],
+      "usage": {
+        "frequence": "quotidien",
+        "jours_utilises_30": 21
+      },
+      "filtre_metier": {
+        "est_metier": true,
+        "categorie": "scolarite_formation",
+        "methode": "llm",
+        "confiance": 0.82,
+        "justification": "Nom et éditeur évoquent la gestion des étudiants",
+        "a_valider": false
+      },
+      "api": {
+        "disponibilite": "aucune",
+        "methode": "recherche_web_agent",
+        "confiance": 0.6,
+        "sources": [],
+        "verifie_le": "2026-11-17"
+      },
+      "duplication": {
+        "strategie": "computer_use",
+        "dans_process_observe": true,
+        "statut": "a_faire"
+      },
+      "confirmee_par_employe": true
+    },
+    {
+      "id": "outil-inconnu",
+      "nom": "OutilX",
+      "type": "desktop",
+      "identifiant_technique": "com.outilx.app",
+      "sources_detection": [
+        "telechargement"
+      ],
+      "usage": {
+        "frequence": "rare",
+        "jours_utilises_30": 1
+      },
+      "filtre_metier": {
+        "est_metier": true,
+        "categorie": "autre",
+        "methode": "llm",
+        "confiance": 0.45,
+        "justification": "Aucune info fiable trouvée",
+        "a_valider": true
+      },
+      "api": {
+        "disponibilite": "inconnue",
+        "confiance": 0.2
+      },
+      "duplication": {
+        "strategie": "hors_perimetre",
+        "dans_process_observe": false,
+        "statut": "non_applicable"
+      },
+      "confirmee_par_employe": false
+    },
+    {
+      "id": "spotify",
+      "nom": "Spotify",
+      "editeur": "Spotify",
+      "type": "desktop",
+      "identifiant_technique": "com.spotify.client",
+      "sources_detection": [
+        "logiciel_installe"
+      ],
+      "filtre_metier": {
+        "est_metier": false,
+        "categorie": "perso_loisir",
+        "methode": "liste_exclusion",
+        "confiance": 0.99,
+        "a_valider": false
+      },
+      "api": {
+        "disponibilite": "non_recherchee",
+        "confiance": 1
+      },
+      "duplication": {
+        "strategie": "hors_perimetre",
+        "dans_process_observe": false,
+        "statut": "non_applicable"
+      }
+    },
+    {
+      "id": "system-settings",
+      "nom": "Réglages Système",
+      "editeur": "Apple",
+      "type": "desktop",
+      "identifiant_technique": "com.apple.systempreferences",
+      "sources_detection": [
+        "logiciel_installe"
+      ],
+      "filtre_metier": {
+        "est_metier": false,
+        "categorie": "systeme_utilitaire",
+        "methode": "liste_exclusion",
+        "confiance": 0.99,
+        "a_valider": false
+      },
+      "api": {
+        "disponibilite": "non_recherchee",
+        "confiance": 1
+      },
+      "duplication": {
+        "strategie": "hors_perimetre",
+        "dans_process_observe": false,
+        "statut": "non_applicable"
+      }
+    },
+    {
+      "id": "gmail",
+      "nom": "Gmail",
+      "editeur": "Google",
+      "type": "saas_web",
+      "identifiant_technique": "mail.google.com",
+      "sources_detection": [
+        "connecteur_google_workspace",
+        "historique_navigateur"
+      ],
+      "usage": {
+        "frequence": "quotidien",
+        "jours_utilises_30": 23,
+        "minutes_semaine": 600
+      },
+      "filtre_metier": {
+        "est_metier": true,
+        "categorie": "communication_collab",
+        "methode": "catalogue",
+        "confiance": 0.95,
+        "a_valider": false
+      },
+      "api": {
+        "disponibilite": "publique",
+        "type": "rest",
+        "doc_url": "https://developers.google.com/gmail/api",
+        "authentification": "oauth2",
+        "methode": "catalogue",
+        "confiance": 0.95,
+        "verifie_le": "2026-11-18"
+      },
+      "duplication": {
+        "strategie": "mock_api",
+        "dans_process_observe": false,
+        "statut": "a_faire"
+      },
+      "confirmee_par_employe": true
+    },
+    {
+      "id": "excel",
+      "nom": "Microsoft Excel",
+      "editeur": "Microsoft",
+      "type": "desktop",
+      "identifiant_technique": "com.microsoft.Excel",
+      "sources_detection": [
+        "logiciel_installe"
+      ],
+      "usage": {
+        "frequence": "quotidien",
+        "jours_utilises_30": 18,
+        "minutes_semaine": 90
+      },
+      "filtre_metier": {
+        "est_metier": true,
+        "categorie": "erp_gestion",
+        "methode": "catalogue",
+        "confiance": 0.95,
+        "a_valider": false
+      },
+      "api": {
+        "disponibilite": "publique",
+        "type": "rest",
+        "doc_url": "https://learn.microsoft.com/graph/api/resources/excel",
+        "authentification": "oauth2",
+        "couverture_process": "Classeurs stockés sur OneDrive / SharePoint seulement",
+        "methode": "catalogue",
+        "confiance": 0.9,
+        "verifie_le": "2026-11-18"
+      },
+      "duplication": {
+        "strategie": "hybride",
+        "dans_process_observe": false,
+        "statut": "a_faire"
+      },
+      "confirmee_par_employe": true
+    },
+    {
+      "id": "portail-opco",
+      "nom": "Portail de l'OPCO",
+      "editeur": "OPCO",
+      "type": "saas_web",
+      "identifiant_technique": "opco.example.fr",
+      "sources_detection": [
+        "historique_navigateur"
+      ],
+      "usage": {
+        "frequence": "rare",
+        "jours_utilises_30": 0
+      },
+      "filtre_metier": {
+        "est_metier": true,
+        "categorie": "scolarite_formation",
+        "methode": "catalogue",
+        "confiance": 0.95,
+        "a_valider": false
+      },
+      "api": {
+        "disponibilite": "aucune",
+        "methode": "recherche_web_agent",
+        "confiance": 0.8,
+        "verifie_le": "2026-11-18"
+      },
+      "duplication": {
+        "strategie": "computer_use",
+        "dans_process_observe": false,
+        "statut": "a_faire"
+      },
+      "confirmee_par_employe": true
+    },
+    {
+      "id": "teams",
+      "nom": "Microsoft Teams",
+      "editeur": "Microsoft",
+      "type": "desktop",
+      "identifiant_technique": "com.microsoft.teams2",
+      "sources_detection": [
+        "logiciel_installe"
+      ],
+      "usage": {
+        "frequence": "quotidien",
+        "jours_utilises_30": 15
+      },
+      "filtre_metier": {
+        "est_metier": true,
+        "categorie": "communication_collab",
+        "methode": "catalogue",
+        "confiance": 0.95,
+        "a_valider": false
+      },
+      "api": {
+        "disponibilite": "publique",
+        "type": "rest",
+        "doc_url": "https://learn.microsoft.com/graph/teams-concept-overview",
+        "authentification": "oauth2",
+        "methode": "catalogue",
+        "confiance": 0.95,
+        "verifie_le": "2026-11-18"
+      },
+      "duplication": {
+        "strategie": "mock_api",
+        "dans_process_observe": false,
+        "statut": "a_faire"
+      },
+      "confirmee_par_employe": true
+    }
+  ],
+  "resume": {
+    "nb_detectees": 10,
+    "nb_metier": 8,
+    "nb_avec_api": 5,
+    "nb_sans_api": 2,
+    "nb_api_inconnue": 1,
+    "nb_a_valider": 1
+  },
+  "dirigeant": {
+    "objectif": "gagner_du_temps",
+    "irritants": [
+      "Les dossiers d'alternance prennent trop de temps",
+      "Pièces manquantes à relancer à la main"
+    ],
+    "cout_horaire": 35,
+    "consentement_entreprise": true,
+    "sources_autorisees": [
+      "logiciel_installe",
+      "telechargement",
+      "historique_navigateur",
+      "connecteur_google_workspace"
+    ]
+  },
+  "taches": [
+    {
+      "id": "t1",
+      "libelle": "Saisir les contrats d'alternance (Cerfa) et les faire signer",
+      "source": "suggestion",
+      "suggestion_id": "sco_contrats_alternance",
+      "frequence_tranche": "6-20",
+      "duree_tranche": "15-30",
+      "applis_ids": [
+        "gmail",
+        "logiciel-scolarite-interne",
+        "docusign",
+        "google-drive"
+      ],
+      "recopie": true,
+      "declencheur": "document_recu",
+      "exceptions_transcript": "Si l'entreprise oublie une pièce, je la relance par mail.",
+      "deleguer_en_premier": true
+    },
+    {
+      "id": "t2",
+      "libelle": "Relancer les entreprises pour les pièces manquantes",
+      "source": "suggestion",
+      "suggestion_id": "sco_relances_entreprises",
+      "frequence_tranche": "6-20",
+      "duree_tranche": "5-15",
+      "applis_ids": [
+        "gmail",
+        "excel"
+      ],
+      "recopie": true,
+      "declencheur": "date",
+      "exceptions_transcript": "",
+      "deleguer_en_premier": false
+    },
+    {
+      "id": "t3",
+      "libelle": "Déposer les dossiers de prise en charge sur le portail de l'OPCO",
+      "source": "suggestion",
+      "suggestion_id": "sco_opco",
+      "frequence_tranche": "2-5",
+      "duree_tranche": "15-30",
+      "applis_ids": [
+        "portail-opco",
+        "google-drive",
+        "excel"
+      ],
+      "recopie": true,
+      "declencheur": "document_recu",
+      "exceptions_transcript": "Ça dépend de l'OPCO, chaque dossier est différent.",
+      "deleguer_en_premier": false
+    },
+    {
+      "id": "t4",
+      "libelle": "Organiser l'agenda de la direction",
+      "source": "suggestion",
+      "suggestion_id": "ad_agenda",
+      "frequence_tranche": "6-20",
+      "duree_tranche": "<5",
+      "applis_ids": [
+        "gmail"
+      ],
+      "recopie": false,
+      "declencheur": "demande_collegue",
+      "exceptions_transcript": "",
+      "deleguer_en_premier": false
+    },
+    {
+      "id": "t5",
+      "libelle": "Préparer le comité pédagogique mensuel",
+      "source": "saisie_libre",
+      "frequence_tranche": "1",
+      "duree_tranche": ">60",
+      "applis_ids": [
+        "excel",
+        "google-drive"
+      ],
+      "recopie": false,
+      "declencheur": "demande_collegue",
+      "exceptions_transcript": "Je décide au cas par cas ce qu'on présente, selon les urgences.",
+      "deleguer_en_premier": false
+    }
+  ],
+  "alertes": [
+    {
+      "type": "outil_non_observe",
+      "tache_id": "t3",
+      "application_id": "portail-opco",
+      "message": "« Déposer les dossiers de prise en charge sur le portail de l'OPCO » utilise Portail de l'OPCO, qui n'a pas été observé ces 30 derniers jours."
+    },
+    {
+      "type": "tache_cachee_possible",
+      "application_id": "teams",
+      "message": "Microsoft Teams est très utilisé mais n'apparaît dans aucune tâche : à quoi vous sert-il ?"
+    },
+    {
+      "type": "surestimation_possible",
+      "application_id": "excel",
+      "message": "284 min/semaine déclarées sur Microsoft Excel, pour 90 min/semaine observées."
+    }
+  ],
+  "opportunites": [
+    {
+      "tache_id": "t1",
+      "cout_hebdo_min": 292.5,
+      "potentiel": 75,
+      "facilite": 67,
+      "tranche_facilite": "facile",
+      "priorite": 147.0,
+      "recommandation": "automatiser",
+      "a_observer": true,
+      "gain_heures_semaine": 4.9,
+      "gain_euros_an": 8019,
+      "detail": {
+        "potentiel": {
+          "donnees_structurees": 95,
+          "peu_de_variantes": 55,
+          "peu_de_decisions": 75
+        },
+        "facilite": {
+          "nb_applis": 40,
+          "part_api": 75,
+          "stabilite": 55,
+          "bonus_recopie": 10
+        }
+      }
+    },
+    {
+      "tache_id": "t2",
+      "cout_hebdo_min": 130.0,
+      "potentiel": 80,
+      "facilite": 97,
+      "tranche_facilite": "facile",
+      "priorite": 100.9,
+      "recommandation": "automatiser",
+      "a_observer": true,
+      "gain_heures_semaine": 2.2,
+      "gain_euros_an": 3564,
+      "detail": {
+        "potentiel": {
+          "donnees_structurees": 85,
+          "peu_de_variantes": 80,
+          "peu_de_decisions": 75
+        },
+        "facilite": {
+          "nb_applis": 80,
+          "part_api": 100,
+          "stabilite": 80,
+          "bonus_recopie": 10
+        }
+      }
+    },
+    {
+      "tache_id": "t3",
+      "cout_hebdo_min": 78.8,
+      "potentiel": 53,
+      "facilite": 61,
+      "tranche_facilite": "moyen",
+      "priorite": 25.5,
+      "recommandation": "automatiser",
+      "a_observer": true,
+      "gain_heures_semaine": 1.3,
+      "gain_euros_an": 2160,
+      "detail": {
+        "potentiel": {
+          "donnees_structurees": 95,
+          "peu_de_variantes": 25,
+          "peu_de_decisions": 40
+        },
+        "facilite": {
+          "nb_applis": 60,
+          "part_api": 67,
+          "stabilite": 25,
+          "bonus_recopie": 10
+        }
+      }
+    },
+    {
+      "tache_id": "t4",
+      "cout_hebdo_min": 32.5,
+      "potentiel": 60,
+      "facilite": 93,
+      "tranche_facilite": "facile",
+      "priorite": 18.1,
+      "recommandation": "ne_pas_automatiser",
+      "a_observer": false,
+      "gain_heures_semaine": 0.5,
+      "gain_euros_an": 891,
+      "detail": {
+        "potentiel": {
+          "donnees_structurees": 45,
+          "peu_de_variantes": 80,
+          "peu_de_decisions": 55
+        },
+        "facilite": {
+          "nb_applis": 100,
+          "part_api": 100,
+          "stabilite": 80,
+          "bonus_recopie": 0
+        }
+      }
+    },
+    {
+      "tache_id": "t5",
+      "cout_hebdo_min": 75.0,
+      "potentiel": 30,
+      "facilite": 68,
+      "tranche_facilite": "facile",
+      "priorite": 15.3,
+      "recommandation": "simplifier_d_abord",
+      "a_observer": false,
+      "gain_heures_semaine": 1.2,
+      "gain_euros_an": 2056,
+      "detail": {
+        "potentiel": {
+          "donnees_structurees": 45,
+          "peu_de_variantes": 25,
+          "peu_de_decisions": 20
+        },
+        "facilite": {
+          "nb_applis": 80,
+          "part_api": 100,
+          "stabilite": 25,
+          "bonus_recopie": 0
+        }
+      }
+    }
+  ]
+}
