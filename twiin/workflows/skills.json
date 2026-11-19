@@ -1,5 +1,13 @@
 [
   {
+    "id": "n8n-holo-calculer-3-3",
+    "name": "n8n Holo — calculer 3×3",
+    "description": "Étape lancée par n8n",
+    "steps": [
+      "In Google Chrome, open a new tab and go to https://www.google.com. In the search bar, type « calculatrice » and press Enter. The Google calculator should appear in the results. Click the « 3 » button, then the « × » button, then the « 3 » button, then the « = » button. Read the result displayed on the calculator screen. Then answer ONLY with a JSON object with exactly these keys, filled with the values you READ ON SCREEN (write « non trouvé » if a value is not visible): {\"resultat\":\"the number displayed as the result of 3 × 3 on the calculator\"}"
+    ]
+  },
+  {
     "id": "n8n-holo-ecrire-dans-google-sheets",
     "name": "n8n Holo — écrire dans Google Sheets",
     "description": "Étape lancée par n8n",
@@ -93,6 +101,14 @@
     "description": "Étape lancée par n8n",
     "steps": [
       "Open Microsoft OneNote, go to the section « Groupe » and open the page « Veille concurrence ». The cursor starts in the page TITLE: type « Veille – L'Oréal (n8n 18/11/2026) », then press Enter so the cursor is in the BODY. Type this text in the body: « No.1 Beauty Group Worldwide. No.1 most innovative company in Europe (Fortune's ranking). ». Then press Enter twice and type: « Articles récents :  ». Check that the title contains only the title, then stop. Do not modify any other page."
+    ]
+  },
+  {
+    "id": "n8n-holo-saisir-resultats-notion",
+    "name": "n8n Holo — saisir résultats Notion",
+    "description": "Étape lancée par n8n",
+    "steps": [
+      "In Google Chrome, open the Notion page « Résultat des calculs ». Click in the body of the page below any existing content. Type « 9 » and press Enter. Type « 1 » and press Enter. Stop. Do not modify any other page or content. Then answer ONLY with a JSON object with exactly these keys, filled with the values you READ ON SCREEN (write « non trouvé » if a value is not visible): {\"resultats_saisis\":\"the values typed into the page, one per line\"}"
     ]
   },
   {
