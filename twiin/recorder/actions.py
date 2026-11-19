@@ -59,7 +59,8 @@ ROLE_FR = {"AXButton": "bouton", "AXLink": "lien", "AXTextField": "champ", "AXTe
 
 out_file = None
 system_wide = AXUIElementCreateSystemWide()
-state = {"app": None, "window": None, "burst": None, "running": True, "tap": None, "url": None, "url_at": 0.0}
+state = {"app": None, "window": None, "burst": None, "running": True, "tap": None, "url": None, "url_at": 0.0,
+         "paused": False}
 
 
 def chrome_url():
@@ -161,6 +162,8 @@ def on_event(proxy, etype, event, refcon):
             if state["tap"] is not None:
                 Quartz.CGEventTapEnable(state["tap"], True)
             return event
+        if state["paused"]:
+            return event  # pause : rien n'est noté pendant la pause (ni clic, ni touche)
         if etype in (Quartz.kCGEventLeftMouseDown, Quartz.kCGEventRightMouseDown):
             flush_burst(force=True)
             p = Quartz.CGEventGetLocation(event)
@@ -208,6 +211,8 @@ def on_event(proxy, etype, event, refcon):
 
 
 def poll(timer, info):
+    if state["paused"]:
+        return
     flush_burst()
     app, win, disp = front_window()
     if app and (app != state["app"] or win != state["window"]):
@@ -239,6 +244,15 @@ def main():
 
     signal.signal(signal.SIGTERM, stop)
     signal.signal(signal.SIGINT, stop)
+
+    def toggle_pause(*_):
+        # SIGUSR1 : pause / reprise du journal (envoyé par le serveur Twiin)
+        if not state["paused"]:
+            flush_burst(force=True)  # la saisie en cours est notée avant la pause
+        state["paused"] = not state["paused"]
+        emit({"type": "pause" if state["paused"] else "reprise"})
+
+    signal.signal(signal.SIGUSR1, toggle_pause)
 
     mask = (Quartz.CGEventMaskBit(Quartz.kCGEventLeftMouseDown) | Quartz.CGEventMaskBit(Quartz.kCGEventRightMouseDown)
             | Quartz.CGEventMaskBit(Quartz.kCGEventKeyDown))

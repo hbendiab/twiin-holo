@@ -158,6 +158,7 @@ function select(id) {
     </div>
     <div class="actions">
       <button class="primary" id="runBtn" type="button" ${a.running ? 'disabled' : ''}>${a.running ? 'En cours…' : holoMac ? 'Lancer…' : 'Lancer maintenant'}</button>
+      ${!a.running && a.executions[0]?.status === 'error' ? `<button id="retryBtn" type="button" title="Rejoue la dernière exécution en échec à partir de l'étape qui a planté. Les étapes réussies ne sont pas refaites.">Relancer l'étape échouée</button>` : ''}
       ${a.sheet ? `<a class="btn" href="${a.sheet.url}" target="_blank" rel="noopener">${iconsHtml('Google Sheets', 1)}Ouvrir le résultat</a>` : ''}
     </div>
     ${holoMac ? '<p class="note warn">Elle utilise ton Mac pendant qu\'elle tourne : ne touche à rien.</p>' : ''}
@@ -201,6 +202,14 @@ function select(id) {
   };
   // Une automatisation qui utilise le Mac : on choisit le moment (maintenant ou un créneau où le Mac est libre)
   document.getElementById('runBtn').onclick = () => (holoMac ? (document.getElementById('runChoice').hidden = false) : lancer());
+  document.getElementById('retryBtn')?.addEventListener('click', async () => {
+    const msg = document.getElementById('msg');
+    const r = await fetch(`/api/automations/${encodeURIComponent(id)}/retry`, { method: 'POST' });
+    const d = await r.json();
+    if (d.error) { msg.textContent = d.error; return; }
+    msg.textContent = 'Relance lancée à partir de l\'étape qui a échoué. Le suivi est dans l\'historique.';
+    watch(id);
+  });
   document.querySelectorAll('[data-when]').forEach((b) => b.onclick = async () => {
     const w = b.dataset.when;
     if (w === 'now') return lancer();

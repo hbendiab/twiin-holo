@@ -191,6 +191,18 @@ function endAnalysisPanel(ok, message) {
 startBtn.addEventListener('click', startRecording);
 addBtn.addEventListener('click', () => addScreen().catch((e) => (statusEl.textContent = `Écran non ajouté : ${e.message}`)));
 stopBtn.addEventListener('click', stopRecording);
+const pauseBtn = document.getElementById('pauseBtn');
+pauseBtn.addEventListener('click', async () => {
+  try {
+    const r = await fetch('/api/actions/pause', { method: 'POST' });
+    const d = await r.json();
+    if (d.error) throw new Error(d.error);
+    pauseBtn.textContent = d.paused ? 'Reprendre' : 'Pause';
+    statusEl.textContent = d.paused ? 'Enregistrement en pause : rien n\'est noté pendant la pause.' : 'Enregistrement repris.';
+  } catch (e) {
+    statusEl.textContent = `Pause impossible : ${e.message}`;
+  }
+});
 reBtn.addEventListener('click', () => analyzeRequest('/api/reanalyze', null, 'Nouvelle analyse du dernier enregistrement…'));
 
 async function addScreen() {
@@ -248,6 +260,8 @@ async function startRecording() {
   startBtn.disabled = true;
   addBtn.disabled = false;
   stopBtn.disabled = false;
+  pauseBtn.disabled = false;
+  pauseBtn.textContent = 'Pause';
 
   tick(); // premières images tout de suite
   intervalId = setInterval(tick, TICK_MS);
@@ -426,6 +440,8 @@ async function stopRecording() {
   startBtn.disabled = false;
   addBtn.disabled = true;
   stopBtn.disabled = true;
+  pauseBtn.disabled = true;
+  pauseBtn.textContent = 'Pause';
 
   setPrimary(startBtn);
   if (!frames.length) {

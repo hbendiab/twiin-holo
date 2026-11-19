@@ -355,6 +355,7 @@ app.post('/api/frames', (req, res) => {
     const { session, frame } = req.body;
     const dir = sessionDirById(session);
     if (!dir || !frame) return res.status(400).json({ error: 'session ou image manquante' });
+    if (recorderSession?.paused) return res.json({ ok: true, paused: true }); // pause : aucune capture gardée
     fs.appendFileSync(path.join(dir, 'frames.jsonl'), JSON.stringify(frame) + '\n');
     res.json({ ok: true });
   } catch (err) {
@@ -381,6 +382,14 @@ app.post('/api/actions/start', (req, res) => {
 app.post('/api/actions/stop', (req, res) => {
   if (recorderSession?.proc) recorderSession.proc.kill('SIGTERM');
   res.json({ ok: true });
+});
+
+// Pause pendant l'enregistrement : le journal ignore les clics et les touches, et les captures ne sont plus gardées.
+app.post('/api/actions/pause', (req, res) => {
+  if (!recorderSession?.proc) return res.status(409).json({ error: 'Aucun enregistrement en cours.' });
+  recorderSession.paused = !recorderSession.paused;
+  recorderSession.proc.kill('SIGUSR1');
+  res.json({ paused: recorderSession.paused });
 });
 
 app.get('/api/actions', (req, res) => {
@@ -1503,6 +1512,22 @@ async function arreterTout() {
   return stoppees;
 }
 app.post('/api/automations/stop', async (req, res) => res.json({ ok: true, executions_arretees: await arreterTout() }));
+
+// Relancer l'étape échouée : n8n rejoue l'exécution en échec à partir du nœud qui a planté. Les étapes déjà
+// réussies ne sont pas refaites (testé : même date de rapport avant et après relance).
+app.post('/api/automations/:id/retry', async (req, res) => {
+  try {
+    if (automationRun || n8nRun?.running) return res.status(409).json({ error: 'Une automatisation tourne déjà.' });
+    if (replay?.running) return res.status(409).json({ error: 'Holo est occupé par un rejeu.' });
+    await ensureN8n();
+    const en = (await n8nApi(`/executions?workflowId=${encodeURIComponent(req.params.id)}&status=error&limit=1`)).data || [];
+    if (!en.length) return res.status(404).json({ error: 'Aucune exécution en échec à relancer.' });
+    await n8nApi(`/executions/${en[0].id}/retry`, { method: 'POST' });
+    res.json({ ok: true, execution: en[0].id });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
 
 // Lancement programmé à un créneau (une fois) : pause déjeuner, fin de journée, demain matin…
 const PLANS_PATH = path.join(REPO_ROOT, 'workflows', 'automations-programmees.json');
