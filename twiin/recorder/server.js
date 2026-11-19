@@ -637,10 +637,12 @@ function sessionAvecAjouts(dir) {
   const depart = lireJson(path.join(dir, 'session.json'))?.startedAt || 0;
   let frames = lignes(dir, 'frames.jsonl').map((l) => JSON.parse(l));
   let actions = lignes(dir, 'actions.jsonl').map((l) => JSON.parse(l));
+  // chaque ajout se place à la suite de ce qui précède (pas de vide entre les deux, même si l'ajout a été fait plus tard)
   for (const sd of segs) {
-    const decalage = ((lireJson(path.join(sd, 'session.json'))?.startedAt || depart) - depart) / 1000;
-    frames = frames.concat(lignes(sd, 'frames.jsonl').map((l) => { const f = JSON.parse(l); return { ...f, seconds: (f.seconds || 0) + decalage }; }));
-    actions = actions.concat(lignes(sd, 'actions.jsonl').map((l) => JSON.parse(l)));
+    const debutSeg = (lireJson(path.join(sd, 'session.json'))?.startedAt || depart) / 1000;
+    const base = frames.reduce((m, f) => Math.max(m, f.seconds || 0), 0) + 2;
+    frames = frames.concat(lignes(sd, 'frames.jsonl').map((l) => { const f = JSON.parse(l); return { ...f, seconds: base + (f.seconds || 0) }; }));
+    actions = actions.concat(lignes(sd, 'actions.jsonl').map((l) => { const a = JSON.parse(l); return a.ts ? { ...a, ts: depart / 1000 + base + (a.ts - debutSeg) } : a; }));
   }
   frames.sort((a, b) => (a.seconds || 0) - (b.seconds || 0));
   frames = frames.map((f, i) => ({ ...f, index: i }));
