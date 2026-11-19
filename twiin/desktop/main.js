@@ -2,14 +2,23 @@
 // applis (Excel, Outlook, Finder…), qui s'ouvre et se ferme avec ⌥⌘T, l'icône du Dock ou celle de la barre des menus. Pendant un enregistrement, elle devient une
 // petite pastille (chrono + Terminer). Elle n'apparaît jamais dans les images enregistrées (protection de contenu).
 // Le contenu est le même que le panneau de l'extension Chrome (extension/panel.js), servi par le serveur Twiin local.
-const { app, BrowserWindow, Tray, Menu, globalShortcut, desktopCapturer, session, shell, ipcMain, nativeImage, screen, Notification } = require('electron');
+const { app, BrowserWindow, Tray, Menu, globalShortcut, desktopCapturer, session, shell, ipcMain, nativeImage, screen, Notification,
+  systemPreferences, dialog, clipboard } = require('electron');
 const path = require('node:path');
-const { spawn } = require('node:child_process');
+const fs = require('node:fs');
+const { spawn, execFile } = require('node:child_process');
+const { install } = require('./setup');
 const { setupVoice } = require('./voice-permissions'); // autorisation du micro (capture vocale)
 
+const IS_MAC = process.platform === 'darwin';
 const BASE = 'http://localhost:3000';
-const RECORDER_DIR = path.join(__dirname, '..', 'recorder');
-const SHORTCUT = 'Alt+Command+T'; // ⌥⌘T, comme l'ancien raccourci Twiin
+// App installée : le code vit dans le dossier de l'utilisateur (on y écrit), copié au premier lancement.
+// En développement (npm start) : le dossier du dépôt. TWIIN_ONBOARDING=1 force l'onboarding pour le tester.
+const DATA_DIR = app.getPath('userData');
+const APP_DIR = app.isPackaged ? path.join(DATA_DIR, 'app') : path.join(__dirname, '..');
+const RECORDER_DIR = path.join(APP_DIR, 'recorder');
+const ONBOARD_FILE = path.join(DATA_DIR, 'onboarding.json');
+const SHORTCUT = IS_MAC ? 'Alt+Command+T' : 'Control+Alt+T'; // ⌥⌘T sur Mac, Ctrl+Alt+T sous Windows
 const FULL = { width: 400, height: 720 };
 const PILL = { width: 340, height: 64 };
 
@@ -81,6 +90,7 @@ function trayMenu() {
     { type: 'separator' },
     { label: 'Tout arrêter (automatisations, Holo)', click: () => fetch(`${BASE}/api/automations/stop`, { method: 'POST' }).catch(() => {}) },
     { label: 'Ouvrir Twiin dans le navigateur', click: () => shell.openExternal(BASE) },
+    { label: 'Revoir la configuration…', click: () => { if (onb) onb.focus(); else createOnboarding(); } },
     { type: 'separator' },
     { label: 'Quitter Twiin', role: 'quit' },
   ]);
@@ -119,10 +129,97 @@ ipcMain.on('compact', (_e, on) => setCompact(!!on));
 ipcMain.on('hide', () => win.hide());
 ipcMain.on('open', (_e, url) => { if (/^https?:\/\//.test(url)) shell.openExternal(url); });
 
+// --- Premier lancement : installation en arrière-plan + onboarding (5 écrans) ---------------------------------------
+let onb = null, installState = { running: false, done: !app.isPackaged, error: null, steps: {} };
+const readJson = (f) => { try { return JSON.parse(fs.readFileSync(f, 'utf8')); } catch { return null; } };
+const needsOnboarding = () => process.env.TWIIN_ONBOARDING === '1' || (app.isPackaged && !readJson(ONBOARD_FILE)?.done);
+
+async function runInstall() {
+  if (!app.isPackaged || installState.running) return; // en développement, tout est déjà installé
+  installState = { running: true, done: false, error: null, steps: {} };
+  const report = (e) => { installState.steps[e.step] = e; onb?.webContents.send('ob:progress', { ...installState, last: e }); };
+  try {
+    await install({ resources: process.resourcesPath, dataDir: DATA_DIR, appDir: APP_DIR, version: app.getVersion(), report });
+    installState.done = true;
+  } catch (e) { installState.error = e.message; }
+  installState.running = false;
+  onb?.webContents.send('ob:progress', installState);
+  if (installState.done && envReady()) ensureServer();
+}
+function envReady() {
+  const env = fs.existsSync(path.join(APP_DIR, '.env')) ? fs.readFileSync(path.join(APP_DIR, '.env'), 'utf8') : '';
+  return /^(HF_TOKEN|TWIIN_CLE)=\s*\S+/m.test(env);
+}
+function createOnboarding() {
+  onb = new BrowserWindow({ width: 820, height: 640, minWidth: 720, minHeight: 560, title: 'Bienvenue dans Twiin', backgroundColor: '#e9ebef',
+    titleBarStyle: IS_MAC ? 'hiddenInset' : 'default', webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, sandbox: false } });
+  onb.loadFile(path.join(__dirname, 'onboarding.html'));
+  onb.on('closed', () => { onb = null; if (!readJson(ONBOARD_FILE)?.done) app.quit(); }); // fermé avant la fin : on quittera, sans état bancal
+  runInstall();
+}
+// Ce que l'onboarding demande à l'app
+const py = () => path.join(APP_DIR, '.venv', IS_MAC ? 'bin/python' : 'Scripts/python.exe');
+const pyCheck = (code) => new Promise((res) => execFile(py(), ['-c', code], { timeout: 8000 }, (err, out) => res(err ? null : String(out).trim())));
+ipcMain.handle('ob:state', () => ({ platform: process.platform, version: app.getVersion(), packaged: app.isPackaged, configured: envReady(),
+  pilote: app.isPackaged && fs.existsSync(path.join(process.resourcesPath, 'twiin', 'config-pilote.env')), install: installState })); // pilote : accès déjà intégrés, pas d'écran Configuration
+ipcMain.handle('ob:import', async () => {
+  const r = await dialog.showOpenDialog(onb, { title: 'Fichier de configuration Twiin', properties: ['openFile', 'showHiddenFiles'],
+    message: 'Choisis le fichier de configuration envoyé par l\'équipe Twiin (twiin.env ou .env)' });
+  if (r.canceled || !r.filePaths[0]) return { ok: false };
+  const text = fs.readFileSync(r.filePaths[0], 'utf8');
+  const keys = [...text.matchAll(/^([A-Z0-9_]+)=\s*(\S+)/gm)].map((m) => m[1]); // les noms seulement, jamais les valeurs
+  if (!keys.includes('HF_TOKEN') && !keys.includes('TWIIN_CLE')) return { ok: false, error: 'Ce fichier ne contient pas d\'accès Twiin : ce n\'est pas une configuration Twiin.' };
+  const dest = path.join(APP_DIR, '.env');
+  fs.mkdirSync(APP_DIR, { recursive: true });
+  if (fs.existsSync(dest)) fs.copyFileSync(dest, `${dest}.ancien`);
+  fs.writeFileSync(dest, text, { mode: 0o600 });
+  if (installState.done) ensureServer();
+  return { ok: true, keys };
+});
+ipcMain.handle('ob:perms', async () => {
+  if (!IS_MAC) return { screen: true, accessibility: true, input: true };
+  const input = fs.existsSync(py()) ? (await pyCheck('import Quartz; print(Quartz.CGPreflightListenEventAccess())')) === 'True' : null;
+  return { screen: systemPreferences.getMediaAccessStatus('screen') === 'granted', accessibility: systemPreferences.isTrustedAccessibilityClient(false), input };
+});
+const PANES = { screen: 'Privacy_ScreenCapture', accessibility: 'Privacy_Accessibility', input: 'Privacy_ListenEvent' };
+ipcMain.handle('ob:ask', async (_e, kind) => {
+  if (kind === 'screen') await desktopCapturer.getSources({ types: ['screen'] }).catch(() => {}); // Twiin apparaît dans la liste
+  if (kind === 'accessibility') systemPreferences.isTrustedAccessibilityClient(true);
+  if (kind === 'input' && fs.existsSync(py())) await pyCheck('import Quartz; Quartz.CGRequestListenEventAccess()');
+  shell.openExternal(`x-apple.systempreferences:com.apple.preference.security?${PANES[kind]}`);
+});
+ipcMain.handle('ob:relaunch', () => { app.relaunch(); app.exit(0); });
+const EXT_DIR = path.join(DATA_DIR, 'Extension Chrome');
+ipcMain.handle('ob:ext:prepare', () => {
+  fs.cpSync(path.join(APP_DIR, 'extension'), EXT_DIR, { recursive: true, force: true }); // dossier fixe, à choisir dans Chrome
+  return EXT_DIR;
+});
+ipcMain.handle('ob:ext:chrome', () => {
+  if (IS_MAC) spawn('open', ['-a', 'Google Chrome', 'chrome://extensions']);
+  else spawn('cmd', ['/c', 'start', 'chrome', 'chrome://extensions'], { windowsHide: true });
+});
+ipcMain.handle('ob:ext:show', () => shell.openPath(EXT_DIR));
+ipcMain.handle('ob:ext:copy', () => clipboard.writeText(EXT_DIR));
+ipcMain.handle('ob:ext:status', async () => {
+  try { return await (await fetch(`${BASE}/api/extension/status`)).json(); } catch { return { connected: false, server: false }; }
+});
+ipcMain.handle('ob:login', (_e, on) => {
+  if (typeof on === 'boolean') app.setLoginItemSettings({ openAtLogin: on });
+  return app.getLoginItemSettings().openAtLogin;
+});
+ipcMain.handle('ob:finish', async () => {
+  fs.mkdirSync(DATA_DIR, { recursive: true });
+  fs.writeFileSync(ONBOARD_FILE, JSON.stringify({ done: true, at: new Date().toISOString(), version: app.getVersion() }));
+  await startApp();
+  onb?.close();
+  shell.openExternal(`${BASE}/#audit`); // l'audit s'ouvre dans le navigateur
+});
+
 // --- Démarrage ---
-app.whenReady().then(async () => {
-  // Icône dans le Dock (et ⌘Tab) : sur un Mac à encoche, l'icône de la barre des menus peut être masquée
-  app.dock?.setIcon(nativeImage.createFromPath(path.join(__dirname, 'assets', 'icon.png')));
+let started = false;
+async function startApp() {
+  if (started) return;
+  started = true;
   setupCapture();
   setupVoice(session.defaultSession, new URL(BASE).origin);
   createTray();
@@ -131,8 +228,15 @@ app.whenReady().then(async () => {
   const ok = await ensureServer();
   if (ok) win.loadURL(`${BASE}/ext/desktop.html`);
   else win.webContents.executeJavaScript("document.body.dataset.state = 'fail'");
+}
+app.whenReady().then(async () => {
+  // Icône dans le Dock (et ⌘Tab) : sur un Mac à encoche, l'icône de la barre des menus peut être masquée
+  app.dock?.setIcon(nativeImage.createFromPath(path.join(__dirname, 'assets', 'icon.png')));
+  if (needsOnboarding()) return createOnboarding();
+  if (app.isPackaged) await runInstall(); // mise à jour : recopie le code si la version a changé (rapide), sinon rien
+  startApp();
 });
 app.on('before-quit', () => { app.isQuitting = true; });
-app.on('activate', () => { if (win) { win.show(); win.focus(); } }); // clic sur l'icône du Dock
+app.on('activate', () => { if (onb) onb.focus(); else if (win) { win.show(); win.focus(); } }); // clic sur l'icône du Dock
 app.on('will-quit', () => { globalShortcut.unregisterAll(); if (server) server.kill('SIGTERM'); }); // on n'arrête que le serveur qu'on a lancé
 app.on('window-all-closed', (e) => e.preventDefault());

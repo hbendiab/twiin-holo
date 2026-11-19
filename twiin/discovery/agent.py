@@ -12,7 +12,7 @@ from pathlib import Path
 
 from openai import OpenAI
 
-HOLO_BASE_URL = "https://api.hcompany.ai/v1/"
+HOLO_BASE_URL = os.environ.get("HAI_API_BASE_URL", "https://api.hcompany.ai/v1/")  # relais Twiin sur les postes clients
 FREE_MODELS = {"holo3-1-35b-a3b"}          # gratuit : 10 requêtes / minute
 FREE_GAP = 6.5
 VIEW_W, VIEW_H = 1280, 800

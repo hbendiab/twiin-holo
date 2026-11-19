@@ -1,0 +1,237 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Bienvenue dans Twiin</title>
+<style>
+  :root { --text: #16181d; --dim: #6b7180; --accent: #121418; --ink: #fff; --blue: #7d9be3; --coral: #e56b6b; --green: #3f9b74;
+    --panel: rgba(255,255,255,.62); --solid: #f7f8fa; --border: rgba(255,255,255,.9); --line: rgba(22,24,29,.08);
+    --grad: linear-gradient(180deg, #eceef1 0%, #e6e9ef 40%, #d3dcf0 100%); color-scheme: light; }
+  @media (prefers-color-scheme: dark) { :root { --text: #eef0f4; --dim: #9aa1b0; --accent: #f1f2f5; --ink: #121418; --panel: rgba(255,255,255,.06);
+    --solid: #1b1e25; --border: rgba(255,255,255,.08); --line: rgba(255,255,255,.08); --grad: linear-gradient(180deg, #121419 0%, #171b24 60%, #1d2740 100%); color-scheme: dark; } }
+  * { box-sizing: border-box; }
+  html { background: var(--grad); height: 100%; }
+  body { margin: 0; height: 100%; display: flex; flex-direction: column; font: 15px/1.5 "Plus Jakarta Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    color: var(--text); -webkit-user-select: none; user-select: none; }
+  .drag { height: 34px; -webkit-app-region: drag; flex: none; }
+  .wrap { flex: 1; display: grid; grid-template-columns: 210px 1fr; gap: 26px; padding: 6px 34px 0; min-height: 0; }
+  nav ol { list-style: none; margin: 18px 0 0; padding: 0; display: grid; gap: 4px; }
+  nav li { display: flex; align-items: center; gap: 12px; padding: 9px 10px; border-radius: 14px; color: var(--dim); font-weight: 500; }
+  nav li .n { width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center; font-size: 13px; font-weight: 700; background: var(--solid); border: 1px solid var(--border); flex: none; }
+  nav li.on { color: var(--text); background: var(--panel); }
+  nav li.on .n { background: var(--accent); color: var(--ink); border-color: var(--accent); }
+  nav li.ok .n { background: var(--green); color: #fff; border-color: var(--green); }
+  .brand { display: flex; align-items: center; gap: 10px; font-weight: 800; font-size: 22px; letter-spacing: -.03em; }
+  .brand img { height: 26px; }
+  main { overflow-y: auto; padding: 8px 4px 20px; }
+  .card { background: var(--panel); border: 1px solid var(--border); border-radius: 28px; padding: 30px 32px; box-shadow: 0 30px 70px -36px rgba(54,72,120,.35); }
+  h1 { font-size: 30px; font-weight: 800; letter-spacing: -.035em; margin: 0 0 8px; line-height: 1.15; }
+  .lead { color: var(--dim); margin: 0 0 20px; font-size: 16px; }
+  .hero { display: flex; align-items: center; gap: 18px; margin-bottom: 18px; }
+  .hero img { height: 64px; }
+  ul.promise { list-style: none; padding: 0; margin: 0; display: grid; gap: 12px; }
+  ul.promise li { display: flex; gap: 14px; align-items: flex-start; }
+  ul.promise li b { display: block; }
+  ul.promise .i { width: 34px; height: 34px; border-radius: 50%; background: var(--solid); display: grid; place-items: center; flex: none; font-size: 16px; }
+  .rows { display: grid; gap: 10px; }
+  .row { display: flex; align-items: center; gap: 14px; padding: 14px 16px; border-radius: 18px; background: var(--solid); border: 1px solid var(--border); }
+  .row .t { flex: 1; min-width: 0; }
+  .row .t small { display: block; color: var(--dim); font-size: 13px; }
+  .st { width: 26px; height: 26px; border-radius: 50%; border: 2px solid var(--line); flex: none; display: grid; place-items: center; font-size: 13px; font-weight: 700; }
+  .st.ok { background: var(--green); border-color: var(--green); color: #fff; }
+  .st.wait { border-color: var(--blue); border-top-color: transparent; animation: spin .9s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  button { font: 600 14px inherit; font-family: inherit; border-radius: 999px; padding: 10px 18px; cursor: pointer; border: 1px solid var(--border); background: #fff; color: #16181d; white-space: nowrap; }
+  @media (prefers-color-scheme: dark) { button { background: rgba(255,255,255,.1); color: var(--text); } }
+  button.dark { background: var(--accent); color: var(--ink); border-color: var(--accent); box-shadow: 0 10px 22px -10px rgba(18,20,24,.55); }
+  button:disabled { opacity: .4; cursor: default; }
+  button.link { border: 0; background: none; color: var(--dim); text-decoration: underline; padding: 6px; box-shadow: none; }
+  .steps3 { counter-reset: s; list-style: none; padding: 0; margin: 0 0 16px; display: grid; gap: 10px; }
+  .steps3 li { counter-increment: s; display: flex; gap: 14px; align-items: center; padding: 12px 16px; border-radius: 18px; background: var(--solid); border: 1px solid var(--border); }
+  .steps3 li::before { content: counter(s); width: 28px; height: 28px; border-radius: 50%; background: var(--accent); color: var(--ink); display: grid; place-items: center; font-weight: 700; font-size: 13px; flex: none; }
+  .steps3 li .t { flex: 1; }
+  code { font: 12.5px ui-monospace, SFMono-Regular, monospace; background: var(--solid); padding: 3px 8px; border-radius: 8px; word-break: break-all; -webkit-user-select: text; user-select: text; }
+  kbd { font: 600 13px ui-monospace, monospace; background: var(--solid); border: 1px solid var(--border); border-radius: 8px; padding: 3px 9px; }
+  .note { color: var(--dim); font-size: 13.5px; margin: 14px 0 0; }
+  .note.warn { color: #b7791f; }
+  .msg { margin: 12px 0 0; font-size: 14px; }
+  .msg.err { color: var(--coral); }
+  label.sw { display: flex; align-items: center; gap: 10px; cursor: pointer; }
+  label.sw input { width: 18px; height: 18px; }
+  footer { flex: none; display: flex; align-items: center; gap: 16px; padding: 14px 34px 18px; border-top: 1px solid var(--line); background: var(--panel); }
+  .inst { flex: 1; min-width: 0; font-size: 13px; color: var(--dim); }
+  .inst b { color: var(--text); }
+  .bar { height: 6px; border-radius: 3px; background: var(--line); overflow: hidden; margin-top: 6px; max-width: 360px; }
+  .bar span { display: block; height: 100%; width: 0; background: linear-gradient(90deg, var(--blue), var(--coral)); transition: width .4s; }
+</style>
+</head>
+<body>
+  <div class="drag"></div>
+  <div class="wrap">
+    <nav aria-label="Étapes">
+      <div class="brand"><img src="assets/logo-twiin.webp" alt="">Twiin</div>
+      <ol id="nav"></ol>
+    </nav>
+    <main><div class="card" id="screen" aria-live="polite"></div></main>
+  </div>
+  <footer>
+    <div class="inst"><span id="instText"><b>Installation</b> · préparation…</span><div class="bar"><span id="bar"></span></div></div>
+    <button type="button" class="link" id="back">Retour</button>
+    <button type="button" class="dark" id="next">Commencer</button>
+  </footer>
+<script>
+// Twiin · onboarding du premier lancement. L'installation (Python, composants, navigateur) tourne en arrière-plan
+// pendant ces écrans ; chaque case se coche toute seule quand c'est fait.
+const T = window.twiinSetup;
+const $ = (id) => document.getElementById(id);
+const esc = (x) => String(x ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+let S = null, perms = {}, ext = { connected: false }, extPath = '', login = true, msg = '', msgErr = false, timer = null;
+const INST = { code: 'Copie de Twiin', python: 'Python', deps: 'Composants de l\'analyse', browser: 'Navigateur des tests', icons: 'Logos de tes outils' };
+
+const SCREENS = [
+  { id: 'welcome', label: 'Bienvenue' },
+  { id: 'config', label: 'Configuration' },
+  { id: 'perms', label: 'Autorisations', mac: true },
+  { id: 'ext', label: 'Extension Chrome' },
+  { id: 'keys', label: 'Raccourcis' },
+  { id: 'ready', label: 'C\'est prêt' },
+];
+let list = SCREENS, i = 0;
+try { i = Number(localStorage.getItem('twiin-ob-step')) || 0; } catch { /* rien */ }
+
+const done = (id) => ({ config: S?.configured, perms: perms.screen && perms.accessibility && perms.input !== false, ext: ext.connected,
+  welcome: i > 0, keys: i > list.findIndex((x) => x.id === 'keys') })[id];
+
+function paintInstall() {
+  const st = S?.install || {};
+  const steps = Object.keys(INST);
+  const okN = steps.filter((k) => st.steps?.[k]?.status === 'ok').length;
+  const cur = steps.find((k) => st.steps?.[k]?.status === 'run');
+  const pct = st.done ? 100 : Math.round(((okN + (st.steps?.[cur]?.pct || 0) / 100) / steps.length) * 100);
+  $('bar').style.width = `${pct}%`;
+  $('instText').innerHTML = (st.error ? `<b style="color:var(--coral)">Installation interrompue</b> · ${esc(st.error)}`
+      : st.done ? '<b>Installation terminée</b> · Twiin est prêt sur cet ordinateur'
+      : `<b>Installation en cours</b> · ${esc(INST[cur] || 'préparation')}${st.steps?.[cur]?.pct ? ` · ${st.steps[cur].pct} %` : ''} · quelques minutes, tu peux continuer`);
+}
+
+function nav() {
+  $('nav').innerHTML = list.map((s, k) => `<li class="${k === i ? 'on' : done(s.id) ? 'ok' : ''}"><span class="n">${done(s.id) && k !== i ? '✓' : k + 1}</span>${s.label}</li>`).join('');
+}
+
+const R = {
+  welcome: () => `
+    <div class="hero"><img src="assets/logo-twiin.webp" alt=""><div><h1>Bienvenue dans Twiin</h1><p class="lead" style="margin:0">Analyse tes tâches. Automatise tes process.</p></div></div>
+    <ul class="promise">
+      <li><span class="i">◉</span><span><b>Tu fais ta tâche une fois, Twiin regarde.</b>Il en tire les étapes, puis te propose de l'accélérer (vidéo de formation) ou de l'automatiser.</span></li>
+      <li><span class="i">🔒</span><span><b>Rien ne part sans toi.</b>Les informations sensibles sont masquées sur ton ordinateur, et tu relis tes images avant toute analyse.</span></li>
+      <li><span class="i">✋</span><span><b>Tu gardes la main.</b>Twiin te prévient avant d'utiliser ton ordinateur, et tout s'arrête d'un clic.</span></li>
+    </ul>
+    <p class="note">Pendant que tu lis, Twiin s'installe (en bas de la fenêtre). Compte 2 minutes de configuration.</p>`,
+  config: () => S.configured ? `
+    <h1>Configuration</h1><p class="lead">Les accès aux services de Twiin sont en place.</p>
+    <div class="rows"><div class="row"><span class="st ok">✓</span><span class="t"><b>Configuration trouvée</b><small>Elle reste sur cet ordinateur.</small></span>
+      <button type="button" data-a="import">Remplacer</button></div></div>${msg ? `<p class="msg ${msgErr ? 'err' : ''}">${esc(msg)}</p>` : ''}` : `
+    <h1>Configuration</h1>
+    <p class="lead">L'équipe Twiin t'a envoyé un fichier de configuration (<code>twiin.env</code>). Il contient les accès aux services d'analyse, de voix et d'automatisation.</p>
+    <div class="rows"><div class="row"><span class="st"></span><span class="t"><b>Importer le fichier de configuration</b><small>Il est copié sur cet ordinateur seulement, jamais envoyé ailleurs.</small></span>
+      <button type="button" class="dark" data-a="import">Choisir le fichier</button></div></div>
+    ${msg ? `<p class="msg ${msgErr ? 'err' : ''}">${esc(msg)}</p>` : ''}
+    <p class="note">Tu ne l'as pas ? Demande-le à l'équipe Twiin : sans lui, Twiin ne peut pas analyser tes tâches.</p>`,
+  perms: () => {
+    const row = (k, titre, sous) => `<div class="row"><span class="st ${perms[k] ? 'ok' : perms[k] === null ? 'wait' : ''}">${perms[k] ? '✓' : ''}</span>
+      <span class="t"><b>${titre}</b><small>${sous}</small></span>${perms[k] ? '' : perms[k] === null ? '<small style="color:var(--dim)">après l\'installation</small>' : `<button type="button" data-a="ask" data-k="${k}">Autoriser</button>`}</div>`;
+    return `<h1>Autorisations du Mac</h1><p class="lead">macOS demande ton accord pour trois choses. Clique sur « Autoriser », coche <b>Twiin</b> dans la fenêtre des Réglages, puis reviens ici : la case se coche toute seule.</p>
+      <div class="rows">${row('screen', 'Enregistrer l\'écran', 'Pour voir ta tâche pendant que tu la fais.')}
+        ${row('accessibility', 'Accessibilité', 'Pour savoir sur quel bouton tu cliques (jamais ce que tu tapes).')}
+        ${row('input', 'Surveillance de l\'entrée', 'Pour repérer tes clics et raccourcis pendant l\'enregistrement.')}</div>
+      <p class="note">Après avoir autorisé l'enregistrement de l'écran, macOS demande de relancer Twiin.
+        <button type="button" class="link" data-a="relaunch">Relancer Twiin maintenant</button> (tu reviendras sur cet écran).</p>`;
+  },
+  ext: () => `
+    <h1>Extension Chrome</h1>
+    <p class="lead">Elle met Twiin dans Chrome : enregistrer une tâche depuis n'importe quel onglet. Trois clics, une seule fois.</p>
+    <ol class="steps3">
+      <li><span class="t"><b>Ouvre la page des extensions de Chrome</b></span><button type="button" data-a="chrome">Ouvrir Chrome</button></li>
+      <li><span class="t"><b>Active le « Mode développeur »</b>, en haut à droite de la page</span></li>
+      <li><span class="t"><b>Clique sur « Charger l'extension non empaquetée »</b> et choisis ce dossier :<br><code>${esc(extPath)}</code></span>
+        <span style="display:grid;gap:6px"><button type="button" data-a="show">Montrer</button><button type="button" data-a="copy">Copier</button></span></li>
+    </ol>
+    <div class="rows"><div class="row"><span class="st ${ext.connected ? 'ok' : 'wait'}">${ext.connected ? '✓' : ''}</span>
+      <span class="t"><b>${ext.connected ? 'Extension connectée' : 'En attente de l\'extension…'}</b><small>${ext.connected ? `version ${esc(ext.version || '')}`
+        : ext.server === false ? 'Twiin termine son installation, puis la détectera.' : 'La case se coche toute seule dès que l\'extension est chargée.'}</small></span></div></div>
+    ${msg ? `<p class="msg">${esc(msg)}</p>` : ''}`,
+  keys: () => `
+    <h1>Tes raccourcis</h1><p class="lead">Twiin reste discret : il s'ouvre quand tu en as besoin, par-dessus n'importe quelle appli.</p>
+    <div class="rows">
+      <div class="row"><span class="st ok">✓</span><span class="t"><b>Ouvrir Twiin</b><small>Depuis n'importe quelle appli</small></span><kbd>${S.platform === 'darwin' ? '⌥ ⌘ T' : 'Ctrl Alt T'}</kbd></div>
+      <div class="row"><span class="st ok">✓</span><span class="t"><b>Dans Chrome</b><small>Ouvrir · enregistrer ou terminer · tout arrêter</small></span><kbd>${S.platform === 'darwin' ? '⌥⇧T · ⌥⇧R · ⌥⇧X' : 'Alt⇧T · Alt⇧R · Alt⇧X'}</kbd></div>
+      <div class="row"><span class="st ok">✓</span><span class="t"><b>Icône Twiin</b><small>${S.platform === 'darwin' ? 'Dans le Dock et la barre des menus' : 'Dans la zone de notification'}</small></span></div>
+      <label class="row sw"><input type="checkbox" id="login" ${login ? 'checked' : ''}><span class="t"><b>Lancer Twiin au démarrage de l'ordinateur</b><small>Recommandé : il est prêt dès que tu en as besoin.</small></span></label>
+    </div>`,
+  ready: () => {
+    const it = (ok, t, sous) => `<div class="row"><span class="st ${ok ? 'ok' : ''}">${ok ? '✓' : '!'}</span><span class="t"><b>${t}</b><small>${sous}</small></span></div>`;
+    const inst = S.install || {};
+    return `<h1>C'est prêt</h1><p class="lead">Première étape : l'audit de ton poste. Twiin regarde tes outils, puis te pose quelques questions.</p>
+      <div class="rows">${it(inst.done, 'Installation', inst.done ? 'terminée' : inst.error ? `interrompue : ${esc(inst.error)}` : 'encore quelques instants…')}
+        ${it(S.configured, 'Configuration', S.configured ? 'en place' : 'à importer (étape 2)')}
+        ${S.platform === 'darwin' ? it(done('perms'), 'Autorisations du Mac', done('perms') ? 'données' : 'à terminer (étape 3), sinon l\'enregistrement ne marchera pas') : ''}
+        ${it(ext.connected, 'Extension Chrome', ext.connected ? 'connectée' : 'facultative, tu pourras l\'ajouter plus tard')}</div>
+      <p class="note">Tu pourras revoir cette configuration depuis le menu de l'icône Twiin.</p>`;
+  },
+};
+
+async function refresh() {
+  S = await T.state();
+  const id = list[i]?.id;
+  if (id === 'perms' || id === 'ready') perms = await T.perms();
+  if (id === 'ext' || id === 'ready') ext = await T.extStatus();
+  render();
+}
+function render() {
+  list = SCREENS.filter((s) => (!s.mac || S.platform === 'darwin') && !(s.id === 'config' && S.pilote));
+  i = Math.min(i, list.length - 1);
+  try { localStorage.setItem('twiin-ob-step', String(i)); } catch { /* rien */ }
+  const id = list[i].id;
+  const html = R[id]();
+  if ($('screen').dataset.html !== html) { $('screen').innerHTML = html; $('screen').dataset.html = html; }
+  nav(); paintInstall();
+  $('back').style.visibility = i ? 'visible' : 'hidden';
+  const last = i === list.length - 1;
+  $('next').textContent = i === 0 ? 'Commencer' : last ? 'Commencer l\'audit' : (id === 'perms' && !done('perms')) || (id === 'ext' && !ext.connected) ? 'Plus tard' : 'Continuer';
+  $('next').disabled = (id === 'config' && !S.configured) || (last && !(S.install?.done && S.configured));
+  if (last && !S.install?.done && !S.install?.error) $('next').textContent = 'Installation en cours…';
+}
+
+document.addEventListener('click', async (ev) => {
+  const b = ev.target.closest('[data-a]');
+  if (!b) return;
+  const a = b.dataset.a;
+  if (a === 'import') { const r = await T.importConfig(); if (r.ok) { msg = `Configuration importée (${r.keys.length} réglages).`; msgErr = false; } else if (r.error) { msg = r.error; msgErr = true; } }
+  if (a === 'ask') await T.ask(b.dataset.k);
+  if (a === 'relaunch') return T.relaunch();
+  if (a === 'chrome') await T.extChrome();
+  if (a === 'show') await T.extShow();
+  if (a === 'copy') { await T.extCopy(); msg = 'Chemin copié : colle-le dans la fenêtre de Chrome (⌘⇧G sur Mac pour coller un chemin).'; }
+  refresh();
+});
+document.addEventListener('change', (ev) => { if (ev.target.id === 'login') login = ev.target.checked; });
+$('back').onclick = () => { i = Math.max(0, i - 1); msg = ''; refresh(); };
+$('next').onclick = async () => {
+  if (i === list.length - 1) { $('next').disabled = true; await T.login(login); return T.finish(); }
+  i += 1; msg = '';
+  if (list[i].id === 'ext' && !extPath) extPath = await T.extPrepare();
+  refresh();
+};
+T.onProgress((st) => { if (S) { S.install = st; if (st.done) refresh(); else { paintInstall(); nav(); } } });
+
+(async () => {
+  S = await T.state();
+  list = SCREENS.filter((s) => !s.mac || S.platform === 'darwin');
+  if (list[i]?.id === 'ext' || i > list.findIndex((x) => x.id === 'ext')) extPath = await T.extPrepare();
+  await refresh();
+  timer = setInterval(refresh, 2000); // autorisations et extension : détectées en direct
+})();
+</script>
+</body>
+</html>

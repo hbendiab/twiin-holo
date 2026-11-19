@@ -63,3 +63,8 @@ workflows/sauvegarde-*/
 
 # Corbeille des enregistrements (captures d'écran du Mac) : jamais publiée
 workflows/corbeille/
+
+desktop/build/
+desktop/config-pilote.env
+desktop/dist/
+relais/.vercel/

@@ -214,7 +214,7 @@ def serve(directory: Path) -> tuple[str, http.server.ThreadingHTTPServer]:
 
 
 def hf_client() -> OpenAI:
-    return OpenAI(base_url="https://router.huggingface.co/v1", api_key=os.environ["HF_TOKEN"])
+    return OpenAI(base_url=os.environ.get("HF_BASE_URL", "https://router.huggingface.co/v1"), api_key=os.environ["HF_TOKEN"])
 
 
 def fenced(raw: str, lang: str) -> str | None:
