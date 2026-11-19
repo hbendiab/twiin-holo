@@ -114,6 +114,8 @@ function runOcr(frames) {
     let out = '', err = '';
     py.stdout.on('data', (d) => (out += d));
     py.stderr.on('data', (d) => (err += d));
+    py.on('error', () => resolve([]));  // Python introuvable : l'analyse continue sans le texte lu à l'écran
+    py.stdin.on('error', () => {});     // EPIPE si l'OCR s'arrête avant d'avoir tout lu (bibliothèques non installées) : ne doit jamais faire tomber le serveur
     py.on('close', (code) => {
       if (code !== 0) { console.error('OCR échoué :', err.slice(0, 500)); return resolve([]); }
       try { resolve(JSON.parse(out)); } catch { resolve([]); }
@@ -370,6 +372,37 @@ app.post('/api/audio', express.raw({ type: () => true, limit: '200mb' }), (req, 
   }
 });
 
+// Raison d'un échec de transcription, en une courte phrase pour l'employé (le détail technique reste dans `error` et la console).
+function voiceReason(msg) {
+  const m = String(msg || '');
+  if (/faster-whisper n'est pas installé|No module named 'faster_whisper'/.test(m)) return 'faster-whisper n\'est pas installé sur cet ordinateur';
+  if (/trop longue/.test(m)) return 'la transcription a pris trop de temps (modèle non téléchargé ou pas de réseau ?)';
+  if (/EOF|Invalid data|av\.error|Errno/.test(m)) return 'l\'audio n\'a pas pu être lu';
+  return 'erreur de transcription';
+}
+
+// La voix peut-elle marcher sur CET ordinateur ? La page grise l'interrupteur sinon. Vérifié une fois par minute au plus.
+//  - faster-whisper et `av` < 16 doivent être installés (pip install -e . dans twiin/) ;
+//  - le modèle « small » (~460 Mo) est téléchargé au premier usage : s'il n'est pas encore là, on le dit (besoin de réseau).
+let voiceStatusCache = { at: 0, value: null };
+app.get('/api/audio/status', (req, res) => {
+  if (voiceStatusCache.value && Date.now() - voiceStatusCache.at < 60_000) return res.json(voiceStatusCache.value);
+  const done = (value) => { voiceStatusCache = { at: Date.now(), value }; res.json(value); };
+  const hub = path.join(process.env.HF_HOME || path.join(os.homedir(), '.cache', 'huggingface'), 'hub');
+  const modelHere = fs.existsSync(path.join(hub, 'models--Systran--faster-whisper-small'));
+  let out = '';
+  const py = spawn(PYTHON, ['-c', 'import faster_whisper, av; print(av.__version__)']);
+  const timer = setTimeout(() => py.kill('SIGKILL'), 15_000);
+  py.stdout.on('data', (d) => (out += d));
+  py.on('error', () => { clearTimeout(timer); done({ ready: false, reason: 'Python introuvable' }); });
+  py.on('close', (code) => {
+    clearTimeout(timer);
+    if (code !== 0) return done({ ready: false, reason: 'faster-whisper n\'est pas installé (voir le README : pip install -e .)' });
+    if (parseInt(out, 10) >= 16) return done({ ready: false, reason: 'la bibliothèque « av » est trop récente (il faut une version < 16)' });
+    done({ ready: true, needsDownload: !modelHere });
+  });
+});
+
 // Passages de voix déjà transcrits (voice.json), à heure absolue ; liste vide s'il n'y en a pas.
 function readVoiceCache(dir) {
   try {
@@ -411,7 +444,7 @@ async function transcribeSession(dir) {
     return { events, info: { status: events.length ? 'ok' : 'empty', segments: events.length } };
   } catch (err) {
     console.warn(`⚠️ Voix non transcrite, l'analyse continue sans elle : ${err.message}`);
-    return { events: [], info: { status: 'failed', segments: 0, error: String(err.message).slice(0, 200) } };
+    return { events: [], info: { status: 'failed', segments: 0, reason: voiceReason(err.message), error: String(err.message).slice(0, 200) } };
   }
 }
 

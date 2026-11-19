@@ -231,6 +231,24 @@ try { voiceSwitch.checked = localStorage.getItem('twiin.voice') === '1'; } catch
 voiceSwitch.addEventListener('change', () => {
   try { localStorage.setItem('twiin.voice', voiceSwitch.checked ? '1' : '0'); } catch { /* rien */ }
 });
+// La voix ne peut pas marcher partout (faster-whisper à installer, modèle à télécharger) : le serveur le dit, la page grise
+// l'interrupteur avec la raison, au lieu de laisser l'employé croire que sa voix sera prise en compte.
+let voiceUnavailable = false, voiceNeedsDownload = false;
+const voiceNoteEl = document.getElementById('voiceNote');
+function refreshVoiceNote() {
+  const text = voiceUnavailable ? `Voix indisponible : ${voiceUnavailable}.`
+    : voiceNeedsDownload && voiceSwitch.checked ? 'Premier usage : le modèle de transcription (~460 Mo) se télécharge, il faut du réseau.' : '';
+  voiceNoteEl.textContent = text;
+  voiceNoteEl.hidden = !text;
+}
+fetch('/api/audio/status').then((r) => r.json()).then((st) => {
+  if (!st.ready) {
+    voiceUnavailable = st.reason || 'non disponible sur cet ordinateur'; // texte de la raison (vrai = indisponible)
+    voiceSwitch.checked = false; voiceSwitch.disabled = true;           // le choix mémorisé n'est pas modifié
+  } else voiceNeedsDownload = !!st.needsDownload;
+  refreshVoiceNote();
+}).catch(() => { /* serveur injoignable : on ne bloque rien */ });
+voiceSwitch.addEventListener('change', refreshVoiceNote);
 let voice = null; // { rec, stream, chunks, startedAt, stopped: Promise }
 let voiceWarning = ''; // problème de micro / d'envoi : reste affiché (la ligne d'état est réécrite chaque seconde)
 
@@ -490,7 +508,7 @@ async function stopRecording() {
   startBtn.disabled = false;
   addBtn.disabled = true;
   stopBtn.disabled = true;
-  voiceSwitch.disabled = false;
+  voiceSwitch.disabled = !!voiceUnavailable;
 
   setPrimary(startBtn);
   if (!frames.length) {
@@ -534,7 +552,10 @@ async function analyzeRequest(url, body, message, nScreens) {
     renderWorkflows(data.workflows || [], { autoReco: true });
     const m = data._meta || {};
     const n = data.workflows?.length ?? 0;
-    endAnalysisPanel(true, `${n} tâche${n > 1 ? 's' : ''} trouvée${n > 1 ? 's' : ''}. Relis les étapes ci-dessous.`);
+    // la voix a été perdue ou n'a rien donné : on le dit clairement, sinon l'employé croirait qu'elle a servi
+    if (m.voice?.status === 'failed') voiceWarning = `⚠️ La voix n'a pas pu être transcrite (${m.voice.reason || 'erreur de transcription'}) : l'analyse s'est faite sans elle.`;
+    else if (m.voice?.status === 'empty') voiceWarning = '⚠️ Aucune parole détectée dans l\'enregistrement : l\'analyse s\'est faite sans la voix.';
+    endAnalysisPanel(true, `${n} tâche${n > 1 ? 's' : ''} trouvée${n > 1 ? 's' : ''}. Relis les étapes ci-dessous.${voiceWarning ? ' ' + voiceWarning : ''}`);
     statusEl.textContent = voiceWarning; // seulement l'avertissement micro/voix ; le détail technique (modèle, jetons, coût) est dans le Back
   } catch (err) {
     statusEl.textContent = `Erreur : ${err.message}`;
