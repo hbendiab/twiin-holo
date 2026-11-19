@@ -1116,8 +1116,40 @@ app.delete('/api/sessions/:id', (req, res) => {
   res.json({ ok: true });
 });
 
+// La corbeille garde un enregistrement 30 jours, puis le supprime définitivement.
+const JOURS_CORBEILLE = 30;
+function viderCorbeilleExpiree() {
+  const maintenant = Date.now();
+  for (const id of listeDossiers(CORBEILLE_DIR)) {
+    const supprime = Date.parse(lireJson(path.join(CORBEILLE_DIR, id, 'corbeille.json'))?.deletedAt || '');
+    if (supprime && maintenant - supprime > JOURS_CORBEILLE * 86400000) fs.rmSync(path.join(CORBEILLE_DIR, id), { recursive: true, force: true });
+  }
+}
 app.get('/api/corbeille', (req, res) => {
-  res.json({ items: listeDossiers(CORBEILLE_DIR).map((id) => infoEnregistrement(path.join(CORBEILLE_DIR, id), id)) });
+  viderCorbeilleExpiree();
+  const maintenant = Date.now();
+  res.json({ jours: JOURS_CORBEILLE, items: listeDossiers(CORBEILLE_DIR).map((id) => {
+    const info = infoEnregistrement(path.join(CORBEILLE_DIR, id), id);
+    const supprime = Date.parse(info.supprime_le || '');
+    return { ...info, jours_restants: supprime ? Math.max(0, Math.ceil(JOURS_CORBEILLE - (maintenant - supprime) / 86400000)) : JOURS_CORBEILLE };
+  }) });
+});
+
+// Modifications d'une tâche d'un enregistrement (étapes, nom, résumé) : sauvegardées dans son analysis.json.
+app.put('/api/sessions/:id/analysis/workflows/:idx', (req, res) => {
+  const file = path.join(SESSIONS_DIR, path.basename(req.params.id), 'analysis.json');
+  const an = lireJson(file);
+  const i = Number(req.params.idx);
+  const wfs = an?.result?.workflows;
+  if (!wfs?.[i]) return res.status(404).json({ error: 'Tâche introuvable dans cet enregistrement.' });
+  const b = req.body || {};
+  wfs[i] = { ...wfs[i],
+    name: typeof b.name === 'string' ? b.name : wfs[i].name,
+    summary: typeof b.summary === 'string' ? b.summary : wfs[i].summary,
+    steps: Array.isArray(b.steps) ? b.steps.map(String) : wfs[i].steps,
+    modifie_le: new Date().toISOString() };
+  fs.writeFileSync(file, JSON.stringify(an, null, 2) + '\n');
+  res.json({ ok: true });
 });
 
 app.post('/api/corbeille/:id/restaurer', (req, res) => {

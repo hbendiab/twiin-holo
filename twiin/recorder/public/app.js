@@ -589,6 +589,8 @@ function renderWorkflows(workflows, { example = false, silent = false, autoReco 
 function workflowCard(wf, example = false, collapsed = false) {
   const card = document.createElement('div');
   card.className = 'workflow';
+  // tâche ouverte depuis « Mes enregistrements » : ses modifications sont enregistrées dans son enregistrement
+  if (wf._idx !== undefined && wf.session) { card.dataset.sid = wf.session; card.dataset.idx = String(wf._idx); }
   let original = { name: wf.name, summary: wf.summary, steps: [...(wf.steps || [])] };
   const nSteps = (wf.steps || []).length;
   card.innerHTML = `
@@ -680,6 +682,22 @@ function workflowCard(wf, example = false, collapsed = false) {
     steps: [...stepsEl.querySelectorAll('textarea')].map((t) => t.value.trim()).filter(Boolean),
   });
   setSteps(original.steps);
+  // sauvegarde automatique (après une courte pause de frappe) quand la tâche vient d'un enregistrement précédent
+  if (card.dataset.sid) {
+    let minuteur = null;
+    const enregistrer = async () => {
+      const w = current();
+      try {
+        const r = await fetch(`/api/sessions/${encodeURIComponent(card.dataset.sid)}/analysis/workflows/${card.dataset.idx}`,
+          { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: w.name, summary: w.summary, steps: w.steps }) });
+        if (!r.ok) throw new Error((await r.json()).error || 'erreur');
+        statusEl.textContent = 'Modifications enregistrées dans cet enregistrement.';
+      } catch (e) {
+        statusEl.textContent = `Modifications non enregistrées : ${e.message}`;
+      }
+    };
+    card.addEventListener('input', () => { clearTimeout(minuteur); minuteur = setTimeout(enregistrer, 800); });
+  }
   card.querySelector('.add-step').onclick = () => addStep('').focus();
 
   // ✨ Améliorer : fiabilité pour Holo + process optimisé, avec la liste des changements
@@ -1058,3 +1076,23 @@ function escapeHtml(str) {
   div.textContent = str ?? '';
   return div.innerHTML;
 }
+
+// Ouvert depuis « Mes enregistrements » (?session=ID) : le même écran que juste après un enregistrement,
+// avec les étapes modifiables et sauvegardées dans l'enregistrement.
+iconsReady.then(async () => {
+  const sid = new URLSearchParams(location.search).get('session');
+  if (!sid) return;
+  try {
+    const d = await (await fetch(`/api/sessions/${encodeURIComponent(sid)}`)).json();
+    if (d.error) throw new Error(d.error);
+    const wfs = d.analyse_complete?.result?.workflows || [];
+    if (!wfs.length) {
+      statusEl.textContent = 'Cet enregistrement n\'a pas encore été analysé. Lance l\'analyse depuis « Mes enregistrements ».';
+      return;
+    }
+    renderWorkflows(wfs.map((w, i) => ({ ...w, session: sid, _idx: i })));
+    statusEl.textContent = `Enregistrement « ${d.titre} » ouvert. Tes modifications sont enregistrées automatiquement.`;
+  } catch (e) {
+    statusEl.textContent = `Ouverture impossible : ${e.message}`;
+  }
+});
