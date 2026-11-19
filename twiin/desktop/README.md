@@ -27,3 +27,12 @@ Enregistrement de l'écran et audio système*. Coche-le, puis quitte et relance 
 `main.js` (fenêtre, barre des menus, raccourci, capture), `preload.js` (pont), `loading.html`. Le contenu de la fenêtre
 est le panneau de l'extension Chrome (`extension/panel.js`, `capture.js`), servi par le serveur à `/ext/desktop.html`,
 avec `extension/desktop-shim.js` qui remplace les fonctions propres à Chrome.
+
+## Capture vocale (micro)
+Interrupteur **Capture vocale** en bas de la fenêtre (désactivé par défaut). Pendant l'enregistrement, le micro est capté et
+envoyé au serveur Twiin du Mac, qui le transcrit **localement** (Whisper) à l'analyse : la voix ne quitte pas le Mac. Code :
+`extension/voice.js` (module partagé) et `desktop/voice-permissions.js` (autorisation du micro).
+- Au premier usage, macOS demande l'autorisation du **micro**. En `npm start`, la demande concerne Electron / le Terminal
+  (*Réglages Système → Confidentialité et sécurité → Micro*) ; relance l'app après l'avoir accordée.
+- Si l'app est un jour empaquetée, ajouter `NSMicrophoneUsageDescription` aux informations de l'app (`extendInfo` d'electron-builder).
+- Si la voix locale n'est pas encore installée (installation automatique au lancement du serveur), l'interrupteur est grisé avec la raison.

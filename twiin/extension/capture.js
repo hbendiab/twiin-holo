@@ -39,11 +39,13 @@ const Capture = (() => {
   async function start(opts) {
     if (S.recording) return addScreen(opts);
     const stream = await ask(opts); // avant tout le reste : le clic de l'employé n'est valable qu'un instant
+    const mic = await globalThis.Voice?.open(); // voix : seulement si voice.js est chargé et l'interrupteur activé
     Object.assign(S, { recording: true, analyzing: false, phase: null, startedAt: Date.now(), frames: 0, screens: [], thumbs: [], error: null, result: null });
     shared = []; nextScreen = 1; uploads = []; uploadErrors = 0; journalNext = 0;
     addStream(stream);
     try { sessionId = (await (await post('/api/actions/start', { startedAt: S.startedAt })).json()).session || null; } catch { sessionId = null; }
     if (!sessionId) { S.error = 'Twiin ne répond pas sur ce Mac : enregistrement impossible.'; await stop({ cancel: true }); }
+    if (sessionId) globalThis.Voice?.start(mic); else mic?.getTracks().forEach((t) => t.stop()); // micro seulement si l'enregistrement a démarré
     emit();
   }
   async function addScreen(opts) { addStream(await ask(opts)); }
@@ -126,10 +128,11 @@ const Capture = (() => {
     for (const s of S.screens) s.stream.getTracks().forEach((t) => t.stop());
     S.screens = [];
     stopping = false;
+    const voiceSent = cancel ? globalThis.Voice?.cancel() : globalThis.Voice?.stop(sessionId); // l'audio part pendant l'envoi des images
     if (cancel) { S.analyzing = false; return emit(); }
     if (!S.frames) { Object.assign(S, { analyzing: false, error: 'Aucune image gardée.' }); return emit(); }
 
-    await Promise.allSettled(uploads);
+    await Promise.allSettled([...uploads, voiceSent]);
     const poll = setInterval(async () => {
       try { const p = await (await fetch(`${base}/api/analysis/progress`, { headers: hdr(false) })).json(); if (p.phase !== 'idle') { S.phase = p.phase; emit(); } } catch { /* rien */ }
     }, 1000);
@@ -137,6 +140,7 @@ const Capture = (() => {
       const data = await (await post('/api/generate-workflows', { session: sessionId, startedAt: S.startedAt, screens: shared })).json();
       if (data.error) throw new Error(data.error);
       S.result = { workflows: data.workflows || [], uploadErrors };
+      globalThis.Voice?.report(data._meta?.voice);
     } catch (e) {
       S.error = `L'analyse n'a pas abouti : ${e.message}`;
     } finally {

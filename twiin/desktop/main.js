@@ -5,6 +5,7 @@
 const { app, BrowserWindow, Tray, Menu, globalShortcut, desktopCapturer, session, shell, ipcMain, nativeImage, screen, Notification } = require('electron');
 const path = require('node:path');
 const { spawn } = require('node:child_process');
+const { setupVoice } = require('./voice-permissions'); // autorisation du micro (capture vocale)
 
 const BASE = 'http://localhost:3000';
 const RECORDER_DIR = path.join(__dirname, '..', 'recorder');
@@ -123,6 +124,7 @@ app.whenReady().then(async () => {
   // Icône dans le Dock (et ⌘Tab) : sur un Mac à encoche, l'icône de la barre des menus peut être masquée
   app.dock?.setIcon(nativeImage.createFromPath(path.join(__dirname, 'assets', 'icon.png')));
   setupCapture();
+  setupVoice(session.defaultSession, new URL(BASE).origin);
   createTray();
   createWindow();
   if (!globalShortcut.register(SHORTCUT, toggle)) console.warn(`Raccourci ${SHORTCUT} déjà pris par une autre appli.`);

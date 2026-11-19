@@ -7,6 +7,7 @@
 <link rel="stylesheet" href="popup.css">
 <link rel="stylesheet" href="panel.css">
 <link rel="stylesheet" href="desktop.css">
+<link rel="stylesheet" href="voice.css">
 </head>
 <body>
   <header class="top">
@@ -28,10 +29,12 @@
 
   <footer class="foot">
     <span class="keys"><kbd>⌥⌘T</kbd> afficher / masquer Twiin, depuis n'importe quelle appli · Twiin n'apparaît pas dans tes enregistrements.</span>
+    <span id="voiceSlot"></span>
     <label class="switch" hidden><input type="checkbox" id="bubbleToggle"></label>
     <button id="resetHidden" class="link" type="button" hidden></button>
   </footer>
 <script src="desktop-shim.js"></script>
+<script src="voice.js"></script>
 <script src="capture.js"></script>
 <script src="panel.js"></script>
 <script src="desktop.js"></script>
