@@ -985,6 +985,9 @@ async function createN8n(wf, verdict, el) {
         } else if (e.type === 'imported') {
           st.textContent = 'Importé dans n8n. Test en cours…';
           links.innerHTML = `<a href="${e.url}" target="_blank">Ouvrir le workflow dans n8n</a>`;
+        } else if (e.type === 'info') {
+          // la raison exacte d'un blocage (ex. n8n a refusé le lancement) est affichée sous le plan
+          links.insertAdjacentHTML('beforeend', `<p class="note warn">${escapeHtml(e.text)}</p>`);
         } else if (e.type === 'executing') {
           links.innerHTML += ` · <a href="${e.url}" target="_blank">Voir l'exécution n° ${e.execution} dans n8n</a>`;
         } else if (e.type === 'node') {

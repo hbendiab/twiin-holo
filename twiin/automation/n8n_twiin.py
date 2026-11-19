@@ -207,6 +207,8 @@ def execute_mcp(wid, body=None):
     res, err = mcp("execute_workflow", {"workflowId": wid, "executionMode": "manual", "triggerNodeName": f"POST /twiin-{wid}",
                                         "inputs": {"webhookData": {"method": "POST", "body": body or {"source": "Twiin"}}}})
     if err:
+        # n8n a refusé le lancement : on note la raison dans la page (avant, elle était perdue)
+        ev("info", text=f"n8n a refusé le lancement : {str(res)[:300] or 'réponse vide'}")
         return False, res, None
     exec_id = (res or {}).get("executionId") if isinstance(res, dict) else None
     ev("executing", execution=exec_id, url=f"{ENV.get('N8N_LOCAL_URL') or 'http://localhost:5678'}/workflow/{wid}/executions/{exec_id}")
