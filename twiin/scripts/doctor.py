@@ -13,6 +13,11 @@ import shutil
 import subprocess
 import sys
 import urllib.request
+try:  # certificats HTTPS (Python de python.org sur Mac)
+    import certifi
+    os.environ.setdefault("SSL_CERT_FILE", certifi.where())
+except ImportError:
+    pass
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
