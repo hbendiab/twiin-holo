@@ -546,7 +546,8 @@ function renderWorkflows(workflows, { example = false, silent = false, autoReco 
   if (workflows.length && !silent) setStep(Math.max(2, Number(document.body.dataset.view) || 2)); // ouvert depuis la Reco : on y reste
   resultsEl.innerHTML = '';
   document.getElementById('example').hidden = true;
-  workflows.forEach((wf) => resultsEl.appendChild(workflowCard(wf, example)));
+  // silent = tâche d'un enregistrement précédent (rechargée à l'ouverture) : ses étapes sont repliées par défaut
+  workflows.forEach((wf) => resultsEl.appendChild(workflowCard(wf, example, silent)));
   document.getElementById('noTask').hidden = resultsEl.children.length > 0 || Number(document.body.dataset.view) !== LAST_VIEW;
   if (!silent) setPrimary(resultsEl.querySelector('.btn-go-reco'));
   // Reco automatique : préparée dès la fin de l'analyse, prête quand l'employé ouvre la page Recommandation
@@ -554,7 +555,7 @@ function renderWorkflows(workflows, { example = false, silent = false, autoReco 
   if (Number(document.body.dataset.view) === LAST_VIEW) resultsEl.querySelectorAll('.workflow').forEach((c) => c._autoReco?.());
 }
 
-function workflowCard(wf, example = false) {
+function workflowCard(wf, example = false, collapsed = false) {
   const card = document.createElement('div');
   card.className = 'workflow';
   let original = { name: wf.name, summary: wf.summary, steps: [...(wf.steps || [])] };
@@ -564,7 +565,7 @@ function workflowCard(wf, example = false) {
     <div class="apps-strip"></div>
     <p class="wf-summary" hidden>${escapeHtml(wf.summary || '')}</p>
     <div class="part-relire">
-      <div class="card-step">${nSteps} étapes · corrige si besoin</div>
+      <div class="card-step steps-toggle" role="button" tabindex="0" style="cursor:pointer"></div>
       <ol class="steps"></ol>
       <div class="wf-actions relire-actions"><button class="icon-btn add-step">+ Ajouter une étape</button>
         <button class="btn-go-reco" type="button">Voir la recommandation →</button></div>
@@ -589,6 +590,16 @@ function workflowCard(wf, example = false) {
       <div class="wf-actions"><button class="btn-reco" hidden>Réessayer</button></div>
     </section>`;
   const stepsEl = card.querySelector('.steps');
+  // Menu déroulant : cliquer sur le titre replie ou déplie la liste des étapes (repliée pour une tâche précédente)
+  const toggleEl = card.querySelector('.steps-toggle');
+  const setStepsOpen = (open) => {
+    stepsEl.hidden = !open;
+    toggleEl.setAttribute('aria-expanded', String(open));
+    toggleEl.textContent = `${open ? '▾' : '▸'} ${nSteps} étapes · corrige si besoin`;
+  };
+  toggleEl.addEventListener('click', () => setStepsOpen(stepsEl.hidden));
+  toggleEl.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setStepsOpen(stepsEl.hidden); } });
+  setStepsOpen(!collapsed);
   const stripEl = card.querySelector('.apps-strip');
   // Logo de l'outil de chaque étape. Une étape qui ne cite aucun outil reprend celui de l'étape d'avant (logo pâle).
   const refreshIcons = () => {
