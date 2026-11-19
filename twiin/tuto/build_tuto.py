@@ -173,7 +173,7 @@ def voix_pour(nom_tuto):
 
 
 def tts(text, out: Path, vid):
-    r = requests.post(f"https://api.elevenlabs.io/v1/text-to-speech/{vid}?output_format=mp3_44100_192",
+    r = requests.post(f"https://api.elevenlabs.io/v1/text-to-speech/{vid}?output_format=mp3_44100_128",
                       headers={"xi-api-key": ENV["ELEVENLABS_API_KEY"].strip(), "Content-Type": "application/json"},
                       json={"text": text, "model_id": "eleven_multilingual_v2"}, timeout=120)
     if not r.ok:

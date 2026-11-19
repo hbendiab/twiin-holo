@@ -51,7 +51,7 @@ SCENES = [
 
 
 def tts(text, out: Path):
-    r = requests.post(f"https://api.elevenlabs.io/v1/text-to-speech/{VOIX}?output_format=mp3_44100_192",
+    r = requests.post(f"https://api.elevenlabs.io/v1/text-to-speech/{VOIX}?output_format=mp3_44100_128",
                       headers={"xi-api-key": ENV["ELEVENLABS_API_KEY"], "Content-Type": "application/json"},
                       json={"text": text, "model_id": "eleven_multilingual_v2",
                             "voice_settings": {"stability": 0.5, "similarity_boost": 0.8, "style": 0.15, "speed": 1.03}}, timeout=120)
