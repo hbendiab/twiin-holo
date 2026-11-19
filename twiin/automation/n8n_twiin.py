@@ -129,7 +129,9 @@ def compile_plan(plan):
             rules = json.dumps(b.get("rules") or {}, ensure_ascii=False)
             code = (
                 f"const rules = {rules};\n"
+                # un bloc Holo range ses valeurs dans .data : on les remonte au niveau de la ligne pour les vérifier
                 "const row = { ...$json };\n"
+                "if (row.data && typeof row.data === 'object') Object.assign(row, row.data);\n"
                 "const problems = [];\n"
                 "for (const [col, r] of Object.entries(rules)) {\n"
                 "  const v = String(row[col] ?? '').trim();\n"
