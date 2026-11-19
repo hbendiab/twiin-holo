@@ -20,6 +20,8 @@ dotenv.config({ path: path.join(REPO_ROOT, '.env') });
 const app = express();
 app.use(express.json({ limit: '200mb' }));
 app.use(express.static('public'));
+// Panneau de l'extension Chrome, aussi utilisé tel quel par l'app Mac (desktop/, Electron) : /ext/desktop.html
+app.use('/ext', express.static(path.join(REPO_ROOT, 'extension')));
 // supabase-js pour la page (servi depuis le projet, sans CDN)
 app.use('/vendor/supabase', express.static(path.join(path.dirname(fileURLToPath(import.meta.url)), 'node_modules', '@supabase', 'supabase-js', 'dist', 'umd')));
 
@@ -236,6 +238,10 @@ so that an agent can reproduce it identically. Rules:
   recommendation, no summary or report step, no extra checks, no "next company on the list".
 - Do NOT generalize: no placeholders, no "for each", keep the concrete company, file, page and values of this session.
 - Do NOT invent values or steps you cannot see. If something is unclear, describe what is visible.
+- Ignore Twiin itself: starting or stopping the recording, the Twiin page, side panel or window, and its buttons
+  (« Enregistrer ma tâche », « Terminer et analyser »…) are not part of the task.
+- Write "name", "summary", "why_daily" and "steps" in French (the employee reads them), tutoiement not needed:
+  infinitive style (« Cliquer sur… »). Keep on-screen labels and values exactly as shown, in their own language.
 - If the user made a mistake and corrected it, keep only the corrected final action.
 - IGNORE the recording tool itself: the « Twiin · Enregistrement » recorder page (localhost), its Start/Stop/« Ajouter un écran »
   buttons and the browser's screen-sharing dialogs are NOT part of the task. Never write a step about them.
@@ -1019,7 +1025,8 @@ const PROFILE_PATH = path.join(WORKFLOWS_DIR, 'profile.json');       // fiche em
 const AUDIT_DIR = path.join(WORKFLOWS_DIR, 'audit');                 // résultats du scan (exclus de git)
 const VOICE_CACHE = path.join(WORKFLOWS_DIR, 'voice-cache');         // phrases de Twiin déjà dites (évite de repayer la voix)
 const ELEVEN_KEY = process.env.ELEVENLABS_API_KEY;
-const ELEVEN_VOICE = process.env.ELEVENLABS_VOICE_ID || 'XrExE9yKIg1WjnnlVkGX'; // Matilda
+// Voix de l'audit : Lucie (française native, ton de conseillère, qualité studio). ELEVENLABS_AUDIT_VOICE_ID pour en changer.
+const ELEVEN_VOICE = process.env.ELEVENLABS_AUDIT_VOICE_ID || 'YxrwjAKoUKULGd0g8K9Y';
 const ELEVEN_STT_MODEL = process.env.ELEVENLABS_STT_MODEL || 'scribe_v2';
 
 // La voix et la transcription coûtent des crédits ElevenLabs : réservées à ce Mac (pas aux autres postes du réseau).
@@ -1093,7 +1100,7 @@ app.get('/api/voice/say', async (req, res) => {
     fs.mkdirSync(VOICE_CACHE, { recursive: true });
     const file = path.join(VOICE_CACHE, crypto.createHash('sha1').update(`${ELEVEN_VOICE}|${text}`).digest('hex') + '.mp3');
     if (!fs.existsSync(file)) {
-      const r = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${ELEVEN_VOICE}?output_format=mp3_44100_64`, {
+      const r = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${ELEVEN_VOICE}?output_format=mp3_44100_128`, {
         method: 'POST', headers: { 'xi-api-key': ELEVEN_KEY, 'Content-Type': 'application/json' },
         body: JSON.stringify({ text, model_id: 'eleven_multilingual_v2' }),
       });
@@ -1348,8 +1355,19 @@ async function n8nApi(pathname, opts = {}) {
   if (!r.ok) throw new Error(`n8n : ${r.status} ${d.message || ''}`.trim());
   return d;
 }
-const FREQS = { manual: null, daily: '0 9 * * *', weekly: '0 9 * * 1', monthly: '0 9 1 * *' };
-const FREQ_LABEL = { manual: 'Manuelle', daily: 'Chaque jour à 9 h', weekly: 'Chaque lundi à 9 h', monthly: 'Le 1er du mois à 9 h' };
+// Fréquence × heure. Les heures proposées sont des créneaux où le Mac est souvent libre (avant l'arrivée, déjeuner, soir).
+const FREQS = { manual: null, daily: '* * *', weekly: '* * 1', monthly: '1 * *' };   // jour du mois, mois, jour de semaine
+const FREQ_TXT = { manual: 'Manuelle', daily: 'Chaque jour', weekly: 'Chaque lundi', monthly: 'Le 1er du mois' };
+const HEURES = ['08:30', '09:00', '12:30', '18:30'];
+const cronOf = (freq, heure = '09:00') => { const [h, m] = heure.split(':').map(Number); return FREQS[freq] ? `${m} ${h} ${FREQS[freq]}` : null; };
+function freqOfCron(cron) {
+  const m = /^(\d+) (\d+) (.+)$/.exec(cron || '');
+  if (!m) return { freq: cron ? 'custom' : 'manual', heure: null };
+  const freq = Object.keys(FREQS).find((k) => FREQS[k] === m[3]) || 'custom';
+  return { freq, heure: `${m[2].padStart(2, '0')}:${m[1].padStart(2, '0')}` };
+}
+const heureTxt = (h) => (h ? h.replace(':', ' h ').replace(' h 00', ' h') : '');
+const freqLabel = (freq, heure) => (freq === 'manual' ? 'Manuelle' : freq === 'custom' ? 'Personnalisée' : `${FREQ_TXT[freq]} à ${heureTxt(heure)}`);
 const BLOCK_KIND = (n) => (/api\/holo\/run/.test(n.parameters?.url || '') ? 'holo' : n.type.endsWith('.googleSheets') ? 'sheets'
   : n.type.endsWith('.code') ? (/Vérification|rules/.test(n.parameters?.jsCode || '') ? 'verify' : 'code') : n.type.endsWith('.httpRequest') ? 'http' : 'other');
 let automationRun = null; // { id, proc, startedAt }
@@ -1357,7 +1375,7 @@ let automationRun = null; // { id, proc, startedAt }
 async function automationSummary(w) {
   const sched = w.nodes.find((n) => n.type.endsWith('.scheduleTrigger'));
   const cron = sched && !sched.disabled ? sched.parameters?.rule?.interval?.[0]?.expression : null;
-  const freq = Object.keys(FREQS).find((k) => FREQS[k] && FREQS[k] === cron) || (cron ? 'custom' : 'manual');
+  const { freq, heure } = freqOfCron(cron);
   const sheetNode = w.nodes.find((n) => n.type.endsWith('.googleSheets'));
   const sheetId = sheetNode?.parameters?.documentId?.value;
   const gid = sheetNode?.parameters?.sheetName?.value;
@@ -1366,7 +1384,7 @@ async function automationSummary(w) {
   const done = execs.filter((e) => e.stoppedAt);
   const dur = done.map((e) => (new Date(e.stoppedAt) - new Date(e.startedAt)) / 1000);
   return {
-    id: w.id, name: w.name.replace(/^Twiin — /, ''), active: w.active, freq, freq_label: FREQ_LABEL[freq] || cron, cron,
+    id: w.id, name: w.name.replace(/^Twiin — /, ''), active: w.active, freq, heure, freq_label: freqLabel(freq, heure), cron,
     blocks: w.nodes.filter((n) => !/(webhook|scheduleTrigger|manualTrigger)$/i.test(n.type)).map((n) => {
       const kind = BLOCK_KIND(n);
       if (kind !== 'holo') return { name: n.name, kind };
@@ -1380,6 +1398,7 @@ async function automationSummary(w) {
     stats: { total: execs.length, success: execs.filter((e) => e.status === 'success').length,
              avg_s: dur.length ? Math.round(dur.reduce((a, b) => a + b, 0) / dur.length) : null, last: execs[0]?.startedAt || null },
     running: automationRun?.id === w.id,
+    plan: lirePlans().find((p) => p.id === w.id)?.at || null,
     n8n_url: `${N8N_URL}/workflow/${w.id}`, created: w.createdAt, updated: w.updatedAt,
   };
 }
@@ -1398,7 +1417,8 @@ app.get('/api/automations', async (req, res) => {
     res.status(500).json({ error: e.message });
   }
 });
-app.get('/api/automations/:id', async (req, res) => {
+app.get('/api/automations/:id', async (req, res, next) => {
+  if (req.params.id === 'etat') return next(); // route du bandeau, déclarée plus bas
   try { res.json(await automationSummary(await n8nApi(`/workflows/${encodeURIComponent(req.params.id)}`))); }
   catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -1407,6 +1427,7 @@ app.get('/api/automations/:id', async (req, res) => {
 app.post('/api/automations/:id/schedule', async (req, res) => {
   try {
     const freq = req.body?.freq;
+    const heure = HEURES.includes(req.body?.heure) ? req.body.heure : '09:00';
     if (!(freq in FREQS)) return res.status(400).json({ error: 'Fréquence inconnue.' });
     const id = encodeURIComponent(req.params.id);
     const w = await n8nApi(`/workflows/${id}`);
@@ -1414,14 +1435,14 @@ app.post('/api/automations/:id/schedule', async (req, res) => {
     if (!sched && freq !== 'manual') throw new Error('Cette automatisation n\'a pas de déclencheur planifié.');
     if (sched) {
       sched.disabled = freq === 'manual';
-      if (FREQS[freq]) sched.parameters = { rule: { interval: [{ field: 'cronExpression', expression: FREQS[freq] }] } };
+      if (FREQS[freq]) sched.parameters = { rule: { interval: [{ field: 'cronExpression', expression: cronOf(freq, heure) }] } };
     }
     const keep = ['executionOrder', 'timezone', 'saveDataErrorExecution', 'saveDataSuccessExecution', 'saveManualExecutions',
                   'saveExecutionProgress', 'executionTimeout', 'errorWorkflow', 'callerPolicy'];
     const settings = Object.fromEntries(Object.entries(w.settings || {}).filter(([k]) => keep.includes(k)));
     await n8nApi(`/workflows/${id}`, { method: 'PUT', body: JSON.stringify({ name: w.name, nodes: w.nodes, connections: w.connections, settings }) });
     await n8nApi(`/workflows/${id}/${freq === 'manual' ? 'deactivate' : 'activate'}`, { method: 'POST' });
-    console.log(`Automatisation ${w.id} : ${FREQ_LABEL[freq]}`);
+    console.log(`Automatisation ${w.id} : ${freqLabel(freq, heure)}`);
     await sb(`automations?n8n_id=eq.${encodeURIComponent(w.id)}`, { method: 'PATCH', prefer: 'return=minimal', body: { freq, active: freq !== 'manual' } });
     res.json(await automationSummary(await n8nApi(`/workflows/${id}`)));
   } catch (e) {
@@ -1431,16 +1452,97 @@ app.post('/api/automations/:id/schedule', async (req, res) => {
 });
 
 // Lancer maintenant (une exécution de test, comme à la création). Les blocs Holo prennent la souris du Mac.
-app.post('/api/automations/:id/run', async (req, res) => {
-  if (automationRun || n8nRun?.running) return res.status(409).json({ error: 'Une automatisation tourne déjà.' });
-  if (replay?.running) return res.status(409).json({ error: 'Holo est occupé par un rejeu.' });
-  try { await ensureN8n(); } catch (e) { return res.status(500).json({ error: e.message }); }
-  const id = req.params.id;
+// Notification macOS (Centre de notifications) : l'employé est prévenu même s'il n'est pas sur la page Twiin.
+function notifier(titre, texte) {
+  const q = (x) => String(x).replace(/["\\]/g, ' ');
+  spawn('osascript', ['-e', `display notification "${q(texte)}" with title "${q(titre)}" sound name "Glass"`]);
+}
+// Durée estimée : la moyenne des exécutions passées, sinon ~2 min 30 par bloc Holo sur le Mac
+const estimation = (a) => a.stats?.avg_s || Math.max(60, a.blocks.filter((b) => b.kind === 'holo').length * 150);
+
+async function lancerAutomatisation(id, origine = 'à la main') {
+  if (automationRun || n8nRun?.running) throw new Error('Une automatisation tourne déjà.');
+  if (replay?.running) throw new Error('Holo est occupé par un rejeu.');
+  await ensureN8n();
+  const a = await automationSummary(await n8nApi(`/workflows/${encodeURIComponent(id)}`));
+  const surMac = a.blocks.filter((b) => b.kind === 'holo' && b.env !== 'cloud').length;
+  const est = estimation(a);
   const proc = spawn(PYTHON, ['-u', N8N_GEN, '--run', id], { cwd: REPO_ROOT });
   proc.stderr.on('data', (d) => process.stderr.write(`[n8n] ${d}`));
-  automationRun = { id, proc, startedAt: Date.now() };
-  proc.on('close', (code) => { console.log(`Automatisation ${id} lancée à la main : ${code === 0 ? 'succès' : 'échec'}`); automationRun = null; });
-  res.json({ ok: true });
+  automationRun = { id, name: a.name, proc, startedAt: Date.now(), estimate_s: est, sur_mac: surMac, stopped: false };
+  notifier('Twiin', surMac
+    ? `« ${a.name} » utilise ton Mac pendant environ ${Math.ceil(est / 60)} min. Ne touche à rien, double Échap pour arrêter.`
+    : `« ${a.name} » tourne en arrière-plan : tu peux continuer à travailler.`);
+  proc.on('close', (code) => {
+    const run = automationRun;
+    automationRun = null;
+    const ok = code === 0 && !run?.stopped;
+    console.log(`Automatisation ${id} (${origine}) : ${run?.stopped ? 'arrêtée' : ok ? 'succès' : 'échec'}`);
+    backLog('automatisation', { id, origine, ok, arretee: !!run?.stopped, seconds: Math.round((Date.now() - (run?.startedAt || Date.now())) / 1000) });
+    notifier('Twiin', run?.stopped ? `« ${a.name} » arrêtée.` : ok ? `« ${a.name} » terminée. Ton Mac est libre.`
+      : `« ${a.name} » n'a pas abouti. Détails dans Mes automatisations.`);
+  });
+  return automationRun;
+}
+app.post('/api/automations/:id/run', async (req, res) => {
+  try { await lancerAutomatisation(req.params.id); res.json({ ok: true }); }
+  catch (e) { res.status(409).json({ error: e.message }); }
+});
+
+// Arrêter : Holo ET l'exécution n8n (sinon n8n relance le bloc suivant)
+async function arreterTout() {
+  if (automationRun) { automationRun.stopped = true; automationRun.proc.kill('SIGTERM'); }
+  if (n8nRun?.running) n8nRun.proc.kill('SIGTERM');
+  if (replay?.running) replay.proc.kill('SIGTERM');
+  let stoppees = 0;
+  try {
+    const en = (await n8nApi('/executions?status=running&limit=20')).data || [];
+    for (const e of en) { await n8nApi(`/executions/${e.id}/stop`, { method: 'POST' }).catch(() => {}); stoppees++; }
+  } catch { /* n8n arrêté : rien à couper */ }
+  setTimeout(() => { if (replay?.running) replay.proc.kill('SIGKILL'); }, 5000);
+  return stoppees;
+}
+app.post('/api/automations/stop', async (req, res) => res.json({ ok: true, executions_arretees: await arreterTout() }));
+
+// Lancement programmé à un créneau (une fois) : pause déjeuner, fin de journée, demain matin…
+const PLANS_PATH = path.join(REPO_ROOT, 'workflows', 'automations-programmees.json');
+const lirePlans = () => { try { return JSON.parse(fs.readFileSync(PLANS_PATH, 'utf8')); } catch { return []; } };
+const ecrirePlans = (p) => { fs.mkdirSync(path.dirname(PLANS_PATH), { recursive: true }); fs.writeFileSync(PLANS_PATH, JSON.stringify(p, null, 2)); };
+app.post('/api/automations/:id/plan', (req, res) => {
+  const at = new Date(req.body?.at);
+  if (Number.isNaN(at.getTime()) || at.getTime() < Date.now() - 60000) return res.status(400).json({ error: 'Heure invalide.' });
+  const plans = lirePlans().filter((p) => p.id !== req.params.id);
+  plans.push({ id: req.params.id, name: req.body?.name || req.params.id, at: at.toISOString(), prevenu: false });
+  ecrirePlans(plans);
+  res.json({ ok: true, at: at.toISOString() });
+});
+app.delete('/api/automations/:id/plan', (req, res) => { ecrirePlans(lirePlans().filter((p) => p.id !== req.params.id)); res.json({ ok: true }); });
+setInterval(async () => {
+  const plans = lirePlans();
+  if (!plans.length) return;
+  let change = false;
+  for (const p of plans) {
+    const reste = new Date(p.at).getTime() - Date.now();
+    if (!p.prevenu && reste <= 2 * 60000 && reste > 0) { // prévenir 2 min avant
+      notifier('Twiin', `Dans 2 min, « ${p.name} » va utiliser ton Mac. Pour reporter : Mes automatisations.`);
+      p.prevenu = true; change = true;
+    }
+    if (reste <= 0 && !automationRun && !n8nRun?.running && !replay?.running) {
+      p.lance = true; change = true;
+      lancerAutomatisation(p.id, 'programmée').catch((e) => notifier('Twiin', `« ${p.name} » n'a pas pu démarrer : ${e.message}`));
+    }
+  }
+  if (change) ecrirePlans(plans.filter((p) => !p.lance));
+}, 20000);
+
+// État pour le bandeau commun des pages : ce qui tourne, depuis quand, temps estimé, prochain lancement programmé
+app.get('/api/automations/etat', (req, res) => {
+  const r = automationRun;
+  const prochain = lirePlans().sort((x, y) => x.at.localeCompare(y.at))[0] || null;
+  if (r) return res.json({ running: true, name: r.name, sur_mac: r.sur_mac, elapsed_s: Math.round((Date.now() - r.startedAt) / 1000), estimate_s: r.estimate_s, prochain });
+  if (n8nRun?.running) return res.json({ running: true, name: 'Création d\'une automatisation', sur_mac: replay?.running && replay.env !== 'cloud' ? 1 : 0, elapsed_s: null, estimate_s: null, prochain });
+  if (replay?.running) return res.json({ running: true, name: 'Holo', sur_mac: replay.env !== 'cloud' ? 1 : 0, elapsed_s: null, estimate_s: null, prochain });
+  res.json({ running: false, prochain });
 });
 
 // ════════════════════════════════════════════════════════════════════════════════════════════════════════════════

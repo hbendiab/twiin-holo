@@ -52,3 +52,6 @@ workflows/hotkey.log
 workflows/server.log
 workflows/back-log.jsonl
 workflows/audit2/
+workflows/automations-programmees.json
+desktop/node_modules/
+tuto/video/public/pitch/

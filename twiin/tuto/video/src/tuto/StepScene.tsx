@@ -13,11 +13,16 @@ import {
 import { COLORS, FONT, type Scene, type Shot } from "./types";
 
 // Zone où s'affiche la capture (sous le bandeau, au-dessus des sous-titres)
-const AREA = { x: 80, y: 176, w: 1760, h: 590 };
+const AREA = { x: 80, y: 150, w: 1760, h: 700 };
 
 type ShotProps = { readonly shot: Shot; readonly duration: number };
 
-// Une capture de Holo : zoom lent vers l'endroit cliqué + cercle qui pulse sur le clic.
+// Mouvement calme, au rythme de la voix off :
+//  1. plan large et fixe (on découvre l'écran) ;
+//  2. zoom doux vers l'endroit cliqué pendant que la voix l'explique ;
+//  3. cercle sur le clic, qui pulse lentement.
+// Sans clic (résultat d'une saisie) : très léger travelling, presque fixe.
+const ZOOM = 1.6;
 const ShotView: React.FC<ShotProps> = ({ shot, duration }) => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
@@ -26,6 +31,14 @@ const ShotView: React.FC<ShotProps> = ({ shot, duration }) => {
   const h = shot.h * ratio;
   const cx = shot.click ? shot.click.x * 100 : 50;
   const cy = shot.click ? shot.click.y * 100 : 50;
+  const zoomStart = Math.round(duration * 0.3);
+  const zoomEnd = Math.max(zoomStart + Math.round(1.2 * fps), Math.round(duration * 0.62));
+  const scale = shot.click
+    ? interpolate(frame, [zoomStart, zoomEnd], [1, ZOOM], { extrapolateLeft: "clamp", extrapolateRight: "clamp", easing: Easing.bezier(0.45, 0, 0.2, 1) })
+    : interpolate(frame, [0, duration], [1, 1.03], { extrapolateLeft: "clamp", extrapolateRight: "clamp" });
+  const ringFrom = zoomEnd - Math.round(0.2 * fps);
+  const period = Math.round(1.6 * fps);
+  const pulse = frame < ringFrom ? 0 : ((frame - ringFrom) % period) / period;
 
   return (
     <AbsoluteFill style={{ justifyContent: "center", alignItems: "center", top: AREA.y, height: AREA.h }}>
@@ -37,21 +50,11 @@ const ShotView: React.FC<ShotProps> = ({ shot, duration }) => {
           overflow: "hidden",
           borderRadius: 18,
           border: `2px solid ${COLORS.line}`,
-          opacity: interpolate(frame, [0, 0.3 * fps], [0, 1], { extrapolateLeft: "clamp", extrapolateRight: "clamp" }),
+          boxShadow: "0 30px 80px -30px rgba(0,0,0,0.7)",
+          opacity: interpolate(frame, [0, 0.5 * fps], [0, 1], { extrapolateLeft: "clamp", extrapolateRight: "clamp" }),
         }}
       >
-        <div
-          style={{
-            position: "absolute",
-            inset: 0,
-            transformOrigin: `${cx}% ${cy}%`,
-            scale: interpolate(frame, [0, duration], [1, shot.click ? 1.35 : 1.06], {
-              extrapolateLeft: "clamp",
-              extrapolateRight: "clamp",
-              easing: Easing.bezier(0.33, 0, 0.2, 1),
-            }),
-          }}
-        >
+        <div style={{ position: "absolute", inset: 0, transformOrigin: `${cx}% ${cy}%`, scale }}>
           <CanvasImage src={staticFile(shot.src)} width={w} height={h} fit="fill" premountFor={fps} />
           {shot.click ? (
             <div
@@ -59,21 +62,14 @@ const ShotView: React.FC<ShotProps> = ({ shot, duration }) => {
                 position: "absolute",
                 left: `${cx}%`,
                 top: `${cy}%`,
-                width: 54,
-                height: 54,
-                marginLeft: -27,
-                marginTop: -27,
+                width: 46 / ZOOM,
+                height: 46 / ZOOM,
+                marginLeft: -23 / ZOOM,
+                marginTop: -23 / ZOOM,
                 borderRadius: "50%",
-                border: `5px solid ${COLORS.click}`,
-                boxShadow: `0 0 0 8px rgba(255,107,91,0.25)`,
-                scale: interpolate(frame % (0.9 * fps), [0, 0.9 * fps], [0.7, 1.25], {
-                  extrapolateLeft: "clamp",
-                  extrapolateRight: "clamp",
-                }),
-                opacity: interpolate(frame, [0.3 * fps, 0.6 * fps], [0, 1], {
-                  extrapolateLeft: "clamp",
-                  extrapolateRight: "clamp",
-                }),
+                border: `${4 / ZOOM}px solid ${COLORS.click}`,
+                boxShadow: `0 0 0 ${pulse * 18 / ZOOM}px rgba(255,107,91,${0.35 * (1 - pulse)})`,
+                opacity: interpolate(frame, [ringFrom, ringFrom + 0.4 * fps], [0, 1], { extrapolateLeft: "clamp", extrapolateRight: "clamp" }),
               }}
             />
           ) : null}
@@ -90,6 +86,7 @@ export const StepScene: React.FC<Props> = ({ scene, index, total }) => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
   const per = Math.max(1, Math.floor(scene.durationInFrames / Math.max(1, scene.shots.length)));
+  const overlap = Math.round(0.5 * fps); // fondu entre deux images
 
   return (
     <AbsoluteFill style={{ backgroundColor: COLORS.bg, fontFamily: FONT }}>
@@ -106,11 +103,11 @@ export const StepScene: React.FC<Props> = ({ scene, index, total }) => {
         <Sequence
           key={shot.src}
           name={`Capture ${i + 1}`}
-          from={i * per}
-          durationInFrames={i === scene.shots.length - 1 ? scene.durationInFrames - i * per : per}
+          from={Math.max(0, i * per - (i ? overlap : 0))}
+          durationInFrames={i === scene.shots.length - 1 ? scene.durationInFrames - Math.max(0, i * per - (i ? overlap : 0)) : per}
           premountFor={fps}
         >
-          <ShotView shot={shot} duration={per} />
+          <ShotView shot={shot} duration={i === scene.shots.length - 1 ? scene.durationInFrames - i * per + overlap : per} />
         </Sequence>
       ))}
 
@@ -119,8 +116,7 @@ export const StepScene: React.FC<Props> = ({ scene, index, total }) => {
           position: "absolute",
           left: 80,
           right: 80,
-          bottom: 40,
-          minHeight: 250,
+          bottom: 36,
           justifyContent: "flex-end",
           display: "flex",
           flexDirection: "column",

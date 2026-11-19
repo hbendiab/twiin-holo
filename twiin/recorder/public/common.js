@@ -20,6 +20,7 @@ function initThemeButton() {
 
 // Le logo : deux cellules collées qui « respirent » (même dessin que la page Twiin).
 function initLogo() {
+  return; // le logo est désormais la vidéo des deux sphères (shell.js) ; ancien dessin gardé ci-dessous
   const box = document.getElementById('logoCells');
   if (!box) return;
   box.innerHTML = `<svg viewBox="40 40 400 220" aria-hidden="true"><defs><filter id="gooLogo" x="-20%" y="-20%" width="140%" height="140%">

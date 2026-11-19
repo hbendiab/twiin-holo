@@ -44,6 +44,10 @@ l'équipe : coûts, modèles, journaux, scans complets, et l'outil « Tester et 
 Composants React (sphère de logos de l'audit) : projet Vite + React + Tailwind à la structure shadcn dans
 `twiin/recorder/ui/`, compilé dans `twiin/recorder/public/ui/`. Pour les modifier : `cd twiin/recorder/ui && npm install && npm run build`.
 
+**App Mac** (facultatif) : voir [`twiin/desktop/`](twiin/desktop/README.md). Fenêtre flottante par-dessus toutes les applis (Excel…), icône dans la barre des menus, ⌥⌘T.
+
+**Extension Chrome** (facultatif) : voir [`twiin/extension/`](twiin/extension/README.md). Twiin sur toutes les pages : enregistrer, lancer et programmer ses automatisations, tout arrêter.
+
 **Raccourci ⌥⌘T** (facultatif) : `scripts/install_hotkey.sh` (depuis `twiin/`). Ensuite, ⌥⌘T depuis n'importe quelle appli
 démarre le serveur s'il est arrêté et ouvre Twiin dans Chrome. macOS demande d'autoriser *Python* dans *Accessibilité*.
 Pour le retirer : `scripts/install_hotkey.sh --remove`.

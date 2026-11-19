@@ -40,8 +40,13 @@
   tr:last-child td { border-bottom: 0; }
   .table-wrap { overflow-x: auto; }
   .msg { font-size: 13px; margin-top: 10px; min-height: 18px; }
+  .choice { margin-top: 12px; padding: 14px 16px; border-radius: 14px; border: 1px solid var(--warn); background: var(--warn-soft); }
+  .choice p { margin: 0 0 10px; font-size: 14px; }
+  .choice input[type=time] { font: 14px var(--font); padding: 6px 8px; border-radius: 8px; border: 1px solid var(--panel-border); background: var(--panel); color: var(--text); margin-left: 6px; }
+  .planned { font-size: 13.5px; margin: 10px 0 0; padding: 10px 12px; border-radius: 12px; background: var(--accent-soft); }
   @media (max-width: 860px) { .layout { grid-template-columns: minmax(0, 1fr); } .kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 </style>
+<link rel="stylesheet" href="theme.css">
 </head>
 <body>
   <header class="topbar">
@@ -51,8 +56,6 @@
   </header>
 
   <h1>Mes automatisations</h1>
-  <p class="lead">Les automatisations créées à l'étape 4 « Automatiser ». Règle quand elles tournent, lance-les, et suis leurs résultats,
-    sans ouvrir n8n.</p>
   <div class="status-row" id="statusRow"></div>
 
   <div class="layout" id="layout" hidden>
@@ -63,16 +66,36 @@
     <p><a class="btn primary" href="/">Analyser une tâche</a></p></div>
 
 <script src="/vendor/supabase/supabase.js"></script>
+  <script src="shell.js" defer></script>
   <script src="auth.js"></script>
+  <script src="banner.js"></script>
   <script src="common.js"></script>
 <script>
 const KIND = { holo: 'Holo · logiciel sans API', sheets: 'Google Sheets', verify: 'Vérification', code: 'Mise en forme', http: 'API', other: 'Étape' };
 let items = [], current = null, poll = null, n8nUrl = '';
+// Créneaux où le Mac est souvent libre
+const CRENEAUX = [['midi', 'Pause déjeuner (12 h 30)'], ['soir', 'Fin de journée (18 h 30)'], ['matin', 'Demain avant mon arrivée (8 h 30)']];
+const CRENEAU_AT = { midi: ['12:30'], soir: ['18:30'], matin: ['08:30', true] };
+const HEURES = [['08:30', 'à 8 h 30, avant ton arrivée'], ['09:00', 'à 9 h'], ['12:30', 'à 12 h 30, pause déjeuner'], ['18:30', 'à 18 h 30, fin de journée']];
+// Prochaine occurrence d'une heure (aujourd'hui si elle n'est pas passée, sinon demain)
+function prochaine(hhmm, demain = false) {
+  const [h, m] = hhmm.split(':').map(Number);
+  const d = new Date(); d.setHours(h, m, 0, 0);
+  if (demain || d <= new Date()) d.setDate(d.getDate() + 1);
+  return d;
+}
+function quand(iso) {
+  const d = new Date(iso), now = new Date(), demain = new Date(); demain.setDate(now.getDate() + 1);
+  const h = d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }).replace(':', ' h ');
+  return d.toDateString() === now.toDateString() ? `aujourd'hui à ${h}` : d.toDateString() === demain.toDateString() ? `demain à ${h}` : `le ${fmtDate(iso)}`;
+}
 
 const statusPill = (a) => a.running ? '<span class="pill run">En cours</span>'
   : a.active ? '<span class="pill on">Active</span>' : '<span class="pill">En pause</span>';
 const execPill = (e) => e.status === 'success' ? '<span class="pill on">Réussie</span>'
-  : ['running', 'new', 'waiting'].includes(e.status) ? '<span class="pill run">En cours</span>' : `<span class="pill bad">${escapeHtml(e.status === 'error' ? 'Échec' : e.status)}</span>`;
+  : ['running', 'new', 'waiting'].includes(e.status) ? '<span class="pill run">En cours</span>'
+  : ['canceled', 'cancelled', 'crashed'].includes(e.status) && e.status !== 'crashed' ? '<span class="pill">Arrêtée</span>'
+  : `<span class="pill bad">${escapeHtml({ error: 'Échec', crashed: 'Plantée' }[e.status] || e.status)}</span>`;
 const blockIcon = (b) => iconsHtml(b.kind === 'holo' ? `Holo ${b.name}` : b.kind === 'sheets' ? 'Google Sheets' : b.name, 2);
 
 async function load(keep) {
@@ -91,7 +114,7 @@ async function load(keep) {
     return;
   }
   n8nUrl = d.n8n_url;
-  row.innerHTML = `<span class="pill on">n8n en marche</span><span>${d.automations.length} automatisation${d.automations.length > 1 ? 's' : ''}</span>`;
+  row.innerHTML = `<span>${d.automations.length} automatisation${d.automations.length > 1 ? 's' : ''}</span>`;
   items = d.automations.sort((a, b) => (b.stats.last || b.updated || '').localeCompare(a.stats.last || a.updated || ''));
   document.getElementById('empty').hidden = items.length > 0;
   document.getElementById('layout').hidden = !items.length;
@@ -121,11 +144,12 @@ function select(id) {
   document.querySelectorAll('.item').forEach((b) => b.classList.toggle('on', b.dataset.id === id));
   const holo = a.blocks.filter((b) => b.kind === 'holo').length;
   const holoMac = a.blocks.filter((b) => b.kind === 'holo' && b.env !== 'cloud').length;
+  const est = a.stats.avg_s || Math.max(60, holo * 150);
   const rate = a.stats.total ? `${Math.round((100 * a.stats.success) / a.stats.total)} %` : '—';
   document.getElementById('dash').innerHTML = `
     <h2>${escapeHtml(a.name)}</h2>
-    <div class="pills">${statusPill(a)}<span class="pill">${escapeHtml(a.freq_label)}</span>${holo - holoMac ? `<span class="pill on">${holo - holoMac} bloc${holo - holoMac > 1 ? 's' : ''} Holo dans le cloud</span>` : ''}${holoMac ? `<span class="pill warn">${holoMac} bloc${holoMac > 1 ? 's' : ''} Holo sur ton Mac</span>` : ''}</div>
-    <div class="flow">${a.blocks.map((b, i) => `${i ? '<span class="arrow">→</span>' : ''}<span class="blk ${b.kind}${b.env === 'cloud' ? ' cloud' : ''}" title="${escapeHtml(b.kind === 'holo' ? (b.env === 'cloud' ? 'Holo dans le navigateur cloud de H : ne touche pas ton Mac' : 'Holo sur ton Mac : prend la souris') : KIND[b.kind])}">${blockIcon(b)}${escapeHtml(b.name)}${b.kind === 'holo' ? `<em>${b.env === 'cloud' ? '☁ cloud' : 'Mac'}</em>` : ''}</span>`).join('')}</div>
+    <div class="pills">${statusPill(a)}<span class="pill">${escapeHtml(a.freq_label)}</span>${holoMac ? '<span class="pill warn">Utilise ton Mac</span>' : ''}</div>
+    <div class="flow">${a.blocks.map((b, i) => `${i ? '<span class="arrow">→</span>' : ''}<span class="blk ${b.kind}${b.env === 'cloud' ? ' cloud' : ''}" title="${escapeHtml(b.kind === 'holo' ? (b.env === 'cloud' ? 'Holo dans le navigateur cloud de H : ne touche pas ton Mac' : 'Holo sur ton Mac : prend la souris') : KIND[b.kind])}">${blockIcon(b)}${escapeHtml(b.name)}</span>`).join('')}</div>
     <div class="kpis">
       <div class="kpi"><span>Exécutions</span><b>${a.stats.total}</b></div>
       <div class="kpi"><span>Réussite</span><b>${rate}</b></div>
@@ -133,53 +157,70 @@ function select(id) {
       <div class="kpi"><span>Dernière</span><b style="font-size:15px">${fmtAgo(a.stats.last)}</b></div>
     </div>
     <div class="actions">
-      <button class="primary" id="runBtn" type="button" ${a.running ? 'disabled' : ''}>${a.running ? 'En cours…' : 'Lancer maintenant'}</button>
+      <button class="primary" id="runBtn" type="button" ${a.running ? 'disabled' : ''}>${a.running ? 'En cours…' : holoMac ? 'Lancer…' : 'Lancer maintenant'}</button>
       ${a.sheet ? `<a class="btn" href="${a.sheet.url}" target="_blank" rel="noopener">${iconsHtml('Google Sheets', 1)}Ouvrir le résultat</a>` : ''}
-      <a class="btn" href="${a.n8n_url}" target="_blank" rel="noopener">${iconsHtml('n8n', 1)}Voir dans n8n (avancé)</a>
     </div>
-    ${holoMac ? `<p class="note warn">${holoMac} bloc${holoMac > 1 ? 's' : ''} Holo utilise${holoMac > 1 ? 'nt' : ''} la souris et le clavier de ton Mac pendant l'exécution : ne touche à rien (double Échap pour arrêter).${holo - holoMac ? ' Les blocs « cloud » tournent chez H sans toucher ton Mac.' : ''}</p>`
-      : holo ? '<p class="note">Les blocs Holo tournent dans le navigateur cloud de H : tu peux continuer à utiliser ton Mac.</p>' : ''}
+    ${holoMac ? '<p class="note warn">Elle utilise ton Mac pendant qu\'elle tourne : ne touche à rien.</p>' : ''}
+    ${a.plan ? `<p class="planned">Lancement programmé <b>${escapeHtml(quand(a.plan))}</b>. Tu seras prévenu 2 min avant. <a href="#" id="unplan">Annuler</a></p>` : ''}
+    <div class="choice" id="runChoice" hidden>
+      <p><b>Elle a besoin de ton Mac pendant environ ${Math.ceil(est / 60)} min</b> (souris et clavier). Quand veux-tu la lancer ?</p>
+      <div class="actions">
+        <button type="button" data-when="now" class="primary">Maintenant</button>
+        ${CRENEAUX.map(([k, l]) => `<button type="button" data-when="${k}">${l}</button>`).join('')}
+      </div>
+      <div class="actions" style="margin-top:8px"><label class="meta">Autre heure <input type="time" id="whenOther" value="17:00"></label>
+        <button type="button" data-when="other">Programmer</button></div>
+    </div>
     <div class="msg" id="msg"></div>
 
     <div class="section"><h3>Quand elle tourne</h3>
       <div class="freq">
-        <select id="freq">${[['manual', 'Manuellement (en pause)'], ['daily', 'Chaque jour à 9 h'], ['weekly', 'Chaque lundi à 9 h'], ['monthly', 'Le 1er du mois à 9 h']]
+        <select id="freq">${[['manual', 'Manuellement (en pause)'], ['daily', 'Chaque jour'], ['weekly', 'Chaque lundi'], ['monthly', 'Le 1er du mois']]
           .map(([k, l]) => `<option value="${k}" ${a.freq === k ? 'selected' : ''}>${l}</option>`).join('')}</select>
+        <select id="heure" ${a.freq === 'manual' ? 'disabled' : ''}>${HEURES.map(([k, l]) => `<option value="${k}" ${(a.heure || (holoMac ? '12:30' : '09:00')) === k ? 'selected' : ''}>${l}</option>`).join('')}</select>
         <button id="saveFreq" type="button">Enregistrer</button>
       </div>
-      <p class="note">Une fréquence active l'automatisation dans n8n (heure de Paris). « Manuellement » la met en pause : tu la lances toi-même.</p>
+      ${holoMac ? '<p class="note">Choisis un moment où tu n\'utilises pas ton Mac (allumé, sans veille).</p>' : ''}
     </div>
 
     <div class="section"><h3>Historique</h3>
-      ${a.executions.length ? `<div class="table-wrap"><table><thead><tr><th>Date</th><th>Lancement</th><th>Durée</th><th>Résultat</th><th></th></tr></thead><tbody>
-        ${a.executions.map((e) => `<tr><td class="num">${fmtDate(e.startedAt)}</td><td>${e.mode === 'trigger' ? 'Planifié' : e.mode === 'webhook' ? 'Webhook' : 'Manuel'}</td>
-          <td class="num">${e.stoppedAt ? fmtDur((new Date(e.stoppedAt) - new Date(e.startedAt)) / 1000) : '—'}</td><td>${execPill(e)}</td>
-          <td><a href="${e.url}" target="_blank" rel="noopener">Détails</a></td></tr>`).join('')}</tbody></table></div>`
+      ${a.executions.length ? `<div class="table-wrap"><table><thead><tr><th>Date</th><th>Durée</th><th>Résultat</th></tr></thead><tbody>
+        ${a.executions.map((e) => `<tr><td class="num">${fmtDate(e.startedAt)}</td>
+          <td class="num">${e.stoppedAt ? fmtDur((new Date(e.stoppedAt) - new Date(e.startedAt)) / 1000) : '—'}</td><td>${execPill(e)}</td></tr>`).join('')}</tbody></table></div>`
         : '<p class="meta">Pas encore d\'exécution.</p>'}
-    </div>
-
-    <div class="section"><h3>Paramètres</h3>
-      <table><tbody>
-        <tr><td class="meta">Identifiant n8n</td><td class="num">${escapeHtml(a.id)}</td></tr>
-        <tr><td class="meta">Planification</td><td>${a.cron ? `<code>${escapeHtml(a.cron)}</code> (Europe/Paris)` : 'aucune'}</td></tr>
-        <tr><td class="meta">Destination</td><td>${a.sheet ? `<a href="${a.sheet.url}" target="_blank" rel="noopener">Feuille Google Sheets</a>` : '—'}</td></tr>
-        <tr><td class="meta">Créée</td><td>${a.created ? fmtDate(a.created) : '—'} · modifiée ${a.updated ? fmtAgo(a.updated) : '—'}</td></tr>
-      </tbody></table>
     </div>`;
 
-  document.getElementById('runBtn').onclick = async () => {
+  const lancer = async () => {
     const msg = document.getElementById('msg');
     const r = await fetch(`/api/automations/${encodeURIComponent(id)}/run`, { method: 'POST' });
     const d = await r.json();
     if (d.error) { msg.textContent = d.error; return; }
-    msg.textContent = 'Lancée. Le résultat apparaît dans l\'historique à la fin.';
+    msg.textContent = holoMac ? 'Lancée. Ton Mac est utilisé : un bandeau en bas de l\'écran indique le temps restant.' : 'Lancée. Tu peux continuer à travailler.';
+    document.getElementById('runChoice').hidden = true;
     watch(id);
   };
+  // Une automatisation qui utilise le Mac : on choisit le moment (maintenant ou un créneau où le Mac est libre)
+  document.getElementById('runBtn').onclick = () => (holoMac ? (document.getElementById('runChoice').hidden = false) : lancer());
+  document.querySelectorAll('[data-when]').forEach((b) => b.onclick = async () => {
+    const w = b.dataset.when;
+    if (w === 'now') return lancer();
+    const at = w === 'other' ? prochaine(document.getElementById('whenOther').value) : prochaine(...CRENEAU_AT[w]);
+    const d = await (await fetch(`/api/automations/${encodeURIComponent(id)}/plan`, { method: 'POST', headers: { 'Content-Type': 'application/json' },
+                                                                                 body: JSON.stringify({ at: at.toISOString(), name: a.name }) })).json();
+    if (d.error) { document.getElementById('msg').textContent = d.error; return; }
+    a.plan = d.at; select(id);
+  });
+  document.getElementById('unplan')?.addEventListener('click', async (e) => {
+    e.preventDefault();
+    await fetch(`/api/automations/${encodeURIComponent(id)}/plan`, { method: 'DELETE' });
+    a.plan = null; select(id);
+  });
+  document.getElementById('freq').onchange = (e) => { document.getElementById('heure').disabled = e.target.value === 'manual'; };
   document.getElementById('saveFreq').onclick = async (ev) => {
     const msg = document.getElementById('msg');
     ev.target.disabled = true;
     const r = await fetch(`/api/automations/${encodeURIComponent(id)}/schedule`, { method: 'POST', headers: { 'Content-Type': 'application/json' },
-                                                                         body: JSON.stringify({ freq: document.getElementById('freq').value }) });
+                                                                         body: JSON.stringify({ freq: document.getElementById('freq').value, heure: document.getElementById('heure').value }) });
     const d = await r.json();
     ev.target.disabled = false;
     if (d.error) { msg.textContent = `Réglage impossible : ${d.error}`; return; }

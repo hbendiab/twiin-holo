@@ -22,8 +22,9 @@
   .msg.bad { color: var(--bad); } .msg.ok { color: var(--ok); }
   .fine { font-size: 12px; color: var(--text-dim); margin-top: 18px; text-align: center; }
 </style>
+<link rel="stylesheet" href="theme.css">
 </head>
-<body>
+<body class="no-rail">
   <div class="brand-big"><span id="logoCells"></span><span>Tw<b>ii</b>n</span></div>
   <p class="tag">Analyse tes tâches. Automatise tes process.</p>
   <section class="panel">
@@ -40,6 +41,7 @@
   <p class="fine">Ton compte sert à retrouver ta fiche, tes tâches et tes automatisations. Les captures d'écran restent sur ton Mac.</p>
 
 <script src="/vendor/supabase/supabase.js"></script>
+  <script src="shell.js" defer></script>
 <script src="auth.js"></script>
 <script src="common.js"></script>
 <script>

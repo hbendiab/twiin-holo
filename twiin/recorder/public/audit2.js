@@ -128,6 +128,46 @@
     return [...base, ...(r().outils_ajoutes || [])];
   };
 
+  // ── liste déroulante avec recherche : logos, sans accents, clavier (↑ ↓ Entrée Échap), et « Ajouter … » libre ─────
+  const norm = (x) => String(x || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+  const mark = (label, q) => {
+    const i = q ? norm(label).indexOf(norm(q)) : -1;
+    if (i < 0) return escapeHtml(label);
+    return `${escapeHtml(label.slice(0, i))}<b>${escapeHtml(label.slice(i, i + q.length))}</b>${escapeHtml(label.slice(i + q.length))}`;
+  };
+  function combo(input, pop, { items, onPick, openOnFocus = false }) {
+    let list = [], active = -1;
+    const close = () => { pop.hidden = true; input.setAttribute('aria-expanded', 'false'); input.removeAttribute('aria-activedescendant'); };
+    const draw = () => {
+      list = items(input.value.trim());
+      if (!list.length) return close();
+      active = Math.min(active, list.length - 1);
+      pop.innerHTML = list.map((it, i) => `<div class="a2-opt${it.free ? ' free' : ''}" role="option" id="${pop.id}-${i}" data-i="${i}" aria-selected="${i === active}">
+          <span class="ico">${it.icon || (it.free ? '+' : '')}</span><span class="txt">${it.html}</span>${it.sub ? `<small>${it.sub}</small>` : ''}</div>`).join('');
+      pop.hidden = false;
+      input.setAttribute('aria-expanded', 'true');
+      if (active >= 0) { input.setAttribute('aria-activedescendant', `${pop.id}-${active}`); pop.children[active]?.scrollIntoView({ block: 'nearest' }); }
+    };
+    const pick = (it) => { if (!it) return; onPick(it); };
+    input.setAttribute('role', 'combobox'); input.setAttribute('aria-autocomplete', 'list');
+    input.setAttribute('aria-controls', pop.id); input.setAttribute('aria-expanded', 'false'); input.autocomplete = 'off';
+    pop.setAttribute('role', 'listbox');
+    input.addEventListener('input', () => { active = 0; draw(); });
+    input.addEventListener('focus', () => { if (openOnFocus || input.value.trim()) { active = -1; draw(); } });
+    input.addEventListener('click', () => { if (pop.hidden && (openOnFocus || input.value.trim())) { active = -1; draw(); } });
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'ArrowDown') { e.preventDefault(); if (pop.hidden) { active = 0; return draw(); } active = Math.min(list.length - 1, active + 1); draw(); }
+      else if (e.key === 'ArrowUp') { e.preventDefault(); active = Math.max(0, active - 1); draw(); }
+      else if (e.key === 'Enter') { e.preventDefault(); if (!pop.hidden && list.length) pick(list[Math.max(0, active)]); }
+      else if (e.key === 'Escape') { if (!pop.hidden) { e.preventDefault(); close(); } }
+    });
+    pop.addEventListener('mousedown', (e) => { const o = e.target.closest('[data-i]'); if (!o) return; e.preventDefault(); pick(list[Number(o.dataset.i)]); });
+    pop.addEventListener('mousemove', (e) => { const o = e.target.closest('[data-i]'); if (o && Number(o.dataset.i) !== active) { active = Number(o.dataset.i); draw(); } });
+    input.addEventListener('blur', () => setTimeout(close, 120));
+    return { open() { active = -1; draw(); } };
+  }
+  const iconOf = (nom) => { const e = findIcons(String(nom || '').replace(/-/g, ' '), 1)[0]; return e ? `<img src="icons/${e.file}" alt="">` : ''; };
+
   const RENDER = {
     async intro() {
       const reprise = (r().taches || []).length || r().role_metier;
@@ -175,8 +215,7 @@
             ${toolIcon(o.nom)}<span>${escapeHtml(o.nom)}</span>${o.usage?.jours_utilises_30 != null ? `<small>${o.usage.jours_utilises_30} j / 30</small>` : ''}</button>`).join('')}
           ${(r().outils_ajoutes || []).map((o) => `<button type="button" class="a2-tool" data-added="${o.id}" aria-pressed="true">${toolIcon(o.nom)}<span>${escapeHtml(o.nom)}</span><small>ajouté</small></button>`).join('')}
         </div>
-        <div class="a2-input"><input id="a2AddTool" list="a2ToolList" placeholder="+ Ajouter un outil absent de la liste"><button type="button" id="a2AddBtn">Ajouter</button></div>
-        <datalist id="a2ToolList">${ICONS.map((e) => `<option value="${escapeHtml(e.label)}">`).join('')}</datalist>`;
+        <div class="a2-combo"><input id="a2AddTool" placeholder="Ajouter un outil absent de la liste…"><div class="a2-pop" id="a2ToolPop" hidden></div></div>`;
       screenEl.querySelectorAll('[data-app]').forEach((b) => b.onclick = () => {
         const id = b.dataset.app, s = new Set(r().outils_confirmes);
         s.has(id) ? s.delete(id) : s.add(id);
@@ -184,47 +223,66 @@
         b.setAttribute('aria-pressed', s.has(id) ? 'true' : 'false');
       });
       screenEl.querySelectorAll('[data-added]').forEach((b) => b.onclick = () => { r().outils_ajoutes = (r().outils_ajoutes || []).filter((o) => o.id !== b.dataset.added); RENDER.q1(); });
-      const add = () => {
-        const nom = $('a2AddTool').value.trim();
+      const add = (nom) => {
         if (!nom) return;
-        const id = nom.toLowerCase().normalize('NFKD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+        const id = norm(nom).replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
         if (!(r().outils_ajoutes || []).some((o) => o.id === id)) r().outils_ajoutes = [...(r().outils_ajoutes || []), { id, nom }];
         RENDER.q1();
+        $('a2AddTool').focus();
       };
-      $('a2AddBtn').onclick = add;
-      $('a2AddTool').onkeydown = (e) => { if (e.key === 'Enter') { e.preventDefault(); add(); } };
+      // Propositions : les logiciels connus (logos), sauf ceux déjà dans la liste ; et toujours « Ajouter … » tel quel
+      const deja = new Set([...opts.map((o) => norm(o.nom)), ...(r().outils_ajoutes || []).map((o) => norm(o.nom))]);
+      combo($('a2AddTool'), $('a2ToolPop'), {
+        items: (q) => {
+          if (!q) return [];
+          const hits = ICONS.filter((e) => !deja.has(norm(e.label)) && norm(e.label).includes(norm(q)))
+            .sort((a, b) => norm(a.label).indexOf(norm(q)) - norm(b.label).indexOf(norm(q)) || a.label.length - b.label.length).slice(0, 7)
+            .map((e) => ({ label: e.label, html: mark(e.label, q), icon: `<img src="icons/${e.file}" alt="">` }));
+          if (!hits.some((h) => norm(h.label) === norm(q))) hits.push({ free: true, label: q, html: `Ajouter « ${escapeHtml(q)} »` });
+          return hits;
+        },
+        onPick: (it) => add(it.label),
+      });
     },
     q2() {
       const opts = st.q.q2_taches.options;
       const cur = r().taches || [];
       const has = (sid) => cur.some((t) => t.suggestion_id === sid);
-      const libres = cur.filter((t) => t.source === 'saisie_libre');
-      screenEl.innerHTML = `${head(st.q.q2_taches.question, 'Coche celles qui te parlent. Si une tâche manque, ajoute-la avec « Autre ».')}
-        <div class="a2-cards">${opts.map((o) => `<button type="button" class="a2-card" data-sug="${o.suggestion_id}" aria-pressed="${has(o.suggestion_id)}">
-            <span class="box">${has(o.suggestion_id) ? '✓' : ''}</span><span>${escapeHtml(o.libelle)}</span>
-            <span class="icons">${(o.applis_detectees.length ? o.applis_detectees : o.applis_typiques).slice(0, 3).map((a) => { const e = findIcons(a.replace(/-/g, ' '), 1)[0]; return e ? `<img src="icons/${e.file}" alt="">` : ''; }).join('')}</span></button>`).join('')}
-          ${libres.map((t) => `<button type="button" class="a2-card" data-free="${t.id}" aria-pressed="true"><span class="box">✓</span><span>${escapeHtml(t.libelle)}</span><span class="icons" style="font-size:12px;color:var(--text-dim)">ajoutée</span></button>`).join('')}
-        </div>
-        <div class="a2-input"><input id="a2Other" placeholder="Autre tâche : écris-la ou dicte-la"><button type="button" id="a2OtherMic">🎙 Dicter</button><button type="button" id="a2OtherAdd">Ajouter</button></div>
-        <p class="a2-help" style="margin-top:10px"><button type="button" class="a2-chip dim" id="a2NoTask">Je ne sais pas, aucune de celles-ci</button></p>`;
-      screenEl.querySelectorAll('[data-sug]').forEach((b) => b.onclick = () => {
-        const o = opts.find((x) => x.suggestion_id === b.dataset.sug);
-        if (has(o.suggestion_id)) r().taches = (r().taches || []).filter((t) => t.suggestion_id !== o.suggestion_id);
-        else r().taches = [...(r().taches || []), { id: `t_${o.suggestion_id}`, libelle: o.libelle, source: 'suggestion', suggestion_id: o.suggestion_id,
-                                                    applis_ids: o.applis_detectees.filter((a) => outilsChoisis().some((x) => x.id === a)) }];
-        RENDER.q2();
-      });
-      screenEl.querySelectorAll('[data-free]').forEach((b) => b.onclick = () => { r().taches = (r().taches || []).filter((t) => t.id !== b.dataset.free); RENDER.q2(); });
-      const add = () => {
-        const lib = $('a2Other').value.trim();
-        if (!lib) return;
-        r().taches = [...(r().taches || []), { id: `t_libre_${Date.now().toString(36)}`, libelle: lib, source: 'saisie_libre', applis_ids: [] }];
-        RENDER.q2();
+      const icons = (t) => {
+        const o = t.suggestion_id && opts.find((x) => x.suggestion_id === t.suggestion_id);
+        return o ? (o.applis_detectees.length ? o.applis_detectees : o.applis_typiques).slice(0, 3).map(iconOf).join('') : '';
       };
-      $('a2OtherAdd').onclick = add;
-      $('a2Other').onkeydown = (e) => { if (e.key === 'Enter') { e.preventDefault(); add(); } };
-      $('a2OtherMic').onclick = () => dictate($('a2Other'), $('a2OtherMic'), 'taches');
-      $('a2NoTask').onclick = () => { r().taches = []; r().aucune_tache = true; save(); go('recap'); };
+      screenEl.innerHTML = `${head(st.q.q2_taches.question, 'Ajoute-les une par une : choisis dans la liste ou écris la tienne.')}
+        ${cur.length ? `<ul class="a2-added">${cur.map((t) => `<li><span class="box">✓</span><span class="lib">${escapeHtml(t.libelle)}</span>
+            <span class="icons">${icons(t)}</span><button type="button" class="rm" data-rm="${t.id}" aria-label="Retirer ${escapeHtml(t.libelle)}">×</button></li>`).join('')}</ul>` : ''}
+        <div class="a2-combo a2-combo-big"><input id="a2Other" placeholder="${cur.length ? 'Ajouter une autre tâche…' : 'Ajouter une tâche…'}"><div class="a2-pop" id="a2TaskPop" hidden></div>
+          <button type="button" id="a2OtherMic" class="quiet" title="Dicter la tâche">🎙</button></div>
+        ${cur.length ? '' : '<p class="a2-help" style="margin-top:10px"><button type="button" class="a2-chip dim" id="a2NoTask">Je ne sais pas</button></p>'}`;
+      screenEl.querySelectorAll('[data-rm]').forEach((b) => b.onclick = () => { r().taches = (r().taches || []).filter((t) => t.id !== b.dataset.rm); RENDER.q2(); });
+      const addSug = (o) => {
+        if (!has(o.suggestion_id)) r().taches = [...(r().taches || []), { id: `t_${o.suggestion_id}`, libelle: o.libelle, source: 'suggestion', suggestion_id: o.suggestion_id,
+          applis_ids: o.applis_detectees.filter((a) => outilsChoisis().some((x) => x.id === a)) }];
+      };
+      const addFree = (lib) => { r().taches = [...(r().taches || []), { id: `t_libre_${Date.now().toString(36)}`, libelle: lib, source: 'saisie_libre', applis_ids: [] }]; };
+      // Propositions : les tâches typiques du métier, pas encore ajoutées (toutes à l'ouverture, filtrées en tapant) ; et sa propre tâche
+      const box = combo($('a2Other'), $('a2TaskPop'), {
+        openOnFocus: true,
+        items: (q) => {
+          const nq = norm(q);
+          const hits = opts.filter((o) => !has(o.suggestion_id) && (!nq || norm(o.libelle).includes(nq))).slice(0, 8)
+            .map((o) => ({ o, label: o.libelle, html: mark(o.libelle, q), icon: (o.applis_detectees.length ? o.applis_detectees : o.applis_typiques).slice(0, 1).map(iconOf).join('') }));
+          if (q && !hits.some((h) => norm(h.label) === nq)) hits.unshift({ free: true, label: q, html: `Ajouter « ${escapeHtml(q)} »` });
+          return hits;
+        },
+        onPick: (it) => {
+          if (it.free) addFree(it.label); else addSug(it.o);
+          r().aucune_tache = false;
+          RENDER.q2();
+          $('a2Other').focus(); // la liste se rouvre : on enchaîne les ajouts
+        },
+      });
+      $('a2OtherMic').onclick = () => dictate($('a2Other'), $('a2OtherMic'), 'taches', () => { $('a2Other').focus(); box.open(); });
+      $('a2NoTask')?.addEventListener('click', () => { r().taches = []; r().aucune_tache = true; save(); go('recap'); });
     },
     q34() {
       const ts = r().taches || [];
@@ -393,6 +451,7 @@
   let rec = null;
   async function dictate(target, btn, qid, onText) {
     if (rec) { rec.stop(); return; }
+    const orig = btn.textContent;
     let stream;
     try { stream = await navigator.mediaDevices.getUserMedia({ audio: true }); } catch { btn.textContent = 'Micro non autorisé'; return; }
     const chunks = [];
@@ -407,10 +466,10 @@
         const d = await (await fetch(`/api/voice/transcribe?q=${qid}`, { method: 'POST', headers: { 'Content-Type': 'audio/webm' }, body: blob })).json();
         if (d.text) { target.value = target.value ? `${target.value} ${d.text}` : d.text; onText?.(target.value); target.dispatchEvent(new Event('input')); }
       } catch { /* on garde la saisie */ }
-      btn.textContent = '🎙 Répondre à voix haute';
+      btn.textContent = orig;
     };
     rec.start();
-    btn.textContent = '■ Arrêter et transcrire';
+    btn.textContent = orig.length > 3 ? '■ Arrêter et transcrire' : '■';
   }
 
   function render() {
@@ -418,6 +477,7 @@
     $('a2Next').textContent = 'Suivant →';
     $('a2Next').hidden = st.screen === 'resultat';
     $('a2Back').hidden = st.screen === 'intro';
+    $('toRecordBtn').hidden = !['intro', 'resultat'].includes(st.screen); // pas de raccourci au milieu des questions
     if (name !== 'intro') $('sphereBox').hidden = true;
     RENDER[name](arg !== undefined ? Number(arg) : undefined);
     progress();

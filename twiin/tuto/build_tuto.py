@@ -12,7 +12,7 @@ d'actions ; on garde les images de ce moment, avec la position des clics.
    (clic avec sa position, saisie, raccourci) ;
 2. choisit quelques images par étape (avant chaque clic ou saisie) ;
 3. fait écrire la voix off en français (courte : le forfait gratuit ElevenLabs est de 10 000 caractères/mois) ;
-4. la fait dire par la voix ElevenLabs choisie (ELEVENLABS_VOICE_ID, modèle multilingue) ;
+4. la fait dire par une des 5 voix françaises de VOIX_TUTO (tirée du nom du tuto, modèle multilingue, qualité studio) ;
 5. écrit tout dans tuto/remotion/public/tutos/<nom>/ + un props.json pour la composition Remotion « TwiinTuto ».
 """
 import argparse
@@ -33,7 +33,7 @@ from twiin.clients.holo.holo_agent import HoloAgent  # noqa: E402
 ENV = dotenv_values(ROOT / ".env")
 REMOTION_PUBLIC = ROOT / "tuto" / "video" / "public" / "tutos"
 FPS = 30
-MAX_SHOTS_PER_STEP = 5
+MAX_SHOTS_PER_STEP = 2  # une image par étape, deux au plus : une vidéo calme, qui montre ce que dit la voix
 NARRATION_MAX_CHARS = 1500  # garde de la marge sur le quota gratuit ElevenLabs
 
 
@@ -112,32 +112,65 @@ def write_narration(task_name, steps, answers, advice):
         "Tu écris la voix off d'un tuto vidéo qui montre à un salarié comment faire sa tâche plus vite. "
         "Tutoiement, phrases courtes et naturelles, à l'oral. Total de TOUS les textes : moins de "
         f"{NARRATION_MAX_CHARS} caractères. Pour chaque étape : un titre court (≤ 40 caractères), une narration "
-        "(≤ 220 caractères) qui dit quoi faire, et une astuce (≤ 90 caractères) qui fait gagner du temps si elle existe.\n\n"
+        "(≤ 220 caractères) qui dit quoi faire en nommant ce qu'on voit à l'écran (bouton, menu, champ), et une astuce (≤ 90 caractères) qui fait gagner du temps si elle existe.\n\n"
         f"Tâche : {task_name}\nÉtapes :\n" + "\n".join(f"{i}. {s}" for i, s in enumerate(steps, 1)) +
-        "\n\nCe que l'agent a observé en faisant chaque étape :\n" +
+        "\n\nCe que l'employé a fait à chaque étape (ce que montre l'image) :\n" +
         "\n".join(f"{i}. {clean(a)[:300]}" for i, a in enumerate(answers, 1)) +
         (f"\n\nAstuces d'amélioration déjà identifiées :\n{tips}" if tips else "") +
         '\n\nRéponds UNIQUEMENT en JSON, sans guillemets droits dans les textes (utilise « ») : '
         '{"title":"titre du tuto","intro":"≤ 140 caractères","steps":[{"title":"","narration":"","tip":""}],'
         '"outro":"≤ 140 caractères"}'
     )
-    r = client.chat.completions.create(model=ENV.get("HF_MODEL") or "Qwen/Qwen3.8-27B", max_tokens=6000, temperature=0.3,
-                                       reasoning_effort="low", messages=[{"role": "user", "content": prompt}])
-    raw = re.sub(r"<think>.*?</think>", "", r.choices[0].message.content or "", flags=re.S)
-    raw = raw[raw.find("{"): raw.rfind("}") + 1]
-    try:
-        data = json.loads(raw)
-    except json.JSONDecodeError:
-        from json_repair import repair_json  # secours
-        data = json.loads(repair_json(raw))
-    if len(data.get("steps", [])) != len(steps):
-        raise SystemExit(f"La narration a {len(data.get('steps', []))} étapes au lieu de {len(steps)}.")
-    return data
+    # Le modèle renvoie parfois une réponse vide ou tronquée : 3 essais, puis un texte de secours tiré des étapes,
+    # pour que la vidéo sorte toujours.
+    for attempt in range(3):
+        try:
+            # Pas de raisonnement : sinon le modèle « réfléchit » jusqu'à la limite et ne renvoie aucun texte
+            r = client.chat.completions.create(model=ENV.get("HF_MODEL") or "Qwen/Qwen3.8-27B", max_tokens=6000, temperature=0.3,
+                                               reasoning_effort="none", messages=[{"role": "user", "content": prompt}])
+            raw = re.sub(r"<think>.*?</think>", "", r.choices[0].message.content or "", flags=re.S)
+            raw = raw[raw.find("{"): raw.rfind("}") + 1]
+            if not raw:
+                u = r.usage
+                raise ValueError(f"réponse vide (fin : {r.choices[0].finish_reason}, raisonnement : "
+                                 f"{getattr(u.completion_tokens_details, 'reasoning_tokens', '?') if u else '?'} jetons)")
+            try:
+                data = json.loads(raw)
+            except json.JSONDecodeError:
+                from json_repair import repair_json  # secours
+                data = json.loads(repair_json(raw) or "{}")
+            if len(data.get("steps", [])) == len(steps):
+                return data
+            print(f"voix off : {len(data.get('steps', []))} étapes au lieu de {len(steps)}, nouvel essai", flush=True)
+        except Exception as e:  # noqa: BLE001
+            print(f"voix off : essai {attempt + 1} raté ({e}), nouvel essai", flush=True)
+    print("voix off : texte de secours tiré des étapes", flush=True)
+    short = lambda t, n: t if len(t) <= n else t[: n - 1].rsplit(" ", 1)[0] + "…"
+    return {"title": short(task_name, 60), "intro": short(f"Voici comment faire : {task_name}.", 140),
+            "steps": [{"title": short(s, 40), "narration": short(s, 220), "tip": ""} for s in steps],
+            "outro": "Et voilà, à toi de jouer."}
 
 
-def tts(text, out: Path):
-    vid = (ENV.get("ELEVENLABS_VOICE_ID") or "").split("#")[0].strip()
-    r = requests.post(f"https://api.elevenlabs.io/v1/text-to-speech/{vid}?output_format=mp3_44100_128",
+# Voix françaises natives (bibliothèque ElevenLabs, qualité studio). Chaque tuto en reçoit une, toujours la même
+# pour un même tuto (tirée de son nom) : la voix ne change pas au milieu d'une vidéo, et les tutos varient entre eux.
+VOIX_TUTO = {
+    "Jeanne": "txtf1EDouKke753vN8SL",   # jeune femme parisienne, narration pédagogique
+    "Claire": "6vTyAgAT8PncODBcLjRf",   # femme, chaleureuse et posée
+    "Lucie": "YxrwjAKoUKULGd0g8K9Y",    # femme, ton de conseillère, empathique
+    "Nicolas": "aQROLel5sQbj1vuIVi6B",  # homme, narrateur parisien
+    "Léo": "AfbuxQ9DVtS4azaxN1W7",      # homme, rassurant et dynamique
+}
+
+
+def voix_pour(nom_tuto):
+    import hashlib
+    noms = list(VOIX_TUTO)
+    nom = noms[int(hashlib.sha1(nom_tuto.encode()).hexdigest(), 16) % len(noms)]
+    return nom, VOIX_TUTO[nom]
+
+
+def tts(text, out: Path, vid):
+    r = requests.post(f"https://api.elevenlabs.io/v1/text-to-speech/{vid}?output_format=mp3_44100_192",
                       headers={"xi-api-key": ENV["ELEVENLABS_API_KEY"].strip(), "Content-Type": "application/json"},
                       json={"text": text, "model_id": "eleven_multilingual_v2"}, timeout=120)
     if not r.ok:
@@ -214,17 +247,40 @@ def shots_from_recording(session: Path, steps, out_dir: Path, name: str):
         raise SystemExit("Cet enregistrement n'a pas d'images.")
     displays = {d["id"]: d for e in actions if e.get("type") == "start" for d in e.get("displays", [])}
     spans = map_steps_to_time(steps, actions, frames, t0)
-    per_step, used = [], {}
+    per_step = []
+    ft = lambda f: t0 + f.get("seconds", 0)  # moment de l'image (secondes, horloge du journal)
+    disp_of = lambda f: int(m.group(1)) if (m := re.match(r"screen:(\d+):", f.get("screen_label") or "")) else None
+
+    def click_in(f, e):
+        d = displays.get(e.get("display"))
+        if not d or (disp_of(f) is not None and e.get("display") != disp_of(f)):
+            return None
+        return {"x": max(0, min(1, (e["x"] - d["x"]) / d["w"])), "y": max(0, min(1, (e["y"] - d["y"]) / d["h"]))}
+
     for n, (step, span) in enumerate(zip(steps, spans), 1):
         a, b = float(span.get("start", 0)), float(span.get("end", 0))
         inside = [f for f in frames if a - 0.5 <= f.get("seconds", 0) <= b + 1.5]
         if not inside:
             inside = [min(frames, key=lambda f: abs(f.get("seconds", 0) - (a + b) / 2))]
-        if len(inside) > MAX_SHOTS_PER_STEP:
-            k = (len(inside) - 1) / (MAX_SHOTS_PER_STEP - 1)
-            inside = [inside[round(i * k)] for i in range(MAX_SHOTS_PER_STEP)]
+        evs = [e for e in actions if t0 + a - 0.5 <= e.get("ts", 0) <= t0 + b + 1.5 and e.get("type") in ("click", "typing", "shortcut", "key")]
+        clicks = [e for e in evs if e["type"] == "click"]
+        typed = any(e["type"] != "click" for e in evs)
+        # Images retenues : celle qui montre l'action dont parle la voix off
+        #  - un clic : l'écran juste avant le clic (on voit où cliquer), avec le cercle sur l'endroit ;
+        #  - une saisie, un raccourci, ou rien : l'écran à la fin de l'étape (on voit le résultat).
+        chosen = []
+        if clicks:
+            c = clicks[0]
+            before = [f for f in frames if ft(f) <= c["ts"] + 0.3 and (disp_of(f) is None or disp_of(f) == c.get("display"))]
+            f1 = before[-1] if before else inside[0]
+            chosen.append((f1, click_in(f1, c), f"clic sur {c.get('element') or 'un élément'}"))
+        if typed or not clicks:
+            last = inside[-1]
+            if not chosen or last is not chosen[0][0]:
+                chosen.append((last, None, "résultat"))
+        chosen = chosen[:MAX_SHOTS_PER_STEP]
         shots = []
-        for i, f in enumerate(inside, 1):
+        for i, (f, click, action) in enumerate(chosen, 1):
             data = (f.get("ocrUrl") or f.get("dataUrl") or "").split(",", 1)[-1]
             if not data:
                 continue
@@ -232,23 +288,11 @@ def shots_from_recording(session: Path, steps, out_dir: Path, name: str):
             dest.write_bytes(base64.b64decode(data))
             with Image.open(dest) as im:
                 w, h = im.size
-            # le clic qui suit l'image (dans les 4 s), ramené dans l'image de cet écran
-            disp_id = None
-            m = re.match(r"screen:(\d+):", f.get("screen_label") or "")
-            if m:
-                disp_id = int(m.group(1))
-            tf = t0 + f.get("seconds", 0)
-            click, action = None, "écran"
-            for e in actions:
-                if e.get("type") == "click" and tf <= e["ts"] <= tf + 4 and (disp_id is None or e.get("display") == disp_id):
-                    d = displays.get(e.get("display"))
-                    if d:
-                        click = {"x": max(0, min(1, (e["x"] - d["x"]) / d["w"])), "y": max(0, min(1, (e["y"] - d["y"]) / d["h"]))}
-                    action = f"clic sur {e.get('element') or 'un élément'}"
-                    break
             shots.append({"src": f"tutos/{name}/{dest.name}", "w": w, "h": h, "click": click, "action": action})
-        per_step.append({"step": step, "answer": "", "shots": shots})
-        print(f"étape {n} : t+{a:.0f}-{b:.0f}s, {len(shots)} image(s)", flush=True)
+        # Ce que l'employé a vraiment fait pendant l'étape : la voix off décrit ce qu'on voit à l'image
+        faits = "; ".join(x for x in (action_line(e, t0) for e in evs[:5]) if x)
+        per_step.append({"step": step, "answer": faits, "shots": shots})
+        print(f"étape {n} : t+{a:.0f}-{b:.0f}s, {len(shots)} image(s) ({', '.join(s['action'] for s in shots)})", flush=True)
     return per_step
 
 
@@ -304,12 +348,14 @@ def finish(a, run, per_step, out_dir):
     nar = write_narration(run.get("workflow", a.name), [p["step"] for p in per_step], [p["answer"] for p in per_step], advice)
     chars = len(nar.get("intro", "")) + len(nar.get("outro", "")) + sum(len(s["narration"]) + len(s.get("tip", "")) for s in nar["steps"])
     print(f"voix off : {chars} caractères")
+    voix_nom, voix_id = voix_pour(a.name)
+    print(f"voix off : {voix_nom}", flush=True)
 
     def voice(text, name):
         if a.no_voice or not text:
             return None, max(2.5, len(text) / 14)
         f = out_dir / f"{name}.mp3"
-        return f"tutos/{a.name}/{f.name}", tts(text, f)
+        return f"tutos/{a.name}/{f.name}", tts(text, f, voix_id)
 
     intro_audio, intro_s = voice(nar.get("intro", ""), "intro")
     outro_audio, outro_s = voice(nar.get("outro", ""), "outro")

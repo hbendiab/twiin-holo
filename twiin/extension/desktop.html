@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Twiin</title>
+<link rel="stylesheet" href="popup.css">
+<link rel="stylesheet" href="panel.css">
+<link rel="stylesheet" href="desktop.css">
+</head>
+<body>
+  <header class="top">
+    <span class="brand"><img class="tw-logo" src="logo-twiin.webp" alt="">Twiin</span>
+    <span id="conn" class="chip">…</span>
+    <button id="openTwiin" class="round" type="button" aria-label="Ouvrir Twiin dans le navigateur" title="Ouvrir Twiin dans le navigateur"><svg viewBox="0 0 24 24"><path d="M14 4h6v6"/><path d="M20 4l-9 9"/><path d="M18 14v6H4V6h6"/></svg></button>
+    <button id="hideWin" class="round" type="button" aria-label="Masquer (⌥⌘T pour revenir)" title="Masquer (⌥⌘T pour revenir)"><svg viewBox="0 0 24 24"><path d="M6 12h12"/></svg></button>
+  </header>
+
+  <!-- Pastille pendant un enregistrement -->
+  <div class="pill" aria-live="polite">
+    <span class="pdot"></span><img class="tw-logo" src="logo-twiin.webp" alt=""><b id="pillTime">00:00</b>
+    <span class="pinfo" id="pillInfo"></span>
+    <button class="b dark" id="pillStop" type="button">Terminer</button>
+    <button class="round" id="pillOpen" type="button" aria-label="Agrandir" title="Agrandir"><svg viewBox="0 0 24 24"><path d="M4 14v6h6"/><path d="M20 10V4h-6"/></svg></button>
+  </div>
+
+  <main id="app"><p class="muted">Connexion à Twiin…</p></main>
+
+  <footer class="foot">
+    <span class="keys"><kbd>⌥⌘T</kbd> afficher / masquer Twiin, depuis n'importe quelle appli · Twiin n'apparaît pas dans tes enregistrements.</span>
+    <label class="switch" hidden><input type="checkbox" id="bubbleToggle"></label>
+    <button id="resetHidden" class="link" type="button" hidden></button>
+  </footer>
+<script src="desktop-shim.js"></script>
+<script src="capture.js"></script>
+<script src="panel.js"></script>
+<script src="desktop.js"></script>
+</body>
+</html>

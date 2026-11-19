@@ -1,0 +1,95 @@
+{
+  "manifest_version": 3,
+  "name": "Twiin",
+  "short_name": "Twiin",
+  "version": "0.3.1",
+  "description": "Twiin à portée de clic sur toutes tes pages : enregistrer une tâche, créer, lancer et programmer tes automatisations, tout arrêter.",
+  "icons": {
+    "16": "icons/16.png",
+    "32": "icons/32.png",
+    "48": "icons/48.png",
+    "128": "icons/128.png"
+  },
+  "action": {
+    "default_title": "Twiin",
+    "default_icon": {
+      "16": "icons/16.png",
+      "32": "icons/32.png"
+    }
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "permissions": [
+    "storage",
+    "alarms",
+    "contextMenus",
+    "activeTab",
+    "desktopCapture",
+    "notifications",
+    "sidePanel"
+  ],
+  "host_permissions": [
+    "http://localhost:3000/*",
+    "http://127.0.0.1:3000/*"
+  ],
+  "content_scripts": [
+    {
+      "matches": [
+        "<all_urls>"
+      ],
+      "exclude_matches": [
+        "http://localhost:3000/*",
+        "http://127.0.0.1:3000/*"
+      ],
+      "js": [
+        "bubble.js"
+      ],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": [
+        "http://localhost:3000/*",
+        "http://127.0.0.1:3000/*"
+      ],
+      "js": [
+        "bridge.js"
+      ],
+      "run_at": "document_idle"
+    }
+  ],
+  "commands": {
+    "_execute_action": {
+      "suggested_key": {
+        "default": "Alt+Shift+T"
+      },
+      "description": "Ouvrir le panneau Twiin"
+    },
+    "toggle-record": {
+      "suggested_key": {
+        "default": "Alt+Shift+R"
+      },
+      "description": "Enregistrer une tâche / terminer l'enregistrement"
+    },
+    "stop-all": {
+      "suggested_key": {
+        "default": "Alt+Shift+X"
+      },
+      "description": "Tout arrêter (automatisation, Holo)"
+    }
+  },
+  "side_panel": {
+    "default_path": "sidepanel.html"
+  },
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "logo-twiin.webp",
+        "logo-twiin.png"
+      ],
+      "matches": [
+        "<all_urls>"
+      ]
+    }
+  ]
+}

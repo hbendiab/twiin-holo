@@ -120,7 +120,7 @@ function makeCells(container) {
     nb.setAttribute('opacity', (0.7 * Math.min(1, p * 4)).toFixed(2));
   };
 }
-const drawLogo = makeCells(document.getElementById('logoCells'));
+const drawLogo = () => {}; // le logo est la vidéo des deux sphères (shell.js)
 const drawAnalysis = makeCells(document.getElementById('analysisCells'));
 let analysisMotion = { mode: 'idle', since: 0 }; // working : la cellule s'étire ; done : elle se divise
 function animateCells(now) {
@@ -194,7 +194,7 @@ stopBtn.addEventListener('click', stopRecording);
 reBtn.addEventListener('click', () => analyzeRequest('/api/reanalyze', null, 'Nouvelle analyse du dernier enregistrement…'));
 
 async function addScreen() {
-  statusEl.textContent = `Choisis l'écran n°${nextScreen} à partager…`;
+  statusEl.textContent = nextScreen > 1 ? 'Choisis l\'écran à ajouter…' : 'Choisis l\'écran à enregistrer…';
   const stream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: false });
   const video = document.createElement('video');
   video.muted = true;
@@ -232,10 +232,11 @@ async function startRecording() {
   try {
     await addScreen();
   } catch (e) {
-    statusEl.textContent = `Partage annulé : ${e.message}`;
+    statusEl.textContent = '';
     return;
   }
   recording = true;
+  document.body.classList.add('recording');
   setStep(2);
   document.getElementById('example').hidden = true;
   analysisEl.hidden = true;
@@ -369,7 +370,7 @@ function tick() {
   ticks++;
   const now = Date.now();
   for (const scr of screens) observe(scr, now);
-  statusEl.textContent = `Enregistrement… ${screens.length} écran(s) · ${frames.length} image(s) gardée(s) · ${ticks} s observées.`;
+  statusEl.textContent = `● Enregistrement en cours · ${fmtDur((Date.now() - startedAt) / 1000)}${screens.length > 1 ? ` · ${screens.length} écrans` : ''}`;
 }
 
 function keepFrame(scr, thumb, now) {
@@ -411,11 +412,12 @@ async function stopRecording() {
   stopping = true;
   stopBtn.disabled = true;
   addBtn.disabled = true;
-  statusEl.textContent = 'Arrêt : dernières actions et dernières images…';
+  statusEl.textContent = '';
   await stopJournal();               // lit les dernières actions (et force les dernières images)
   await new Promise((r) => setTimeout(r, 900));
   for (const scr of screens) if (scr.video?.videoWidth) keepFrame(scr, thumbnail(scr.video), Date.now()); // état final
   recording = false;
+  document.body.classList.remove('recording');
   stopping = false;
   clearInterval(intervalId);
   for (const s of screens) s.stream.getTracks().forEach((t) => t.stop());
@@ -431,7 +433,7 @@ async function stopRecording() {
     return;
   }
 
-  statusEl.textContent = `Enregistrement terminé : ${frames.length} image(s) gardée(s) sur ${nScreens} écran(s).`;
+  statusEl.textContent = '';
   startAnalysisPanel('upload');
 
   if (sessionId) {
@@ -455,15 +457,11 @@ async function analyzeRequest(url, body, message, nScreens) {
     });
     const data = await res.json();
     if (data.error) throw new Error(data.error);
-    renderWorkflows(data.workflows || []);
+    renderWorkflows(data.workflows || [], { autoReco: true });
     const m = data._meta || {};
     const n = data.workflows?.length ?? 0;
     endAnalysisPanel(true, `${n} tâche${n > 1 ? 's' : ''} trouvée${n > 1 ? 's' : ''}. Relis les étapes ci-dessous.`);
-    statusEl.textContent = `Terminé. ${n} workflow(s) trouvé(s).` +
-      (m.model ? ` Modèle ${m.model} · ${m.screens ?? nScreens ?? '?'} écran(s) · ` +
-        (m.text_only ? 'texte OCR seul' : `${m.images_sent} image(s) envoyée(s)`) + ` · ${m.ocr_lines} lignes OCR · ` +
-        `${m.usage?.prompt_tokens ?? '?'} tokens en entrée, ${m.usage?.completion_tokens ?? '?'} en sortie` +
-        (m.cost_usd != null ? ` · ≈ ${m.cost_usd.toFixed(4)} $` : '') : '');
+    statusEl.textContent = ''; // le détail technique (modèle, jetons, coût) est dans le Back
   } catch (err) {
     statusEl.textContent = `Erreur : ${err.message}`;
     endAnalysisPanel(false, `${err.message} Tu peux cliquer sur « Réanalyser le dernier enregistrement ».`);
@@ -499,12 +497,20 @@ function setStep(n, { scroll = true } = {}) {
   const prev = document.getElementById('prevBtn'), next = document.getElementById('nextBtn');
   prev.textContent = view > 1 ? `← ${VIEW_LABEL[view - 2]}` : '';
   next.textContent = view < LAST_VIEW ? `${VIEW_LABEL[view]} →` : '';
+  // page Recommandation (par la sidebar ou le bouton de la carte) : la reco se lance si elle n'est pas déjà prête
+  if (view === LAST_VIEW) {
+    resultsEl.querySelectorAll('.workflow').forEach((c) => c._autoReco?.());
+    const rec = resultsEl.querySelector('.rec-primary'); if (rec) setPrimary(rec);
+  }
 }
 document.querySelectorAll('#stepper li').forEach((li) => li.addEventListener('click', () => setStep(Number(li.dataset.step))));
 document.getElementById('prevBtn').addEventListener('click', () => setStep(Number(document.body.dataset.view) - 1));
 document.getElementById('nextBtn').addEventListener('click', () => {
   setStep(Number(document.body.dataset.view) + 1);
-  if (Number(document.body.dataset.view) === LAST_VIEW) setPrimary(resultsEl.querySelector('.btn-reco'));
+  if (Number(document.body.dataset.view) === LAST_VIEW) {
+    resultsEl.querySelectorAll('.workflow').forEach((c) => c._autoReco?.());
+    const rec = resultsEl.querySelector('.rec-primary'); if (rec) setPrimary(rec);
+  }
 });
 document.querySelector('#noTask [data-go="2"]').addEventListener('click', () => setStep(2));
 document.getElementById('noTaskExample').addEventListener('click', () => { document.getElementById('exOpenBtn').click(); });
@@ -519,12 +525,17 @@ window.addEventListener('hashchange', routeFromHash);
   setStep(k >= 0 ? k + 1 : 1, { scroll: false });
 }
 
-function renderWorkflows(workflows, { example = false } = {}) {
-  if (workflows.length) setStep(Math.max(2, Number(document.body.dataset.view) || 2)); // ouvert depuis la page Reco : on y reste
+function renderWorkflows(workflows, { example = false, silent = false, autoReco = false } = {}) {
+  // silent : la dernière tâche, rechargée à l'ouverture de la page, sans changer d'écran
+  if (workflows.length && !silent) setStep(Math.max(2, Number(document.body.dataset.view) || 2)); // ouvert depuis la Reco : on y reste
   resultsEl.innerHTML = '';
   document.getElementById('example').hidden = true;
   workflows.forEach((wf) => resultsEl.appendChild(workflowCard(wf, example)));
-  setPrimary(document.getElementById('nextBtn')); // prochaine action : passer à la Reco, une fois les étapes relues
+  document.getElementById('noTask').hidden = resultsEl.children.length > 0 || Number(document.body.dataset.view) !== LAST_VIEW;
+  if (!silent) setPrimary(resultsEl.querySelector('.btn-go-reco'));
+  // Reco automatique : préparée dès la fin de l'analyse, prête quand l'employé ouvre la page Recommandation
+  if (autoReco) resultsEl.querySelector('.workflow')?._autoReco?.();
+  if (Number(document.body.dataset.view) === LAST_VIEW) resultsEl.querySelectorAll('.workflow').forEach((c) => c._autoReco?.());
 }
 
 function workflowCard(wf, example = false) {
@@ -533,15 +544,14 @@ function workflowCard(wf, example = false) {
   let original = { name: wf.name, summary: wf.summary, steps: [...(wf.steps || [])] };
   const nSteps = (wf.steps || []).length;
   card.innerHTML = `
-    ${example ? '<p><span class="chip-example">Exemple</span>enregistrement réel du 17/11 (veille L\'Oréal), pour la démonstration</p>' : ''}
-    <input class="wf-name" value="${escapeHtml(wf.name || 'Workflow')}" title="Nom du workflow (modifiable)">
+    <input class="wf-name" value="${escapeHtml(wf.name || 'Workflow')}" title="Nom de la tâche (modifiable)">
     <div class="apps-strip"></div>
-    <p class="wf-summary">${escapeHtml(wf.summary || '')}</p>
-    ${wf.why_daily ? `<p><strong>Pourquoi l'automatiser :</strong> ${escapeHtml(wf.why_daily)}</p>` : ''}
+    <p class="wf-summary" hidden>${escapeHtml(wf.summary || '')}</p>
     <div class="part-relire">
-      <div class="card-step"><span class="num-inline">2</span> Relis et corrige les ${nSteps} étapes, puis passe à la Reco</div>
+      <div class="card-step">${nSteps} étapes · corrige si besoin</div>
       <ol class="steps"></ol>
-      <button class="icon-btn add-step">+ Ajouter une étape</button>
+      <div class="wf-actions relire-actions"><button class="icon-btn add-step">+ Ajouter une étape</button>
+        <button class="btn-go-reco" type="button">Voir la recommandation →</button></div>
     </div>
 
     <section class="card-section part-test">
@@ -559,11 +569,8 @@ function workflowCard(wf, example = false) {
     </section>
 
     <section class="card-section part-reco">
-      <div class="card-step big"><span class="num-inline">3</span> Reco : accélérer ou automatiser</div>
-      <p class="card-help">Twiin compare deux options : <b>accélérer</b> (tu fais la tâche plus vite, avec des conseils et un tuto vidéo)
-        ou <b>automatiser</b> (Twiin la fait à ta place). Il t'en recommande une ; c'est toi qui choisis.</p>
-      <div class="wf-actions"><button class="btn-reco">Obtenir la recommandation de Twiin</button></div>
       <div class="reco" hidden></div>
+      <div class="wf-actions"><button class="btn-reco" hidden>Réessayer</button></div>
     </section>`;
   const stepsEl = card.querySelector('.steps');
   const stripEl = card.querySelector('.apps-strip');
@@ -662,61 +669,61 @@ function workflowCard(wf, example = false) {
   // Les deux analyses (conseils et verdict) tournent en parallèle ; confiance et coûts vont dans le Back.
   const recoBtn = card.querySelector('.btn-reco');
   const recoEl = card.querySelector('.reco');
+  let recoState = 'none'; // none | running | done
+  card._autoReco = () => { if (recoState === 'none') recoBtn.onclick(); };
+  card.querySelector('.btn-go-reco').onclick = () => { setStep(3); card._autoReco(); };
   recoBtn.onclick = async () => {
-    recoBtn.disabled = true;
-    recoBtn.textContent = 'Twiin compare les deux options…';
+    recoState = 'running';
+    recoBtn.hidden = true;
     recoEl.hidden = false;
-    recoEl.innerHTML = '<p class="meta">Analyse de ta tâche : ce qui te ferait gagner du temps, et ce qui peut se faire sans toi…</p>';
+    recoEl.innerHTML = '<div class="verdict-card loading"><span class="spin"></span>Twiin prépare sa recommandation…</div>';
     try {
       const post = (url) => fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ workflow: current() }) })
         .then((r) => r.json()).then((d) => { if (d.error) throw new Error(d.error); return d; });
-      const [adv, ver] = await Promise.all([post('/api/process-advice'), post('/api/verdict')]);
+      // Même tâche, mêmes étapes : la recommandation déjà calculée sur ce navigateur est reprise (pas de nouvel appel au modèle)
+      const now = current();
+      const key = `twiin-reco-${now.session || ''}-${[...JSON.stringify([now.name, now.steps])].reduce((h, c) => (h * 31 + c.charCodeAt(0)) | 0, 0)}`;
+      let cached = null;
+      try { cached = JSON.parse(localStorage.getItem(key)); } catch { /* rien */ }
+      const [adv, ver] = cached || await Promise.all([post('/api/process-advice'), post('/api/verdict')]);
+      if (!cached) try { localStorage.setItem(key, JSON.stringify([adv, ver])); } catch { /* stockage plein ou bloqué */ }
       const auto = /automat/i.test(ver.verdict || '');
       // la recommandation est gardée (Supabase), rattachée à la tâche
-      fetch('/api/recommendations', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      if (!cached) fetch('/api/recommendations', { method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ task_id: wf.task_id || null, verdict: ver, advice: adv }) }).catch(() => {});
       const st = adv.stats;
       const facts = st ? [['Durée', fmtDur(st.duration_s)], ['Applis', Object.keys(st.time_per_app_s || {}).length], ['Clics', st.clicks],
                           ['Copier-coller', st.copies + st.pastes]].map(([k, v]) => `<div class="tile"><span>${k}</span><b>${v}</b></div>`).join('') : '';
-      const recos = (adv.recommendations || []).map((x) => `
-        <li><div class="reco-head"><b>${escapeHtml(x.title || '')}</b>${x.gain ? `<span class="gain">${escapeHtml(x.gain)}</span>` : ''}</div>
-          <div>${escapeHtml(x.suggestion || '')}</div>
-          ${x.observed ? `<div class="observed">Constaté : ${escapeHtml(x.observed)}</div>` : ''}</li>`).join('');
-      const tools = (ver.tools || []).map((t) => `<span class="app-pill">${iconsHtml(t.name, 1)}${escapeHtml(t.name)}</span>`).join('');
+      const recos = (adv.recommendations || []).map((x) => `<li><b>${escapeHtml(x.title || '')}</b>${x.gain ? ` <span class="gain">${escapeHtml(x.gain)}</span>` : ''}
+          <div>${escapeHtml(x.suggestion || '')}</div></li>`).join('');
       const plan = (ver.plan || []).map((p) => `<li>${iconsHtml(p.tool, 1)}<b>${escapeHtml(p.tool || '')}</b> : ${escapeHtml(p.what || '')}</li>`).join('');
-      const option = (key, rec, title, sub, body, btn) => `
-        <div class="option ${rec ? 'rec' : ''}" data-opt="${key}">
-          ${rec ? '<span class="rec-badge">Recommandé</span>' : ''}
-          <h4>${title}</h4><p class="sub">${sub}</p>${body}
-          <div class="wf-actions">${btn}</div>
-        </div>`;
+      const gain = [ver.time_saved ? `Gain estimé : ${escapeHtml(ver.time_saved)}` : '', ver.frequency_hint ? escapeHtml(ver.frequency_hint) : ''].filter(Boolean).join(' · ');
+      const bTuto = `<button class="btn-tuto" type="button">Créer la vidéo de formation</button>`;
+      const bAuto = `<button class="btn-n8n" type="button">Créer l'automatisation</button>`;
       recoEl.innerHTML = `
-        <div class="verdict-head">
+        <div class="verdict-card">
           <p class="eyebrow-small">Twiin te recommande</p>
-          <h4>${auto ? 'Automatiser cette tâche' : 'Accélérer cette tâche'}</h4>
-          <ul class="reasons">${(ver.reasons || []).map((x) => `<li>${escapeHtml(x)}</li>`).join('')}</ul>
-          ${ver.time_saved || ver.frequency_hint ? `<p class="hint">${ver.frequency_hint ? `Fréquence : ${escapeHtml(ver.frequency_hint)}` : ''}${ver.frequency_hint && ver.time_saved ? ' · ' : ''}${ver.time_saved ? `Gain estimé : ${escapeHtml(ver.time_saved)}` : ''}</p>` : ''}
-        </div>
-        <div class="options">
-          ${option('accelerer', !auto, 'Accélérer', 'Tu fais la tâche toi-même, plus vite.',
-            `${facts ? `<div class="tiles">${facts}</div>` : ''}${adv.headline ? `<p class="headline">${escapeHtml(adv.headline)}</p>` : ''}<ol class="recos">${recos}</ol>`,
-            '<button class="btn-tuto" type="button">Créer le tuto vidéo</button>')}
-          ${option('automatiser', auto, 'Automatiser', 'Twiin fait la tâche à ta place.',
-            `${tools ? `<div class="apps-strip">${tools}</div>` : ''}${plan ? `<ol class="plan">${plan}</ol>` : ''}`,
-            '<button class="btn-n8n" type="button">Créer l\'automatisation</button>')}
+          <h3>${auto ? 'Automatiser cette tâche' : 'Accélérer cette tâche'}</h3>
+          ${gain ? `<p class="gain-line">${gain}</p>` : ''}
+          <div class="wf-actions">${auto ? bAuto + bTuto : bTuto + bAuto}</div>
+          <details class="why"><summary>Pourquoi ?</summary>
+            <ul class="reasons">${(ver.reasons || []).map((x) => `<li>${escapeHtml(x)}</li>`).join('')}</ul>
+            ${facts ? `<div class="tiles">${facts}</div>` : ''}
+            ${recos ? `<h4>Pour aller plus vite</h4><ol class="recos">${recos}</ol>` : ''}
+            ${plan ? `<h4>Ce que ferait l'automatisation</h4><ol class="plan">${plan}</ol>` : ''}
+          </details>
         </div>
         <div class="branch" hidden></div>`;
-      setStep(3);
-      setPrimary(recoEl.querySelector(auto ? '.btn-n8n' : '.btn-tuto')); // l'option recommandée ; l'autre reste possible
+      // l'option recommandée est le bouton plein (l'autre reste possible) ; on ne change pas d'écran : la reco peut être prête en avance
+      recoEl.querySelector(auto ? '.btn-n8n' : '.btn-tuto').classList.add('rec-primary'); // toujours en noir (style dans index.html)
       const branch = recoEl.querySelector('.branch');
       recoEl.querySelector('.btn-tuto').onclick = () => createTuto(current(), example, branch);
       recoEl.querySelector('.btn-n8n').onclick = () => createN8n(current(), ver, branch);
-      recoBtn.textContent = 'Refaire la recommandation';
+      recoState = 'done';
     } catch (e) {
-      recoEl.innerHTML = `<h4>Recommandation impossible</h4><p>${escapeHtml(e.message)}</p>`;
-      recoBtn.textContent = 'Obtenir la recommandation de Twiin';
-    } finally {
-      recoBtn.disabled = false;
+      recoEl.innerHTML = `<div class="verdict-card"><h3>Recommandation impossible</h3><p class="meta">${escapeHtml(e.message)}</p></div>`;
+      recoBtn.hidden = false;
+      recoState = 'none';
     }
   };
 
@@ -980,13 +987,12 @@ document.getElementById('lastBtn').addEventListener('click', () => {
   renderWorkflows(lastWorkflows);
   statusEl.textContent = 'Dernière tâche analysée : reprends à l\'étape 2.';
 });
-iconsReady.then(() => {
-  showExample();
-  // http://localhost:3000/#exemple ouvre directement l'exemple (pratique en démo si l'enregistrement en direct coince)
-  if (location.hash === '#exemple') document.getElementById('exOpenBtn').click();
-});
-fetch('/api/candidates').then((r) => r.json()).then((d) => {
-  if (d.workflows?.length) { lastWorkflows = d.workflows; document.getElementById('lastBtn').hidden = false; }
+// À l'ouverture : la dernière tâche analysée revient toute seule (étapes à relire, Recommandation)
+fetch('/api/candidates').then((r) => r.json()).then(async (d) => {
+  if (!d.workflows?.length || resultsEl.children.length) return;
+  lastWorkflows = d.workflows;
+  await iconsReady;
+  if (!resultsEl.children.length && !recording) renderWorkflows(d.workflows, { silent: true });
 }).catch(() => {});
 
 function escapeHtml(str) {
