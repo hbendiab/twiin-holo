@@ -1135,13 +1135,18 @@ function infoEnregistrement(dir, id) {
     nb_taches: wfs.length,
     nb_etapes: wfs.reduce((n, w) => n + (w.steps || []).length, 0),
     supprime_le: lireJson(path.join(dir, 'corbeille.json'))?.deletedAt || null,
+    ajout_de: sess?.ajouterA || null, // enregistrement d'une tâche oubliée : rangé dans la tâche d'origine
   };
 }
 const listeDossiers = (base) => (fs.existsSync(base)
   ? fs.readdirSync(base).filter((d) => fs.statSync(path.join(base, d)).isDirectory()).sort().reverse() : []);
 
 app.get('/api/sessions', (req, res) => {
-  res.json({ sessions: listeDossiers(SESSIONS_DIR).map((id) => infoEnregistrement(path.join(SESSIONS_DIR, id), id)) });
+  const tous = listeDossiers(SESSIONS_DIR).map((id) => infoEnregistrement(path.join(SESSIONS_DIR, id), id));
+  // les ajouts ne sont pas des tâches à part : ils apparaissent comme « N ajout(s) » sur la tâche d'origine
+  const ajouts = {};
+  for (const e of tous) if (e.ajout_de) ajouts[e.ajout_de] = (ajouts[e.ajout_de] || 0) + 1;
+  res.json({ sessions: tous.filter((e) => !e.ajout_de).map((e) => ({ ...e, ajouts: ajouts[e.id] || 0 })) });
 });
 
 app.get('/api/sessions/:id', (req, res) => {

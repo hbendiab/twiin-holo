@@ -71,7 +71,7 @@ async function charger() {
 // Une carte par enregistrement : petit titre (le process), date et heure, puis les actions.
 // « Ouvrir et modifier » ouvre l'écran d'enregistrement avec les étapes modifiables.
 function carteEnr(e) {
-  const statut = e.analyse ? `${e.nb_taches} tâche(s), ${e.nb_etapes} étape(s)` : 'pas encore analysé';
+  const statut = (e.analyse ? `${e.nb_taches} tâche(s), ${e.nb_etapes} étape(s)` : 'pas encore analysé') + (e.ajouts ? ` · ${e.ajouts} ajout(s) de tâche oubliée` : '');
   return `<article class="panel rec" data-id="${esc(e.id)}">
     <p class="rec-titre">${esc(e.titre || 'Enregistrement')}</p>
     <p class="rec-date">${fmt(e.startedAt)} · ${statut}</p>
