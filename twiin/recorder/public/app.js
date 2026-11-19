@@ -434,15 +434,70 @@ async function stopRecording() {
   }
 
   statusEl.textContent = '';
-  startAnalysisPanel('upload');
 
   if (sessionId) {
     await Promise.allSettled(uploads);
-    if (uploadErrors) statusEl.textContent = `⚠️ ${uploadErrors} image(s) non enregistrée(s) côté serveur. Analyse quand même…`;
-    await analyzeRequest('/api/generate-workflows', { session: sessionId, startedAt, screens: sharedScreens }, null, nScreens);
+    if (uploadErrors) statusEl.textContent = `⚠️ ${uploadErrors} image(s) non enregistrée(s) sur l'ordinateur.`;
+    // Relecture AVANT envoi : images déjà masquées, l'employé retire ce qu'il ne veut pas envoyer (rien n'est parti)
+    const choix = await relire(sessionId);
+    if (!choix) return; // tout supprimé : rien n'a été envoyé
+    startAnalysisPanel('upload');
+    await analyzeRequest('/api/generate-workflows', { session: sessionId, startedAt, screens: sharedScreens, textOnly: choix.textOnly }, null, nScreens);
   } else {
+    startAnalysisPanel('upload');
     await analyzeRequest('/api/generate-workflows', { frames, startedAt, screens: sharedScreens }, null, nScreens);
   }
+}
+
+// ── Relecture avant envoi ─────────────────────────────────────────────────────────────────────────────────────────
+// Les données sensibles repérées à l'écran (e-mails, téléphones, IBAN, clés…) sont déjà masquées sur les images, en local.
+// L'employé voit chaque image et retire celles qu'il ne veut pas envoyer ; il peut aussi n'envoyer que le texte.
+// Renvoie { textOnly } pour analyser, ou null si tout a été supprimé.
+function relire(session) {
+  return new Promise(async (resolve) => {
+    const box = document.createElement('section');
+    box.className = 'panel review';
+    box.setAttribute('aria-live', 'polite');
+    box.innerHTML = '<div class="rv-wait"><span class="spin"></span>Twiin masque les informations sensibles, sur ton ordinateur…</div>';
+    document.getElementById('analysis').before(box);
+    box.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    let d;
+    try { d = await (await fetch(`/api/session/${encodeURIComponent(session)}/review`)).json(); } catch (e) { d = { error: e.message }; }
+    if (d.error) { box.remove(); statusEl.textContent = d.error; return resolve({ textOnly: false }); }
+    const remove = new Set();
+    const types = Object.entries(d.masque?.types || {}).map(([k, n]) => `${n} ${k}`).join(', ');
+    const draw = () => {
+      const left = d.frames.length - remove.size;
+      box.innerHTML = `
+        <h3>Vérifie tes images avant l'analyse</h3>
+        <p class="rv-lead">Rien n'est encore parti de ton ordinateur. ${d.masque?.zones
+          ? `<b>${d.masque.zones} information${d.masque.zones > 1 ? 's' : ''} sensible${d.masque.zones > 1 ? 's' : ''} masquée${d.masque.zones > 1 ? 's' : ''}</b> automatiquement (${escapeHtml(types)}).`
+          : 'Aucune information sensible repérée automatiquement.'} Clique sur une image pour la retirer.</p>
+        <div class="rv-grid">${d.frames.map((f) => `<button type="button" class="rv-item" data-i="${f.index}" aria-pressed="${remove.has(f.index)}"
+            title="${remove.has(f.index) ? 'Remettre cette image' : 'Retirer cette image'}"><img src="${f.src}" alt="Image ${f.index + 1}">
+            <span class="rv-t">${fmtDur(f.seconds || 0)}</span><span class="rv-x">${remove.has(f.index) ? 'Retirée' : '×'}</span></button>`).join('')}</div>
+        <label class="check rv-text"><input type="checkbox" id="rvText" ${box.dataset.text === '1' ? 'checked' : ''}> Envoyer seulement le texte lu (aucune image ne quitte l'ordinateur, analyse un peu moins précise)</label>
+        <div class="controls"><button type="button" class="primary" id="rvGo" ${!left && box.dataset.text !== '1' ? 'disabled' : ''}>Analyser${box.dataset.text === '1' ? ' le texte' : ` ${left} image${left > 1 ? 's' : ''}`}</button>
+          <button type="button" class="quiet danger" id="rvDel">Tout supprimer</button></div>`;
+      box.querySelectorAll('.rv-item').forEach((b) => b.onclick = () => { const i = Number(b.dataset.i); remove.has(i) ? remove.delete(i) : remove.add(i); draw(); });
+      box.querySelector('#rvText').onchange = (e) => { box.dataset.text = e.target.checked ? '1' : ''; draw(); };
+      setPrimary(box.querySelector('#rvGo'));
+      box.querySelector('#rvGo').onclick = async () => {
+        if (remove.size) await fetch(`/api/session/${encodeURIComponent(session)}/review`, { method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ remove: [...remove] }) });
+        box.remove();
+        resolve({ textOnly: box.dataset.text === '1' });
+      };
+      box.querySelector('#rvDel').onclick = async () => {
+        if (!confirm('Supprimer cet enregistrement ? Ses images et son journal sont effacés de ton ordinateur, rien n\'est envoyé.')) return;
+        await fetch(`/api/session/${encodeURIComponent(session)}/review`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ all: true }) });
+        box.remove();
+        statusEl.textContent = 'Enregistrement supprimé. Rien n\'a été envoyé.';
+        resolve(null);
+      };
+    };
+    draw();
+  });
 }
 
 async function analyzeRequest(url, body, message, nScreens) {

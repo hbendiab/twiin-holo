@@ -5,7 +5,7 @@
 const Capture = (() => {
   const MIN_GAP_MS = 1500, SETTLE_MAX_MS = 3000, HEARTBEAT_MS = 60000;
   const CHANGE_THRESHOLD = 3, STABLE_THRESHOLD = 1.5, MODEL_MAX_DIMENSION = 1024, OCR_MAX_DIMENSION = 1600;
-  const S = { recording: false, analyzing: false, phase: null, startedAt: 0, frames: 0, screens: [], thumbs: [], error: null, result: null };
+  const S = { recording: false, analyzing: false, phase: null, startedAt: 0, frames: 0, screens: [], thumbs: [], error: null, result: null, review: null };
   let base = 'http://localhost:3000', token = null, onUpdate = () => {}, transport = null;
   let shared = [], nextScreen = 1, sessionId = null, journalNext = 0, uploads = [], uploadErrors = 0, busy = false, stopping = false;
 
@@ -54,7 +54,7 @@ const Capture = (() => {
   async function start(opts) {
     if (S.recording) return addScreen(opts);
     const stream = await ask(opts); // avant tout le reste : le clic de l'employé n'est valable qu'un instant
-    Object.assign(S, { recording: true, analyzing: false, phase: null, startedAt: Date.now(), frames: 0, screens: [], thumbs: [], error: null, result: null });
+    Object.assign(S, { recording: true, analyzing: false, phase: null, startedAt: Date.now(), frames: 0, screens: [], thumbs: [], error: null, result: null, review: null });
     shared = []; nextScreen = 1; uploads = []; uploadErrors = 0; journalNext = 0;
     addStream(stream);
     sessionId = (await post('/api/actions/start', { startedAt: S.startedAt }, 15000)).session || null;
@@ -144,11 +144,26 @@ const Capture = (() => {
     if (!S.frames) { Object.assign(S, { analyzing: false, error: 'Aucune image gardée.' }); return emit(); }
 
     await Promise.allSettled(uploads);
+    // Relecture AVANT envoi : le serveur masque en local les informations sensibles, puis l'employé retire ce qu'il veut
+    S.phase = 'mask'; emit();
+    const rv = await call(`/api/session/${encodeURIComponent(sessionId)}/review`, { timeout: 3 * 60000 });
+    S.analyzing = false; S.phase = null;
+    if (rv.error) { S.error = rv.error; return emit(); }
+    S.review = { masque: rv.masque || {}, frames: rv.frames || [], remove: new Set(), textOnly: false };
+    emit();
+  }
+
+  // Après la relecture : on retire les images choisies, puis on analyse (images masquées, ou texte seul)
+  async function analyse() {
+    const rv = S.review;
+    if (!rv) return;
+    S.review = null; S.analyzing = true; S.phase = 'upload'; emit();
+    if (rv.remove.size) await post(`/api/session/${encodeURIComponent(sessionId)}/review`, { remove: [...rv.remove] }, 15000);
     const poll = setInterval(async () => {
       const p = await call('/api/analysis/progress', { timeout: 5000 }); if (p.phase && p.phase !== 'idle') { S.phase = p.phase; emit(); }
     }, 1000);
     try {
-      const data = await post('/api/generate-workflows', { session: sessionId, startedAt: S.startedAt, screens: shared }, 5 * 60000);
+      const data = await post('/api/generate-workflows', { session: sessionId, startedAt: S.startedAt, screens: shared, textOnly: rv.textOnly }, 5 * 60000);
       if (data.error) throw new Error(data.error);
       S.result = { workflows: data.workflows || [], uploadErrors };
     } catch (e) {
@@ -163,7 +178,14 @@ const Capture = (() => {
   return {
     state: S,
     config(o) { if (o.base) base = o.base; if ('token' in o) token = o.token; if (o.onUpdate) onUpdate = o.onUpdate; if (o.transport) transport = o.transport; },
-    start, addScreen, stop, cancel: () => stop({ cancel: true }),
+    start, addScreen, stop, cancel: () => stop({ cancel: true }), analyse,
     clear() { S.error = null; S.result = null; emit(); },
+    // Relecture : retirer / remettre une image, texte seul, ou tout supprimer (rien n'est envoyé)
+    toggle(i) { const r = S.review?.remove; if (!r) return; r.has(i) ? r.delete(i) : r.add(i); emit(); },
+    textOnly(on) { if (S.review) { S.review.textOnly = !!on; emit(); } },
+    async discard() {
+      await post(`/api/session/${encodeURIComponent(sessionId)}/review`, { all: true }, 15000);
+      S.review = null; S.result = null; S.error = 'Enregistrement supprimé. Rien n\'a été envoyé.'; emit();
+    },
   };
 })();

@@ -388,6 +388,101 @@ function loadSessionFrames(dir) {
   return { frames: [], startedAt: null, screens: [] };
 }
 
+// ── Données sensibles : repérées EN LOCAL dans le texte lu à l'écran (OCR), masquées SUR les images avant tout envoi ──
+// Le masquage modifie les images de l'enregistrement elles-mêmes : l'analyse (Hugging Face), la découverte (jumeau) et
+// les tutos n'utilisent plus que les images masquées. Les mêmes motifs sont masqués dans le texte et le journal envoyés.
+const SENSIBLE = [
+  ['e-mail', /[\w.+-]+@[\w-]+(?:\.[\w-]+)+/g],
+  ['téléphone', /(?:\+33[\s.]?|\b0)[1-9](?:[\s.-]?\d{2}){4}\b/g],
+  ['IBAN', /\b[A-Z]{2}\d{2}(?:\s?[A-Z0-9]{4}){3,7}(?:\s?[A-Z0-9]{1,3})?\b/g],
+  ['n° de sécurité sociale', /\b[12][\s.]?\d{2}[\s.]?\d{2}[\s.]?\d{2}[\s.]?\d{3}[\s.]?\d{3}(?:[\s.]?\d{2})?\b/g],
+  ['carte bancaire', /\b\d{4}[\s-]?\d{4}[\s-]?\d{4}[\s-]?\d{1,7}\b/g],
+  ['clé ou jeton', /\b(?:sk|pk|rk)[-_][\w-]{10,}|\bsb_[a-z]+_[\w-]{10,}|\bhf_\w{10,}|\bgh[pousr]_\w{10,}|\bxox[abp]-[\w-]{10,}|\beyJ[\w-]{10,}(?:\.[\w-]+){0,2}|\b(?=[\w-]*\d)(?=[\w-]*[A-Za-z])[\w-]{32,}\b/g],
+  ['mot de passe', /(?:mot de passe|password|passcode|code secret|code pin)\s*[:=]?\s*\S*/gi],
+];
+const sensibleKinds = (text) => SENSIBLE.filter(([, re]) => { re.lastIndex = 0; return re.test(text); }).map(([k]) => k);
+function masquerTexte(text) {
+  let t = String(text || '');
+  for (const [k, re] of SENSIBLE) { re.lastIndex = 0; t = t.replace(re, `[${k} masqué]`); }
+  return t;
+}
+// Script Python du dossier recorder (stdin JSON → stdout JSON), sans fenêtre
+function runScriptJson(script, input) {
+  return new Promise((resolve, reject) => {
+    const py = spawn(PYTHON, [path.join(path.dirname(fileURLToPath(import.meta.url)), script)], { windowsHide: true });
+    let out = '', err = '';
+    py.stdout.on('data', (d) => (out += d));
+    py.stderr.on('data', (d) => (err += d));
+    py.on('error', reject);
+    py.stdin.on('error', () => {});
+    py.on('close', (code) => { if (code) return reject(new Error(err.slice(0, 300) || `${script} : code ${code}`)); try { resolve(JSON.parse(out)); } catch (e) { reject(e); } });
+    py.stdin.end(JSON.stringify(input));
+  });
+}
+// Masque une fois pour toutes les données sensibles d'un enregistrement (images de frames.jsonl). Idempotent.
+async function masquerSession(dir) {
+  const metaF = path.join(dir, 'session.json');
+  const meta = fs.existsSync(metaF) ? JSON.parse(fs.readFileSync(metaF, 'utf8')) : {};
+  if (meta.masque) return meta.masque;
+  const jl = path.join(dir, 'frames.jsonl');
+  if (!fs.existsSync(jl)) return { zones: 0, types: {} };
+  const { frames } = loadSessionFrames(dir);
+  const ocr = await runOcr(frames);
+  const byIndex = new Map(ocr.map((o) => [o.index, o.lines || []]));
+  const types = {}, todo = [];
+  let zones = 0;
+  for (const f of frames) {
+    const boxes = [];
+    for (const l of byIndex.get(f.index) || []) {
+      const kinds = sensibleKinds(l.text);
+      if (!kinds.length || !l.box) continue;
+      boxes.push(l.box); zones++;
+      for (const k of kinds) types[k] = (types[k] || 0) + 1;
+    }
+    if (boxes.length) todo.push({ index: f.index, dataUrl: f.dataUrl, ocrUrl: f.ocrUrl, boxes });
+  }
+  if (todo.length) {
+    const done = new Map((await runScriptJson('redact.py', todo)).map((d) => [d.index, d]));
+    for (const f of frames) { const d = done.get(f.index); if (d) { f.dataUrl = d.dataUrl; if (d.ocrUrl) f.ocrUrl = d.ocrUrl; } }
+    fs.writeFileSync(jl, frames.map((f) => JSON.stringify(f)).join('\n') + '\n');
+  }
+  meta.masque = { zones, images: todo.length, types, at: new Date().toISOString() };
+  fs.writeFileSync(metaF, JSON.stringify(meta));
+  console.log(`Masquage local : ${zones} zone(s) sensible(s) sur ${todo.length} image(s) ${JSON.stringify(types)}`);
+  return meta.masque;
+}
+// Relecture AVANT envoi : les images de l'enregistrement, déjà masquées ; rien n'est encore parti de l'ordinateur.
+app.get('/api/session/:id/review', async (req, res) => {
+  const dir = sessionDirById(req.params.id);
+  if (!dir) return res.status(404).json({ error: 'Enregistrement introuvable.' });
+  try {
+    setPhase('mask');
+    const masque = await masquerSession(dir);
+    const { frames } = loadSessionFrames(dir);
+    res.json({ masque, frames: frames.map((f) => ({ index: f.index, seconds: f.seconds, screen: f.screen, src: f.dataUrl })) });
+  } catch (e) {
+    res.status(500).json({ error: `Masquage impossible : ${e.message}` });
+  } finally { setPhase('idle'); }
+});
+// Retirer des images (elles sont effacées de l'ordinateur), ou tout l'enregistrement (all: true)
+app.post('/api/session/:id/review', (req, res) => {
+  const dir = sessionDirById(req.params.id);
+  if (!dir) return res.status(404).json({ error: 'Enregistrement introuvable.' });
+  if (req.body?.all) {
+    if (recorderSession?.dir === dir) recorderSession = null;
+    fs.rmSync(dir, { recursive: true, force: true });
+    console.log(`Enregistrement ${path.basename(dir)} supprimé par l'employé`);
+    return res.json({ ok: true, left: 0, deleted: true });
+  }
+  const jl = path.join(dir, 'frames.jsonl');
+  if (!fs.existsSync(jl)) return res.status(400).json({ error: 'Images introuvables.' });
+  const remove = new Set((req.body?.remove || []).map(Number));
+  const keep = loadSessionFrames(dir).frames.filter((f) => !remove.has(f.index));
+  fs.writeFileSync(jl, keep.map((f) => JSON.stringify(f)).join('\n') + (keep.length ? '\n' : ''));
+  console.log(`Relecture : ${remove.size} image(s) retirée(s) par l'employé, ${keep.length} gardée(s)`);
+  res.json({ ok: true, left: keep.length });
+});
+
 app.post('/api/frames', (req, res) => {
   try {
     const { session, frame } = req.body;
@@ -513,23 +608,25 @@ async function analyze({ frames, transcript, actionLog = '', ocrLines = 0, scree
   return { ...result, _meta: meta };
 }
 
-async function analyzeSessionDir(dir) {
+async function analyzeSessionDir(dir, { textOnly = false } = {}) {
+  setPhase('mask');
+  await masquerSession(dir); // jamais d'image non masquée vers l'analyse, même si la relecture a été sautée
   const { frames, startedAt, screens: shared } = loadSessionFrames(dir);
   if (!frames.length) throw new Error('Aucune image enregistrée pour cet enregistrement.');
-  const actionLog = actionTranscript(readActions(dir), startedAt || Date.parse(frames[0]?.timestamp), shared);
+  const actionLog = masquerTexte(actionTranscript(readActions(dir), startedAt || Date.parse(frames[0]?.timestamp), shared));
   const t0 = Date.now();
   setPhase('ocr');
   const ocr = await runOcr(frames);
-  const transcript = ocrTranscript(frames, ocr);
+  const transcript = masquerTexte(ocrTranscript(frames, ocr));
   const ocrLines = ocr.reduce((n, o) => n + (o.lines?.length || 0), 0);
   console.log(`OCR local : ${ocr.length} image(s), ${ocrLines} lignes, ${transcript.length} caractères gardés, ${((Date.now() - t0) / 1000).toFixed(1)} s · journal : ${actionLog ? actionLog.split('\n').length : 0} action(s)`);
   const screens = new Set(frames.map((f) => f.screen ?? 1)).size;
-  return analyze({ frames, transcript, actionLog, ocrLines, screens, session: path.basename(dir) });
+  return analyze({ frames, transcript, actionLog, ocrLines, screens, textOnly, session: path.basename(dir) });
 }
 
 app.post('/api/generate-workflows', async (req, res) => {
   try {
-    const { frames, session, startedAt, screens: shared } = req.body;
+    const { frames, session, startedAt, screens: shared, textOnly } = req.body;
     if (recorderSession?.proc) recorderSession.proc.kill('SIGTERM');
     await new Promise((r) => setTimeout(r, 600)); // laisse le journal écrire ses dernières lignes
     let dir = sessionDirById(session);
@@ -538,7 +635,7 @@ app.post('/api/generate-workflows', async (req, res) => {
       fs.writeFileSync(path.join(dir, 'frames.json'), JSON.stringify({ frames, startedAt, screens: shared || [] }));
     }
     if (!dir) return res.status(400).json({ error: 'Enregistrement introuvable.' });
-    const result = await analyzeSessionDir(dir);
+    const result = await analyzeSessionDir(dir, { textOnly: !!textOnly });
     res.json({ ...result, _discovery: startDiscovery(dir) });
   } catch (err) {
     console.error(err);

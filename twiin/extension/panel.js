@@ -87,7 +87,7 @@ async function loadData() {
 const task = () => (C.result?.workflows?.length ? C.result.workflows[sel] || C.result.workflows[0] : last);
 
 // --- Affichage (redessiné seulement si quelque chose a changé : la vidéo et les champs ouverts ne sont pas effacés) ---
-const PHASES = [['upload', 'Envoi des dernières images'], ['ocr', 'Lecture du texte de l\'écran, sur ton Mac'], ['model', 'Analyse des étapes'], ['parse', 'Mise en forme de la tâche']];
+const PHASES = [['mask', 'Masquage des informations sensibles, sur ton ordinateur'], ['upload', 'Envoi des dernières images'], ['ocr', 'Lecture du texte de l\'écran, sur ton Mac'], ['model', 'Analyse des étapes'], ['parse', 'Mise en forme de la tâche']];
 function render() {
   const e = S.etat || {};
   let h = '';
@@ -100,7 +100,7 @@ function render() {
       <button class="b dark" data-act="page" data-page="login.html" type="button">Se connecter</button></div>`;
   } else {
     h += liveAutomation(e) + captureBlock() + taskBlock();
-    if (!C.recording && !C.analyzing) {
+    if (!C.recording && !C.analyzing && !C.review) {
       h += `<div class="tabs" role="tablist"><button role="tab" data-tab="autos" aria-selected="${tab === 'autos'}" type="button">Automatisations</button>
         <button role="tab" data-tab="tutos" aria-selected="${tab === 'tutos'}" type="button">Vidéos de formation</button></div>`;
       h += tab === 'autos' ? renderAutos() : renderTutos();
@@ -139,6 +139,16 @@ function captureBlock() {
       <div class="row" style="margin-top:8px;justify-content:space-between"><button class="b" data-act="recadd" type="button">+ Ajouter un écran</button>
         <button class="link" data-act="reccancel" type="button">Annuler sans analyser</button></div></div>`;
   }
+  if (C.review) { // relecture avant envoi : rien n'est encore parti de l'ordinateur
+    const rv = C.review, left = rv.frames.length - rv.remove.size, z = rv.masque.zones || 0;
+    const types = Object.entries(rv.masque.types || {}).map(([k, n]) => `${n} ${k}`).join(', ');
+    return `<div class="card"><h3>Vérifie tes images avant l'analyse</h3>
+      <p class="sub">Rien n'est encore parti de ton ordinateur. ${z ? `<b>${z} information${z > 1 ? 's' : ''} sensible${z > 1 ? 's' : ''} masquée${z > 1 ? 's' : ''}</b> (${esc(types)}).` : 'Aucune information sensible repérée.'} Touche une image pour la retirer.</p>
+      <div class="thumbs rv">${rv.frames.map((f) => `<button type="button" class="rvi" data-act="rvtoggle" data-i="${f.index}" aria-pressed="${rv.remove.has(f.index)}"><img src="${f.src}" alt=""><span>${rv.remove.has(f.index) ? 'Retirée' : '×'}</span></button>`).join('')}</div>
+      <label class="switch" style="margin:4px 0 12px"><input type="checkbox" data-act="rvtext" ${rv.textOnly ? 'checked' : ''}> Envoyer seulement le texte (aucune image)</label>
+      <button class="b dark big" data-act="rvgo" type="button" ${!left && !rv.textOnly ? 'disabled' : ''}>Analyser ${rv.textOnly ? 'le texte' : `${left} image${left > 1 ? 's' : ''}`}</button>
+      <div class="row" style="margin-top:8px;justify-content:center"><button class="link" data-act="rvdel" type="button">Tout supprimer</button></div></div>`;
+  }
   if (C.analyzing) {
     const k = Math.max(0, PHASES.findIndex(([p]) => p === C.phase));
     return `<div class="card"><h3>Twiin analyse ta tâche</h3><p class="sub">${C.frames} images · environ une minute.</p>
@@ -157,7 +167,7 @@ function captureBlock() {
 }
 
 function taskBlock() {
-  if (C.recording || C.analyzing) return '';
+  if (C.recording || C.analyzing || C.review) return '';
   if (C.result && !C.result.workflows.length) {
     return `<div class="label">Résultat</div><div class="card"><h3>Aucune tâche trouvée</h3>
       <p class="sub">Refais ta tâche du début à la fin, sans t'arrêter, puis termine.</p></div>`;
@@ -309,6 +319,9 @@ document.addEventListener('click', async (ev) => {
   if (act === 'recstop') return Capture.stop();
   if (act === 'reccancel') return Capture.cancel();
   if (act === 'recclear') return Capture.clear();
+  if (act === 'rvtoggle') return Capture.toggle(Number(el.dataset.i));
+  if (act === 'rvgo') return Capture.analyse();
+  if (act === 'rvdel') { if (confirm('Supprimer cet enregistrement ? Ses images sont effacées de ton ordinateur, rien n\'est envoyé.')) Capture.discard(); return; }
   if (act === 'recstoppage') { ask({ type: 'record:stop' }); return; }
   if (act === 'sel') { sel = Number(el.dataset.i); autoJob = null; tutoMine = false; tutoJob = null; return render(); }
   if (act === 'mkauto') return createAutomation();
@@ -342,6 +355,7 @@ document.addEventListener('click', async (ev) => {
   loadData();
 });
 
+document.addEventListener('change', (ev) => { if (ev.target.matches('[data-act="rvtext"]')) Capture.textOnly(ev.target.checked); });
 $('#openTwiin').onclick = () => ask({ type: 'open' });
 $('#bubbleToggle').onchange = (e) => chrome.storage.local.set({ bubble: e.target.checked });
 $('#resetHidden').onclick = async () => { await chrome.storage.local.set({ hidden: [] }); await load(); render(); };
