@@ -627,6 +627,32 @@ app.post('/api/improve', async (req, res) => {
 
 // --- 💡 Améliorer mon process : bilan chiffré + recommandations POUR L'EMPLOYÉ (ne touche pas aux étapes) -------
 // L'enregistrement d'une tâche : celui noté dans la tâche ; à défaut (anciennes tâches), le dernier enregistrement.
+// Tuto d'une tâche complétée par des ajouts : on rassemble les images et le journal de l'enregistrement d'origine
+// et de ses ajouts, sur une même ligne de temps (le temps de chaque ajout est décalé de son départ).
+function sessionAvecAjouts(dir) {
+  const an = lireJson(path.join(dir, 'analysis.json'));
+  const segs = (an?.segments || []).map((s) => path.join(SESSIONS_DIR, path.basename(s.id))).filter((d) => fs.existsSync(d));
+  if (!segs.length) return dir;
+  const lignes = (d, f) => (fs.existsSync(path.join(d, f)) ? fs.readFileSync(path.join(d, f), 'utf8').split('\n').filter(Boolean) : []);
+  const depart = lireJson(path.join(dir, 'session.json'))?.startedAt || 0;
+  let frames = lignes(dir, 'frames.jsonl').map((l) => JSON.parse(l));
+  let actions = lignes(dir, 'actions.jsonl').map((l) => JSON.parse(l));
+  for (const sd of segs) {
+    const decalage = ((lireJson(path.join(sd, 'session.json'))?.startedAt || depart) - depart) / 1000;
+    frames = frames.concat(lignes(sd, 'frames.jsonl').map((l) => { const f = JSON.parse(l); return { ...f, seconds: (f.seconds || 0) + decalage }; }));
+    actions = actions.concat(lignes(sd, 'actions.jsonl').map((l) => JSON.parse(l)));
+  }
+  frames.sort((a, b) => (a.seconds || 0) - (b.seconds || 0));
+  frames = frames.map((f, i) => ({ ...f, index: i }));
+  actions.sort((a, b) => (a.ts || 0) - (b.ts || 0));
+  const out = path.join(REPO_ROOT, 'workflows', 'tuto-sessions', path.basename(dir));
+  fs.rmSync(out, { recursive: true, force: true });
+  fs.mkdirSync(out, { recursive: true });
+  fs.writeFileSync(path.join(out, 'frames.jsonl'), frames.map((f) => JSON.stringify(f)).join('\n') + '\n');
+  fs.writeFileSync(path.join(out, 'actions.jsonl'), actions.map((a) => JSON.stringify(a)).join('\n') + '\n');
+  fs.writeFileSync(path.join(out, 'session.json'), JSON.stringify({ startedAt: depart }));
+  return out;
+}
 function sessionDirFor(wf) {
   if (wf?.session) {
     const dir = path.join(SESSIONS_DIR, path.basename(String(wf.session)));
@@ -1479,8 +1505,9 @@ app.post('/api/tuto/create', async (req, res) => {
   try {
     if (!(example && fs.existsSync(props))) {
       // l'exemple réutilise son tuto déjà fait ; une vraie tâche part de son enregistrement
-      const dir = sessionDirFor(wf);
-      if (!dir) throw new Error('L\'enregistrement de cette tâche n\'est pas sur ce Mac : enregistre-la d\'abord (étape 2).');
+      const dir0 = sessionDirFor(wf);
+      if (!dir0) throw new Error('L\'enregistrement de cette tâche n\'est pas sur ce Mac : enregistre-la d\'abord (étape 2).');
+      const dir = sessionAvecAjouts(dir0); // images et journal des ajouts (tâches oubliées) inclus dans la vidéo
       if (!(wf.steps || []).length) throw new Error('La tâche n\'a pas d\'étapes.');
       const wfFile = path.join(WORKFLOWS_DIR, 'tuto-workflow.json');
       fs.writeFileSync(wfFile, JSON.stringify({ name: wf.name, steps: wf.steps }));
