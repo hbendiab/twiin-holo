@@ -507,6 +507,17 @@ async function analyzeRequest(url, body, message, nScreens) {
     const data = await res.json();
     if (data.error) throw new Error(data.error);
     renderWorkflows(data.workflows || [], { autoReco: true });
+    if (data.ajout) {
+      // bandeau bien visible : les étapes ont été ajoutées à une autre tâche, avec un lien pour l'ouvrir
+      const a = data.ajout;
+      const bandeau = document.createElement('div');
+      bandeau.className = 'ajout-bandeau';
+      bandeau.style.cssText = 'margin:0 0 18px;padding:14px 18px;border-radius:14px;background:var(--accent-soft,rgba(120,160,255,.15));border:1px solid var(--accent,#7aa2ff);font-size:15px;line-height:1.4';
+      bandeau.innerHTML = `<b>✅ Étapes ajoutées à « ${escapeHtml(a.titre)} »</b><br>` +
+        `${a.etapes_ajoutees} étape(s) ajoutée(s) à la fin, soit ${a.etapes_total + a.etapes_ajoutees} au total. ` +
+        `<a href="/?session=${encodeURIComponent(a.cible)}#enregistrer" style="font-weight:600">Ouvrir la tâche complète →</a>`;
+      resultsEl.prepend(bandeau);
+    }
     const m = data._meta || {};
     const n = data.workflows?.length ?? 0;
     endAnalysisPanel(true, `${n} tâche${n > 1 ? 's' : ''} trouvée${n > 1 ? 's' : ''}. Relis les étapes ci-dessous.`);

@@ -514,7 +514,21 @@ app.post('/api/generate-workflows', async (req, res) => {
       fs.writeFileSync(path.join(dir, 'frames.json'), JSON.stringify({ frames, startedAt, screens: shared || [] }));
     }
     if (!dir) return res.status(400).json({ error: 'Enregistrement introuvable.' });
-    res.json(await analyzeSessionDir(dir));
+    const out = await analyzeSessionDir(dir);
+    // enregistrement d'ajout : on dit à l'écran à quelle tâche les étapes ont été ajoutées
+    const cible = lireJson(path.join(dir, 'session.json'))?.ajouterA;
+    let ajout = null;
+    if (cible) {
+      const cibleDir = path.join(SESSIONS_DIR, path.basename(cible));
+      const an = lireJson(path.join(cibleDir, 'analysis.json'));
+      ajout = {
+        cible: path.basename(cible),
+        titre: infoEnregistrement(cibleDir, path.basename(cible)).titre,
+        etapes_ajoutees: (out?.workflows || []).flatMap((w) => w.steps || []).length,
+        etapes_total: (an?.result?.workflows?.[0]?.steps || []).length,
+      };
+    }
+    res.json({ ...out, ajout });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: err.message });
