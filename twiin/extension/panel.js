@@ -50,6 +50,7 @@ port.onMessage.addListener((m) => {
   if (m.type === 'record') record(false);
   if (m.type === 'stop' && C.recording) Capture.stop();
 });
+if (typeof Reco !== 'undefined') Reco.config({ api, onUpdate: () => render() }); // « Reco » : module à part (reco.js)
 let wasAnalyzing = false;
 Capture.config({ onUpdate: () => {
   report();
@@ -177,12 +178,18 @@ function taskBlock() {
   h += `<h2>${esc(t.name)}</h2><p class="sub">${esc(t.summary || '')}</p>
     <ol class="steps">${steps.slice(0, 5).map((x) => `<li>${esc(x)}</li>`).join('')}</ol>
     ${steps.length > 5 ? `<details class="more"><summary>Voir les ${steps.length - 5} autres étapes</summary><ol class="steps" start="6">${steps.slice(5).map((x) => `<li>${esc(x)}</li>`).join('')}</ol></details>` : ''}
-    <div class="actions">
-      <button class="b dark" data-act="mkauto" type="button" ${busy ? 'disabled' : ''}>Créer l'automatisation</button>
-      <button class="b" data-act="mktuto" type="button" ${tutoJob?.running ? 'disabled' : ''}>Créer la vidéo de formation</button>
+    ${typeof Reco !== 'undefined' ? Reco.html(t) : ''}
+    <div class="actions">${actionButtons(t, busy)}
       <button class="link" data-act="twiin" data-hash="#enregistrer" type="button">Corriger les étapes dans Twiin</button>
     </div>${autoBlock()}${tutoBlock()}</div>`;
   return h;
+}
+
+// Les deux boutons ; si la Reco est prête, le bouton recommandé passe en plein et en premier (comme sur la page web)
+function actionButtons(t, busy) {
+  const auto = `<button class="b ${typeof Reco !== 'undefined' && Reco.primary(t) === 'tuto' ? '' : 'dark'}" data-act="mkauto" type="button" ${busy ? 'disabled' : ''}>Créer l'automatisation</button>`;
+  const tuto = `<button class="b ${typeof Reco !== 'undefined' && Reco.primary(t) === 'tuto' ? 'dark' : ''}" data-act="mktuto" type="button" ${tutoJob?.running ? 'disabled' : ''}>Créer la vidéo de formation</button>`;
+  return typeof Reco !== 'undefined' && Reco.primary(t) === 'tuto' ? tuto + auto : auto + tuto;
 }
 
 function autoBlock() {
@@ -314,6 +321,7 @@ document.addEventListener('click', async (ev) => {
   if (act === 'reanalyze') return Capture.reanalyze();
   if (act === 'recstoppage') { ask({ type: 'record:stop' }); return; }
   if (act === 'sel') { sel = Number(el.dataset.i); autoJob = null; tutoMine = false; tutoJob = null; return render(); }
+  if (act === 'reco') return Reco.run(task());
   if (act === 'mkauto') return createAutomation();
   if (act === 'mktuto') return createTuto();
   if (act === 'stop') { el.textContent = 'Arrêt…'; await ask({ type: 'stop' }); }

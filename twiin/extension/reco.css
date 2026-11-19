@@ -1,0 +1,12 @@
+/* Twiin · bloc « Reco » dans la carte de la tâche (app Mac) */
+.reco { margin-top: 12px; padding: 12px; border-radius: 18px; background: var(--panel-2); border: 1px solid var(--border); }
+.reco h4 { margin: 2px 0 4px; font-size: 14.5px; }
+.reco h5 { margin: 10px 0 4px; font-size: 12.5px; }
+.reco .eyebrow { margin: 0; font-size: 11px; color: var(--dim); text-transform: uppercase; letter-spacing: .04em; }
+.reco .sub { margin: 0 0 6px; }
+.reco ul, .reco ol { margin: 6px 0 0; padding-left: 18px; font-size: 12.5px; display: grid; gap: 6px; }
+.reco .gain { color: var(--dim); font-size: 11.5px; }
+.reco .cost { margin: 8px 0 0; font-size: 11px; color: var(--dim); opacity: .8; }
+.reco-go { margin-top: 12px; }
+.reco .spin { display: inline-block; width: 11px; height: 11px; margin-right: 8px; vertical-align: -1px; border: 2px solid var(--border); border-top-color: var(--dim); border-radius: 50%; animation: reco-spin .8s linear infinite; }
+@keyframes reco-spin { to { transform: rotate(360deg); } }
