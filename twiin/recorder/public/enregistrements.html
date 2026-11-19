@@ -157,7 +157,10 @@ document.getElementById('corbeille').addEventListener('click', async (ev) => {
   }
 });
 
-charger();
+// Le lien « Corbeille » du menu ouvre directement l'onglet corbeille (#corbeille)
+const ouvrirSelonAncre = () => setTab(location.hash === '#corbeille' ? 'corb' : 'enr');
+window.addEventListener('hashchange', ouvrirSelonAncre);
+ouvrirSelonAncre();
 </script>
 <script src="/vendor/supabase/supabase.js"></script>
 <script src="auth.js"></script>
