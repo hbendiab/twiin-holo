@@ -210,6 +210,17 @@ pauseBtn.addEventListener('click', async () => {
 });
 reBtn.addEventListener('click', () => analyzeRequest('/api/reanalyze', null, 'Nouvelle analyse du dernier enregistrement…'));
 
+// Changer de section (Audit, Recommandation…) pendant un enregistrement : on demande d'abord. Si l'employé
+// confirme, l'enregistrement est arrêté proprement (et analysé) ; sinon on reste sur la page d'enregistrement.
+window.addEventListener('hashchange', async () => {
+  if (!recording || location.hash === '#enregistrer') return;
+  if (!confirm('Un enregistrement est en cours. Changer de section l\'arrête. Continuer ?')) {
+    history.replaceState(null, '', '#enregistrer');
+    return;
+  }
+  await stopRecording();
+}, true);
+
 // Quitter la page pendant un enregistrement : on prévient, sinon l'enregistrement se perd.
 window.addEventListener('beforeunload', (e) => { if (recording) { e.preventDefault(); e.returnValue = ''; } });
 
