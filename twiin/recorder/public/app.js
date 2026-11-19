@@ -515,7 +515,8 @@ async function analyzeRequest(url, body, message, nScreens) {
       bandeau.style.cssText = 'margin:0 0 18px;padding:14px 18px;border-radius:14px;background:var(--accent-soft,rgba(120,160,255,.15));border:1px solid var(--accent,#7aa2ff);font-size:15px;line-height:1.4';
       bandeau.innerHTML = `<b>✅ Étapes ajoutées à « ${escapeHtml(a.titre)} »</b><br>` +
         `${a.etapes_ajoutees} étape(s) ajoutée(s) à la fin, soit ${a.etapes_total + a.etapes_ajoutees} au total. ` +
-        `<a href="/?session=${encodeURIComponent(a.cible)}#enregistrer" style="font-weight:600">Ouvrir la tâche complète →</a>`;
+        `<a href="/?session=${encodeURIComponent(a.cible)}#enregistrer" style="font-weight:600">Ouvrir la tâche complète →</a> · ` +
+        `<a href="/?session=${encodeURIComponent(a.cible)}&ajout=1#enregistrer" style="font-weight:600">Ajouter un enregistrement à cette tâche</a>`;
       resultsEl.prepend(bandeau);
     }
     const m = data._meta || {};
