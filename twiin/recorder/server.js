@@ -472,6 +472,11 @@ async function analyze({ frames, transcript, actionLog = '', ocrLines = 0, scree
   fs.mkdirSync(path.dirname(CANDIDATES_PATH), { recursive: true });
   fs.writeFileSync(CANDIDATES_PATH, JSON.stringify(result, null, 2) + '\n');
   fs.writeFileSync(LAST_RUN_PATH, JSON.stringify({ meta, action_log: actionLog, ocr_transcript: transcript }, null, 2) + '\n');
+  // chaque analyse est gardée dans SON enregistrement : l'historique « Mes enregistrements » la retrouve
+  if (session && fs.existsSync(path.join(SESSIONS_DIR, path.basename(session)))) {
+    fs.writeFileSync(path.join(SESSIONS_DIR, path.basename(session), 'analysis.json'),
+      JSON.stringify({ analysedAt: new Date().toISOString(), meta, result }, null, 2) + '\n');
+  }
   console.log(`Wrote ${result.workflows.length} candidate workflow(s) to ${CANDIDATES_PATH}`);
   backLog('analyse', { model: HF_MODEL, provider, tokens_in: usage.prompt_tokens, tokens_out: usage.completion_tokens, cost_usd,
                        images_sent: meta.images_sent, ocr_lines: ocrLines, actions: meta.action_lines, json_repaired: repaired,
@@ -1029,6 +1034,94 @@ app.get('/api/replay/events', (req, res) => {
 app.post('/api/replay/stop', (req, res) => {
   if (replay?.running) replay.proc.kill('SIGTERM');
   res.json({ ok: true });
+});
+
+// --- Mes enregistrements : historique, analyse à la demande (coûteuse), corbeille ------------------------------
+// Une analyse n'est refaite que sur demande : les anciens enregistrements gardent leurs images, sans appel à Holo.
+const CORBEILLE_DIR = path.join(REPO_ROOT, 'workflows', 'corbeille');
+const lireJson = (file) => { try { return JSON.parse(fs.readFileSync(file, 'utf8')); } catch { return null; } };
+function infoEnregistrement(dir, id) {
+  const an = lireJson(path.join(dir, 'analysis.json'));
+  const sess = lireJson(path.join(dir, 'session.json'));
+  const wfs = an?.result?.workflows || [];
+  return {
+    id,
+    startedAt: sess?.startedAt ? new Date(sess.startedAt).toISOString() : null,
+    analyse: !!an,
+    analysedAt: an?.analysedAt || null,
+    nom: wfs[0]?.name || null,
+    nb_taches: wfs.length,
+    nb_etapes: wfs.reduce((n, w) => n + (w.steps || []).length, 0),
+    supprime_le: lireJson(path.join(dir, 'corbeille.json'))?.deletedAt || null,
+  };
+}
+const listeDossiers = (base) => (fs.existsSync(base)
+  ? fs.readdirSync(base).filter((d) => fs.statSync(path.join(base, d)).isDirectory()).sort().reverse() : []);
+
+app.get('/api/sessions', (req, res) => {
+  res.json({ sessions: listeDossiers(SESSIONS_DIR).map((id) => infoEnregistrement(path.join(SESSIONS_DIR, id), id)) });
+});
+
+app.get('/api/sessions/:id', (req, res) => {
+  const dir = path.join(SESSIONS_DIR, path.basename(req.params.id));
+  if (!fs.existsSync(dir)) return res.status(404).json({ error: 'Enregistrement introuvable.' });
+  res.json({ ...infoEnregistrement(dir, req.params.id), analyse_complete: lireJson(path.join(dir, 'analysis.json')) });
+});
+
+app.post('/api/sessions/:id/analyze', async (req, res) => {
+  try {
+    const id = path.basename(req.params.id);
+    if (recorderSession?.id === id && recorderSession.proc?.exitCode === null) return res.status(409).json({ error: 'Cet enregistrement est en cours.' });
+    if (analysisProgress.phase !== 'idle' && Date.now() - analysisProgress.at < 600000) return res.status(409).json({ error: 'Une analyse est déjà en cours.' });
+    const dir = path.join(SESSIONS_DIR, id);
+    if (!fs.existsSync(dir)) return res.status(404).json({ error: 'Enregistrement introuvable.' });
+    await analyzeSessionDir(dir);
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Supprimer = mettre à la corbeille (récupérable). Rien n'est effacé définitivement sans « Vider la corbeille ».
+app.delete('/api/sessions/:id', (req, res) => {
+  const id = path.basename(req.params.id);
+  const dir = path.join(SESSIONS_DIR, id);
+  if (!fs.existsSync(dir)) return res.status(404).json({ error: 'Enregistrement introuvable.' });
+  if (recorderSession?.id === id && recorderSession.proc?.exitCode === null) return res.status(409).json({ error: 'Arrête l\'enregistrement avant de le supprimer.' });
+  fs.mkdirSync(CORBEILLE_DIR, { recursive: true });
+  const dest = path.join(CORBEILLE_DIR, id);
+  if (fs.existsSync(dest)) return res.status(409).json({ error: 'Déjà dans la corbeille.' });
+  fs.renameSync(dir, dest);
+  fs.writeFileSync(path.join(dest, 'corbeille.json'), JSON.stringify({ deletedAt: new Date().toISOString() }) + '\n');
+  res.json({ ok: true });
+});
+
+app.get('/api/corbeille', (req, res) => {
+  res.json({ items: listeDossiers(CORBEILLE_DIR).map((id) => infoEnregistrement(path.join(CORBEILLE_DIR, id), id)) });
+});
+
+app.post('/api/corbeille/:id/restaurer', (req, res) => {
+  const id = path.basename(req.params.id);
+  const src = path.join(CORBEILLE_DIR, id);
+  if (!fs.existsSync(src)) return res.status(404).json({ error: 'Introuvable dans la corbeille.' });
+  const dest = path.join(SESSIONS_DIR, id);
+  if (fs.existsSync(dest)) return res.status(409).json({ error: 'Un enregistrement avec ce nom existe déjà.' });
+  fs.renameSync(src, dest);
+  fs.rmSync(path.join(dest, 'corbeille.json'), { force: true });
+  res.json({ ok: true });
+});
+
+app.delete('/api/corbeille/:id', (req, res) => {
+  const src = path.join(CORBEILLE_DIR, path.basename(req.params.id));
+  if (!fs.existsSync(src)) return res.status(404).json({ error: 'Introuvable dans la corbeille.' });
+  fs.rmSync(src, { recursive: true, force: true }); // suppression définitive
+  res.json({ ok: true });
+});
+
+app.post('/api/corbeille/vider', (req, res) => {
+  const ids = listeDossiers(CORBEILLE_DIR);
+  for (const id of ids) fs.rmSync(path.join(CORBEILLE_DIR, id), { recursive: true, force: true });
+  res.json({ ok: true, supprimes: ids.length });
 });
 
 const PORT = process.env.PORT || 3000;

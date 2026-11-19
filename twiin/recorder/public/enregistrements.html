@@ -1,0 +1,155 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Twiin · Mes enregistrements</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Google+Sans+Flex:wght@300;400;500;600;700&display=swap">
+<link rel="stylesheet" href="pages.css">
+<style>
+  .tabs { display: flex; gap: 8px; margin: 0 0 18px; }
+  .tabs button[aria-pressed="true"] { font-weight: 600; }
+  .card { border-radius: 14px; padding: 16px 18px; margin: 0 0 12px; background: var(--panel-2, rgba(127,127,127,.08)); }
+  .card h3 { margin: 0 0 4px; font-size: 16px; font-weight: 600; }
+  .card .meta { margin: 0 0 10px; font-size: 13px; opacity: .75; }
+  .card .actions { display: flex; gap: 8px; flex-wrap: wrap; }
+  .card button { border: 0; border-radius: 999px; padding: 7px 14px; cursor: pointer; font: inherit; font-size: 13px; background: var(--panel, rgba(127,127,127,.18)); color: inherit; }
+  .card button.danger { color: #c0392b; }
+  .detail { margin-top: 12px; font-size: 14px; }
+  .detail h4 { margin: 12px 0 4px; font-size: 14px; }
+  .detail ol { margin: 0 0 8px 20px; padding: 0; }
+  #msg { min-height: 20px; font-size: 13px; margin: 0 0 12px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Mes enregistrements</h1>
+  <div class="tabs">
+    <button type="button" data-tab="enr" aria-pressed="true">Enregistrements</button>
+    <button type="button" data-tab="corb" aria-pressed="false">Corbeille</button>
+  </div>
+  <p id="msg" role="status"></p>
+  <section id="liste"></section>
+  <section id="corbeille" hidden></section>
+</main>
+
+<script src="shell.js" defer></script>
+<script>
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const fmt = (iso) => (iso ? new Date(iso).toLocaleString('fr-FR', { dateStyle: 'medium', timeStyle: 'short' }) : '—');
+const msg = (t) => { document.getElementById('msg').textContent = t || ''; };
+let vue = 'enr';
+
+function setTab(t) {
+  vue = t;
+  document.querySelectorAll('[data-tab]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.tab === t)));
+  document.getElementById('liste').hidden = t !== 'enr';
+  document.getElementById('corbeille').hidden = t !== 'corb';
+  msg('');
+  charger();
+}
+
+async function charger() {
+  if (vue === 'enr') {
+    const { sessions = [] } = await (await fetch('/api/sessions')).json();
+    document.getElementById('liste').innerHTML = sessions.length
+      ? sessions.map(carteEnr).join('') : '<p>Aucun enregistrement pour l\'instant.</p>';
+  } else {
+    const { items = [] } = await (await fetch('/api/corbeille')).json();
+    document.getElementById('corbeille').innerHTML =
+      `<div class="card-actions" style="margin-bottom:12px"><button class="danger" id="vider" ${items.length ? '' : 'disabled'}>Vider la corbeille</button></div>` +
+      (items.length ? items.map(carteCorb).join('') : '<p>La corbeille est vide.</p>');
+  }
+}
+
+function carteEnr(e) {
+  const resume = e.analyse ? `${e.nb_taches} tâche(s), ${e.nb_etapes} étape(s)` : 'pas encore analysé';
+  return `<article class="card" data-id="${esc(e.id)}">
+    <h3>${esc(e.nom || 'Enregistrement du ' + fmt(e.startedAt))}</h3>
+    <p class="meta">${fmt(e.startedAt)} · ${resume}</p>
+    <div class="actions">
+      ${e.analyse ? '<button data-act="voir">Voir la recommandation</button>' : '<button data-act="analyser">Analyser (utilise Holo)</button>'}
+      <button class="danger" data-act="supprimer">Mettre à la corbeille</button>
+    </div>
+    <div class="detail" hidden></div>
+  </article>`;
+}
+
+function carteCorb(e) {
+  return `<article class="card" data-id="${esc(e.id)}">
+    <h3>${esc(e.nom || 'Enregistrement du ' + fmt(e.startedAt))}</h3>
+    <p class="meta">Supprimé le ${fmt(e.supprime_le)}</p>
+    <div class="actions">
+      <button data-act="restaurer">Restaurer</button>
+      <button class="danger" data-act="supprimer-def">Supprimer définitivement</button>
+    </div>
+  </article>`;
+}
+
+async function voir(id, card) {
+  const box = card.querySelector('.detail');
+  if (!box.hidden) { box.hidden = true; return; }
+  const d = await (await fetch(`/api/sessions/${encodeURIComponent(id)}`)).json();
+  const wfs = d.analyse_complete?.result?.workflows || [];
+  box.innerHTML = wfs.map((w) => `<h4>${esc(w.name || 'Tâche')}</h4>
+    ${w.summary ? `<p>${esc(w.summary)}</p>` : ''}
+    <ol>${(w.steps || []).map((s) => `<li>${esc(s)}</li>`).join('')}</ol>`).join('') || '<p>Aucune recommandation.</p>';
+  box.hidden = false;
+}
+
+document.querySelectorAll('[data-tab]').forEach((b) => b.addEventListener('click', () => setTab(b.dataset.tab)));
+
+document.getElementById('liste').addEventListener('click', async (ev) => {
+  const b = ev.target.closest('button[data-act]');
+  if (!b) return;
+  const card = b.closest('.card');
+  const id = card.dataset.id;
+  if (b.dataset.act === 'voir') return voir(id, card);
+  if (b.dataset.act === 'analyser') {
+    if (!confirm('Analyser cet enregistrement utilise Holo et coûte un peu d\'argent. Continuer ?')) return;
+    b.disabled = true; b.textContent = 'Analyse en cours…';
+    const r = await fetch(`/api/sessions/${encodeURIComponent(id)}/analyze`, { method: 'POST' });
+    const d = await r.json();
+    if (d.error) msg(d.error); else msg('Analyse terminée.');
+    return charger();
+  }
+  if (b.dataset.act === 'supprimer') {
+    if (!confirm('Mettre cet enregistrement à la corbeille ? Tu pourras le restaurer depuis la corbeille.')) return;
+    const r = await fetch(`/api/sessions/${encodeURIComponent(id)}`, { method: 'DELETE' });
+    const d = await r.json();
+    msg(d.error || 'Enregistrement mis à la corbeille.');
+    return charger();
+  }
+});
+
+document.getElementById('corbeille').addEventListener('click', async (ev) => {
+  const b = ev.target.closest('button');
+  if (!b) return;
+  if (b.id === 'vider') {
+    if (!confirm('Vider la corbeille supprime définitivement tous ses enregistrements. C\'est irréversible. Continuer ?')) return;
+    const d = await (await fetch('/api/corbeille/vider', { method: 'POST' })).json();
+    msg(`Corbeille vidée (${d.supprimes} enregistrement(s) supprimé(s)).`);
+    return charger();
+  }
+  const id = b.closest('.card').dataset.id;
+  if (b.dataset.act === 'restaurer') {
+    const d = await (await fetch(`/api/corbeille/${encodeURIComponent(id)}/restaurer`, { method: 'POST' })).json();
+    msg(d.error || 'Enregistrement restauré.');
+    return charger();
+  }
+  if (b.dataset.act === 'supprimer-def') {
+    if (!confirm('Supprimer définitivement cet enregistrement ? C\'est irréversible.')) return;
+    const d = await (await fetch(`/api/corbeille/${encodeURIComponent(id)}`, { method: 'DELETE' })).json();
+    msg(d.error || 'Supprimé définitivement.');
+    return charger();
+  }
+});
+
+charger();
+</script>
+<script src="/vendor/supabase/supabase.js"></script>
+<script src="auth.js"></script>
+<script src="banner.js"></script>
+<script src="common.js"></script>
+</body>
+</html>
