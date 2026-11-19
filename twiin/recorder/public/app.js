@@ -245,7 +245,7 @@ function refreshVoiceNote() {
   const st = voiceStatus;
   let text = '';
   if (voiceUnavailable) text = `Voix indisponible : ${voiceUnavailable}.`;
-  else if (st && voiceSwitch.checked) text = 'Ta voix est transcrite sur ton Mac : elle n\'en sort pas.';
+  else if (st && voiceSwitch.checked) text = 'Ta voix est transcrite sur ton Mac : l\'audio n\'en sort pas.';
   voiceNoteEl.textContent = text;
   voiceNoteEl.hidden = !text;
   if (!st) return;

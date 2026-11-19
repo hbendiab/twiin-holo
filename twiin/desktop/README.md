@@ -30,7 +30,7 @@ avec `extension/desktop-shim.js` qui remplace les fonctions propres à Chrome.
 
 ## Capture vocale (micro)
 Interrupteur **Capture vocale** en bas de la fenêtre (désactivé par défaut). Pendant l'enregistrement, le micro est capté et
-envoyé au serveur Twiin du Mac, qui le transcrit **localement** (Whisper) à l'analyse : la voix ne quitte pas le Mac. Code :
+envoyé au serveur Twiin du Mac, qui le transcrit **localement** (Whisper) à l'analyse : l'audio ne quitte pas le Mac (seul le texte transcrit va au modèle d'analyse). Code :
 `extension/voice.js` (module partagé) et `desktop/voice-permissions.js` (autorisation du micro).
 - Au premier usage, macOS demande l'autorisation du **micro**. En `npm start`, la demande concerne Electron / le Terminal
   (*Réglages Système → Confidentialité et sécurité → Micro*) ; relance l'app après l'avoir accordée.

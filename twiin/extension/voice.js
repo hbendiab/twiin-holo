@@ -1,6 +1,6 @@
 // Twiin · capture vocale pour l'app Mac (et, plus tard, l'extension). Module à part : capture.js l'appelle seulement s'il est chargé.
 // Le micro est enregistré en même temps que l'écran, envoyé au serveur Twiin du Mac (POST /api/audio), transcrit là par Whisper
-// local à l'analyse : la voix ne quitte pas le Mac. Désactivée par défaut ; ne bloque jamais l'enregistrement ni l'analyse.
+// local à l'analyse : l'audio ne quitte pas le Mac (seul le texte transcrit va au modèle d'analyse). Désactivée par défaut ; ne bloque jamais l'enregistrement ni l'analyse.
 const Voice = (() => {
   const KEY = 'twiin.voice';
   let v = null, ui = null;
@@ -17,7 +17,7 @@ const Voice = (() => {
     if (!ui) return;
     ui.input.checked = S.on && S.ready;
     ui.input.disabled = !S.ready || S.recording;
-    const text = S.warning || (!S.ready && S.reason ? `Voix indisponible : ${S.reason}.` : S.on && S.ready ? 'Ta voix est transcrite sur ton Mac : elle n\'en sort pas.' : '');
+    const text = S.warning || (!S.ready && S.reason ? `Voix indisponible : ${S.reason}.` : S.on && S.ready ? 'Ta voix est transcrite sur ton Mac : l\'audio n\'en sort pas.' : '');
     ui.note.textContent = text; ui.note.hidden = !text;
   }
   async function refresh() { // la voix locale est-elle prête ? (installée, modèle présent)
