@@ -85,7 +85,7 @@
       (results?.parentNode || document.body).insertBefore(host, results || null);
     }
     const n = progress?.total ? ` (${progress.done}/${progress.total} essais)` : '';
-    host.innerHTML = `<span aria-hidden="true">🔬</span><span><b>Twiin vérifie cette recommandation</b> en la testant dans un
+    host.innerHTML = `<span><b>Twiin vérifie cette recommandation</b> en la testant dans un
       environnement isolé${esc(n)}. Le résultat s'affichera ici.</span>`;
   }
 
@@ -183,7 +183,7 @@
     const card = host;
     card.innerHTML = `
       <p class="eyebrow-small">Recommandation vérifiée${s.essais ? ` par ${esc(s.essais)} essais` : ' par des essais'}</p>
-      <h3>${s.kind === 'automate' ? '⚡ Twiin peut automatiser cette tâche' : '💡 Après vérification : accélère cette tâche toi-même'}</h3>
+      <h3>${s.kind === 'automate' ? 'Twiin peut automatiser cette tâche' : 'Après vérification : accélère cette tâche toi-même'}</h3>
       <p>${esc(s.texte)}</p>
       ${(s.raisons || []).length ? `<details><summary>Pourquoi</summary><ul>${s.raisons.map((r) => `<li>${esc(r)}</li>`).join('')}</ul></details>` : ''}
       <p class="dc-msg"></p>

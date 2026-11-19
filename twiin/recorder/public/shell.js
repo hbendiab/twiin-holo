@@ -39,9 +39,39 @@
     if (box) box.innerHTML = `<img class="tw-logo" src="${LOGO}" alt="">`;
   }
 
+  // Page d'ouverture : une goutte de chrome se dédouble en Iris et Ilo, qui présentent Twiin. Une fois par session
+  // de navigateur (à la connexion ou à la première page ouverte) ; ?bienvenue pour la revoir.
+  function intro() {
+    const q = new URLSearchParams(location.search);
+    let vu = false;
+    try { vu = sessionStorage.getItem('twiin-intro') === '1'; } catch { vu = true; }
+    if (!q.has('bienvenue') && (vu || q.has('session'))) return;
+    window.twiinAccueil = true; // les compagnons attendent la fin de l'ouverture pour arriver en vol
+    const go = () => window.TwiinBienvenue.show();
+    if (window.TwiinBienvenue) return go();
+    const s = document.createElement('script');
+    s.src = '/bienvenue.js'; s.onload = go;
+    document.head.append(s);
+  }
+
+  // Sur-titre numéroté au-dessus du titre de la page : « 01  Analyser une tâche · Audit »
+  function eyebrow() {
+    document.querySelectorAll('.tw-eyebrow').forEach((e) => e.remove());
+    let n = 0, found = null;
+    for (const [titre, liens] of GROUPES) { n++; const l = liens.find(([href]) => here(href)); if (l) { found = [n, titre, l[2]]; break; } }
+    const h1 = [...document.querySelectorAll('h1')].find((h) => h.offsetParent !== null && !h.closest('.tw-side'));
+    if (!found || !h1) return;
+    const p = document.createElement('p');
+    p.className = 'tw-eyebrow';
+    p.innerHTML = `<b>${String(found[0]).padStart(2, '0')}</b><span>${found[1]}</span><span>·</span><span>${found[2]}</span>`;
+    h1.before(p);
+  }
+
   function build() {
+    // Iris et Ilo en chrome liquide (même rendu que la page d'ouverture) partout où ils apparaissent
+    const jum = document.createElement('script'); jum.src = '/jumeaux.js'; document.head.append(jum);
     logo();
-    if (document.body.classList.contains('no-rail')) return;
+    if (document.body.classList.contains('no-rail')) { if (path.endsWith('/login.html')) intro(); return; }
     let i = 0;
     const item = ([href, ico, label]) => `<a class="tw-item" href="${href}" style="--i:${i++}" ${here(href) ? 'aria-current="page"' : ''} data-label="${label}">
         <span class="tw-round">${svg(ico)}${ico === 'auto' ? '<span class="tw-red" hidden></span>' : ''}</span><span class="tw-lbl">${label}</span></a>`;
@@ -49,7 +79,7 @@
     side.className = 'tw-side';
     side.setAttribute('aria-label', 'Navigation Twiin');
     side.innerHTML = `
-      <a class="tw-brand" href="/#audit" aria-label="Twiin, accueil"><img class="tw-logo" src="${LOGO}" alt=""><span class="tw-lbl tw-word">Twiin</span></a>
+      <a class="tw-brand" href="/#audit" aria-label="Twiin, accueil"><span class="tw-twins tw-mark" aria-hidden="true"><i class="tw-orb iris"></i><i class="tw-orb ilo"></i></span><span class="tw-lbl tw-word">Twiin</span></a>
       <nav class="tw-nav">${GROUPES.map(([titre, liens]) => `<span class="tw-group"><span>${titre}</span></span>${liens.map(item).join('')}`).join('')}</nav>
       <div class="tw-foot">
         <button type="button" class="tw-item" data-act="theme" style="--i:${i++}" data-label="Thème"><span class="tw-round">${svg('moon')}</span><span class="tw-lbl">Thème sombre</span></button>
@@ -58,6 +88,12 @@
           aria-expanded="${!collapsed}"><span class="tw-round">${svg('chevron')}</span><span class="tw-lbl">Réduire</span></button>
       </div>`;
     document.body.prepend(side);
+    try { document.fonts.load('500 12px "Geist Mono"', '01'); } catch { /* rien */ }
+    eyebrow();
+    intro();
+    // Iris et Ilo, compagnons de route sur toutes les pages
+    const comp = document.createElement('script'); comp.src = '/compagnons.js'; document.head.append(comp);
+    addEventListener('hashchange', () => setTimeout(eyebrow, 30));
     requestAnimationFrame(() => requestAnimationFrame(() => root.classList.remove('side-noanim')));
 
     // Thème

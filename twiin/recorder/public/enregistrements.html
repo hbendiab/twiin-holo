@@ -74,11 +74,13 @@ async function charger() {
 function carteEnr(e) {
   const statut = (e.analyse ? `${e.nb_taches} tâche(s), ${e.nb_etapes} étape(s)` : 'pas encore analysé') + (e.ajouts ? ` · ${e.ajouts} ajout(s) de tâche oubliée` : '');
   return `<article class="panel rec" data-id="${esc(e.id)}">
-    <p class="rec-titre">${esc(e.titre || 'Enregistrement')}${e.source === 'telecommande' ? '<span class="rec-src">📱 Depuis le téléphone</span>' : ''}</p>
+    <p class="rec-titre">${esc(e.titre || 'Enregistrement')}${e.source === 'telecommande' ? '<span class="rec-src"><svg viewBox="0 0 24 24" aria-hidden="true" style="width:13px;height:13px;fill:none;stroke:currentColor;stroke-width:1.8;vertical-align:-2px;margin-right:4px"><rect x="7" y="2" width="10" height="20" rx="2.5"/><path d="M11 18h2"/></svg>Depuis le téléphone</span>' : ''}</p>
     <p class="rec-date">${fmt(e.startedAt)} · ${statut}</p>
     <div class="rec-actions">
       ${e.analyse
-        ? `<a class="btn primary" href="/?session=${encodeURIComponent(e.id)}#enregistrer">Ouvrir et modifier</a>
+        ? `<a class="btn primary" href="/?session=${encodeURIComponent(e.id)}&faire=automatiser#enregistrer">Automatiser cette tâche</a>
+           <a class="btn" href="/?session=${encodeURIComponent(e.id)}&faire=video#enregistrer">Créer la vidéo</a>
+           <a class="btn" href="/?session=${encodeURIComponent(e.id)}#enregistrer">Ouvrir et modifier</a>
            <a class="btn" href="/?session=${encodeURIComponent(e.id)}&ajout=1#enregistrer">Ajouter une tâche oubliée</a>`
         : '<button data-act="analyser">Analyser (utilise Holo)</button>'}
       <button class="danger" data-act="supprimer">Mettre à la corbeille</button>
@@ -89,7 +91,7 @@ function carteEnr(e) {
 function carteCorb(e) {
   const reste = e.jours_restants != null ? ` · supprimé définitivement dans ${e.jours_restants} jour(s)` : '';
   return `<article class="panel rec" data-id="${esc(e.id)}">
-    <p class="rec-titre">${esc(e.titre || 'Enregistrement')}${e.source === 'telecommande' ? '<span class="rec-src">📱 Depuis le téléphone</span>' : ''}</p>
+    <p class="rec-titre">${esc(e.titre || 'Enregistrement')}${e.source === 'telecommande' ? '<span class="rec-src"><svg viewBox="0 0 24 24" aria-hidden="true" style="width:13px;height:13px;fill:none;stroke:currentColor;stroke-width:1.8;vertical-align:-2px;margin-right:4px"><rect x="7" y="2" width="10" height="20" rx="2.5"/><path d="M11 18h2"/></svg>Depuis le téléphone</span>' : ''}</p>
     <p class="rec-date">${fmt(e.startedAt)} · mis à la corbeille le ${fmt(e.supprime_le)}${reste}</p>
     <div class="rec-actions">
       <button data-act="restaurer">Restaurer</button>

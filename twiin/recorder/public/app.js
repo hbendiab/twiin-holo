@@ -349,7 +349,7 @@ async function openMic() {
   try {
     return await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } });
   } catch (e) {
-    voiceWarning = `⚠️ Micro non disponible (${e.name || e.message}) : enregistrement sans la voix.`;
+    voiceWarning = `Micro non disponible (${e.name || e.message}) : enregistrement sans la voix.`;
     console.warn(voiceWarning);
     statusEl.textContent = voiceWarning;
     return null;
@@ -455,7 +455,7 @@ async function pollJournal() {
       const t = `${Math.max(0, e.ts - startedAt / 1000).toFixed(1)} s`;
       const where = [sharedNumber(e.display), e.app].filter(Boolean).join(' · ');
       if (e.type === 'start') text = e.clicks_and_keys ? 'Journal démarré (clics, saisies, raccourcis, apps).'
-        : '⚠️ Clics et clavier non autorisés (Réglages Système → Surveillance de l\'entrée) : seuls les changements d\'app sont notés.';
+        : 'Clics et clavier non autorisés (Réglages Système → Surveillance de l\'entrée) : seuls les changements d\'app sont notés.';
       else if (e.type === 'app') text = `${where} au premier plan${e.window ? ` — ${e.window}` : ''}`;
       else if (e.type === 'click') text = `${where} · clic sur ${e.element || 'un élément'}`;
       else if (e.type === 'typing') text = `${where} · saisie (${e.keys ?? '?'} frappes) dans ${e.element || 'le champ actif'}`;
@@ -619,18 +619,18 @@ async function stopRecording() {
   if (sessionId) {
     await Promise.allSettled([...uploads, voiceSent]);
     if (hadVoice && !(await voiceSent)) {
-      voiceWarning = '⚠️ La voix n\'a pas pu être enregistrée côté serveur (enregistrement trop court ?) : analyse sans elle.';
+      voiceWarning = 'La voix n\'a pas pu être enregistrée côté serveur (enregistrement trop court ?) : analyse sans elle.';
       console.warn(voiceWarning);
       statusEl.textContent = voiceWarning;
     }
-    if (uploadErrors) statusEl.textContent = `⚠️ ${uploadErrors} image(s) non enregistrée(s) sur l'ordinateur.`;
+    if (uploadErrors) statusEl.textContent = `${uploadErrors} image(s) non enregistrée(s) sur l'ordinateur.`;
     // Relecture AVANT envoi : images déjà masquées, l'employé retire ce qu'il ne veut pas envoyer (rien n'est parti)
     const choix = await relire(sessionId);
     if (!choix) return; // tout supprimé : rien n'a été envoyé
     startAnalysisPanel('upload');
     await analyzeRequest('/api/generate-workflows', { session: sessionId, startedAt, screens: sharedScreens, textOnly: choix.textOnly }, null, nScreens);
   } else {
-    if (hadVoice) { voiceWarning = '⚠️ La voix n\'a pas pu être enregistrée (pas de dossier côté serveur) : analyse sans elle.'; await voiceSent; }
+    if (hadVoice) { voiceWarning = 'La voix n\'a pas pu être enregistrée (pas de dossier côté serveur) : analyse sans elle.'; await voiceSent; }
     startAnalysisPanel('upload');
     await analyzeRequest('/api/generate-workflows', { frames, startedAt, screens: sharedScreens }, null, nScreens);
   }
@@ -715,7 +715,7 @@ async function analyzeRequest(url, body, message, nScreens) {
       const bandeau = document.createElement('div');
       bandeau.className = 'ajout-bandeau';
       bandeau.style.cssText = 'margin:0 0 18px;padding:14px 18px;border-radius:14px;background:var(--accent-soft,rgba(120,160,255,.15));border:1px solid var(--accent,#7aa2ff);font-size:15px;line-height:1.4';
-      bandeau.innerHTML = `<b>✅ Étapes ajoutées à « ${escapeHtml(a.titre)} »</b><br>` +
+      bandeau.innerHTML = `<b>Étapes ajoutées à « ${escapeHtml(a.titre)} »</b><br>` +
         `${a.etapes_ajoutees} étape(s) ajoutée(s) à la fin, soit ${a.etapes_total + a.etapes_ajoutees} au total. ` +
         `<a href="/?session=${encodeURIComponent(a.cible)}#enregistrer" style="font-weight:600">Ouvrir la tâche complète →</a> · ` +
         `<a href="/?session=${encodeURIComponent(a.cible)}&ajout=1#enregistrer" style="font-weight:600">Ajouter un enregistrement à cette tâche</a>`;
@@ -732,8 +732,8 @@ async function analyzeRequest(url, body, message, nScreens) {
     const m = data._meta || {};
     const n = data.workflows?.length ?? 0;
     // la voix a été perdue ou n'a rien donné : on le dit clairement, sinon l'employé croirait qu'elle a servi
-    if (m.voice?.status === 'failed') voiceWarning = `⚠️ La voix n'a pas pu être transcrite (${m.voice.reason || 'erreur de transcription'}) : l'analyse s'est faite sans elle.`;
-    else if (m.voice?.status === 'empty') voiceWarning = '⚠️ Aucune parole détectée dans l\'enregistrement : l\'analyse s\'est faite sans la voix.';
+    if (m.voice?.status === 'failed') voiceWarning = `La voix n'a pas pu être transcrite (${m.voice.reason || 'erreur de transcription'}) : l'analyse s'est faite sans elle.`;
+    else if (m.voice?.status === 'empty') voiceWarning = 'Aucune parole détectée dans l\'enregistrement : l\'analyse s\'est faite sans la voix.';
     endAnalysisPanel(true, `${n} tâche${n > 1 ? 's' : ''} trouvée${n > 1 ? 's' : ''}. Relis les étapes ci-dessous.${voiceWarning ? ' ' + voiceWarning : ''}`);
     statusEl.textContent = voiceWarning; // seulement l'avertissement micro/voix ; le détail technique (modèle, jetons, coût) est dans le Back
   } catch (err) {
@@ -1043,7 +1043,7 @@ function workflowCard(wf, example = false, collapsed = false) {
       const todo = data.workflow.steps.filter((x) => /à compléter/i.test(x)).length;
       changesEl.innerHTML = `<h4>Préparé pour Holo (${before.steps.length} → ${data.workflow.steps.length} étapes` +
         (data.cost_usd != null ? ` · ≈ ${data.cost_usd.toFixed(4)} $` : '') + `)</h4><ul>${items || '<li>Aucun changement proposé.</li>'}</ul>` +
-        (todo ? `<p class="todo-msg">⚠️ ${todo} étape(s) contiennent une valeur « À compléter » (surlignée) : complète-la avant de rejouer.</p>` : '') +
+        (todo ? `<p class="todo-msg">${todo} étape(s) contiennent une valeur « À compléter » (surlignée) : complète-la avant de rejouer.</p>` : '') +
         `<p style="font-size:12px;margin-top:8px">Tu peux encore modifier les étapes ci-dessus avant de rejouer.</p>`;
       changesEl.hidden = false;
       origBtn.hidden = false;
@@ -1142,7 +1142,7 @@ function workflowCard(wf, example = false, collapsed = false) {
     const wfNow = current();
     if (!wfNow.steps.length) return alert('Aucune étape à rejouer.');
     const todo = wfNow.steps.map((x, i) => (/à compléter/i.test(x) ? i + 1 : null)).filter(Boolean);
-    if (todo.length) return alert(`Complète d'abord les étapes ${todo.join(', ')} : elles contiennent une valeur « ⚠️ À compléter ». ` +
+    if (todo.length) return alert(`Complète d'abord les étapes ${todo.join(', ')} : elles contiennent une valeur « À compléter ». ` +
       `Sinon Holo inventerait la valeur.`);
     const ok = confirm(`Holo va refaire « ${wfNow.name} » (${wfNow.steps.length} étape(s)) sur ton ordinateur.\n\n` +
       `• Il prend la souris et le clavier : ne touche à rien pendant le rejeu.\n` +
@@ -1192,24 +1192,24 @@ function followReplay(el, done) {
           const li = document.createElement('li');
           li.className = 'running';
           li.dataset.index = e.index;
-          li.innerHTML = `<b>⏳</b> ${iconsHtml(e.step, 2)}${escapeHtml(e.step.slice(0, 160))}${e.step.length > 160 ? '…' : ''}`;
+          li.innerHTML = `<b>…</b> ${iconsHtml(e.step, 2)}${escapeHtml(e.step.slice(0, 160))}${e.step.length > 160 ? '…' : ''}`;
           ol.appendChild(li);
         } else if (e.type === 'step_end') {
           const li = [...ol.querySelectorAll('li')].reverse().find((x) => x.dataset.index == e.index);
           if (li) {
             li.className = e.ok ? 'ok' : 'ko';
-            li.querySelector('b').textContent = `${e.ok ? '✅' : '❌'} ${e.seconds} s`;
+            li.querySelector('b').textContent = `${e.ok ? 'OK' : 'Échec'} · ${e.seconds} s`;
             const ans = document.createElement('span');
             ans.className = 'answer';
             ans.textContent = `Holo : ${(e.answer || '(pas de réponse)').slice(0, 600)}`;
             li.appendChild(ans);
           }
-        } else if (e.type === 'stalled') status.textContent = `⚠️ Holo ne répond plus sur l'étape ${e.index}…`;
+        } else if (e.type === 'stalled') status.textContent = `Holo ne répond plus sur l'étape ${e.index}…`;
         else if (e.type === 'restart') { restarts = e.count; status.textContent = `↻ Reprise n°${e.count} de l'étape ${e.index}`; }
         else if (e.type === 'end') {
           const tok = Object.entries(e.usage || {}).map(([m, u]) => `${m} : ${u.input_tokens} tokens entrée / ${u.output_tokens} sortie`).join(' · ');
-          status.textContent = `${e.ok ? '✅ Terminé' : `■ ${e.status}`} en ${Math.floor(e.seconds / 60)} min ${e.seconds % 60} s` +
-            (e.restarts ? ` · ${e.restarts} reprise(s)` : '') + (e.blocked?.length ? ` · 🛑 ${e.blocked.length} action(s) refusée(s)` : '');
+          status.textContent = `${e.ok ? 'Terminé' : `■ ${e.status}`} en ${Math.floor(e.seconds / 60)} min ${e.seconds % 60} s` +
+            (e.restarts ? ` · ${e.restarts} reprise(s)` : '') + (e.blocked?.length ? ` · ${e.blocked.length} action(s) refusée(s)` : '');
           meta.innerHTML = (meta.innerHTML ? meta.innerHTML + ' · ' : '') + `${screens} changement(s) d'écran · ${escapeHtml(tok)}` +
             `<br>Holo dit avoir réussi : vérifie le résultat à l'écran.`;
         }
@@ -1268,7 +1268,7 @@ async function createTuto(wf, example, el) {
 }
 
 // --- ⚡ Créer l'automatisation n8n + écran de suivi (plan → import → test nœud par nœud) ------------------------
-const BLOCK_ICON = { holo: '🤖 Holo', row: '🧮 Code', verify: '✅ Vérification', sheets_append: '📊 Google Sheets', http: '🌐 API' };
+const BLOCK_ICON = { holo: 'Holo', row: 'Code', verify: 'Vérification', sheets_append: 'Google Sheets', http: 'API' };
 
 async function createN8n(wf, verdict, el) {
   const ok = confirm(`Twiin va créer l'automatisation n8n de « ${wf.name} », l'importer dans ton n8n local et la TESTER une fois.\n\n` +
@@ -1302,7 +1302,7 @@ async function createN8n(wf, verdict, el) {
           for (const b of e.plan.blocks) {
             const li = document.createElement('li');
             const logo = { holo: 'Holo', sheets_append: 'Google Sheets' }[b.type] || `${b.name} ${b.url || ''}`;
-            li.innerHTML = `<span class="ico">⏳</span> ${iconsHtml(logo, 1)}<b>${escapeHtml(b.name)}</b> <span class="kind">${BLOCK_ICON[b.type] || b.type}</span><span class="out"></span>`;
+            li.innerHTML = `<span class="ico">…</span> ${iconsHtml(logo, 1)}<b>${escapeHtml(b.name)}</b> <span class="kind">${BLOCK_ICON[b.type] || b.type}</span><span class="out"></span>`;
             plan.appendChild(li);
             rows.set(b.name, li);
           }
@@ -1318,7 +1318,7 @@ async function createN8n(wf, verdict, el) {
         } else if (e.type === 'node') {
           const li = rows.get(e.name);
           if (li) {
-            li.querySelector('.ico').textContent = e.status === 'success' ? '✅' : '❌';
+            li.querySelector('.ico').textContent = e.status === 'success' ? '✓' : '✕';
             const sec = e.ms != null ? `${Math.round(e.ms / 100) / 10} s` : '';
             let out = e.error ? `Erreur : ${e.error}` : '';
             if (!out && e.output) {
@@ -1332,9 +1332,9 @@ async function createN8n(wf, verdict, el) {
         } else if (e.type === 'done') {
           if (e.ok) setStep(4);
           if (e.ok) links.innerHTML = `<a class="link-btn" href="/automatisations.html#${encodeURIComponent(e.id || '')}">Régler et suivre dans Mes automatisations</a> · ` + links.innerHTML;
-          st.textContent = e.ok ? '✅ Automatisation créée et testée avec succès. Elle est en pause : choisis quand elle tourne dans « Mes automatisations ».'
-                                : (links.innerHTML ? `❌ Le test a échoué (${e.status}). Ouvre l'exécution dans n8n pour voir le nœud en erreur.`
-                                                   : `❌ Automatisation non créée : ${e.status}`);
+          st.textContent = e.ok ? 'Automatisation créée et testée avec succès. Elle est en pause : choisis quand elle tourne dans « Mes automatisations ».'
+                                : (links.innerHTML ? `Le test a échoué (${e.status}). Ouvre l'exécution dans n8n pour voir le nœud en erreur.`
+                                                   : `Automatisation non créée : ${e.status}`);
           if (!e.ok && !/workflow\//.test(links.innerHTML)) {
             links.innerHTML = `<a class="link-btn" href="/automatisations.html#${encodeURIComponent(e.id || '')}">Voir dans Mes automatisations</a>`
               + (/google sheets|credential|connexion/i.test(e.status || '') ? ` · <a href="http://localhost:5678/home/credentials" target="_blank">Ajouter la connexion dans n8n</a>` : '');
@@ -1360,8 +1360,8 @@ async function createN8n(wf, verdict, el) {
       }
       const last = (hs || []).at(-1);
       holo.textContent = !(holoRunning && last) ? '' : holoEnv === 'cloud'
-        ? `☁ Holo travaille dans le navigateur cloud de H (tu peux continuer à utiliser ton ordinateur) : ${(last.step || last.answer || '').slice(0, 140)}…`
-        : `🤖 Holo travaille sur ton ordinateur, ne touche à rien : ${(last.step || last.answer || '').slice(0, 140)}…`;
+        ? `Holo travaille dans le navigateur cloud de H (tu peux continuer à utiliser ton ordinateur) : ${(last.step || last.answer || '').slice(0, 140)}…`
+        : `Holo travaille sur ton ordinateur, ne touche à rien : ${(last.step || last.answer || '').slice(0, 140)}…`;
       if (!running && next > 0 && /terminé|succès|échoué|Erreur/.test(st.textContent)) clearInterval(timer);
     } catch { /* on réessaie */ }
   }, 1500);
@@ -1486,6 +1486,20 @@ iconsReady.then(async () => {
     // même affichage que juste après un enregistrement : la recommandation se prépare automatiquement
     renderWorkflows(wfs.map((w, i) => ({ ...w, session: sid, _idx: i })), { autoReco: true });
     statusEl.textContent = `Enregistrement « ${d.titre} » ouvert. Tes modifications sont enregistrées automatiquement.`;
+    // « Automatiser cette tâche » / « Créer la vidéo » depuis « Mes enregistrements » : dès que la recommandation est
+    // prête, on lance directement l'action demandée (même écran de suivi que d'habitude)
+    const faire = params.get('faire');
+    const cible = faire === 'automatiser' ? '.btn-n8n' : faire === 'video' ? '.btn-tuto' : null;
+    if (cible) {
+      statusEl.textContent = faire === 'automatiser' ? `Préparation de l'automatisation de « ${d.titre} »…` : `Préparation de la vidéo de « ${d.titre} »…`;
+      const t0 = Date.now();
+      const guetter = () => {
+        const b = document.querySelector(cible);
+        if (b) { b.scrollIntoView({ behavior: 'smooth', block: 'center' }); setTimeout(() => b.click(), 400); return; }
+        if (Date.now() - t0 < 120000) setTimeout(guetter, 500);
+      };
+      guetter();
+    }
   } catch (e) {
     statusEl.textContent = `Ouverture impossible : ${e.message}`;
   }

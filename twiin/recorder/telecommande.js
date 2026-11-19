@@ -2,10 +2,11 @@
 // Le Mac lance le pont officiel de H (`holo local desktop`), qui attend les ordres de l'agent H à travers le relais Twiin
 // (jeton client TWIIN_CLE : aucune clé H sur le poste). Le téléphone reçoit un jeton d'appairage signé par ce Mac,
 // limité à ce pont et à une durée : il ouvre ${TWIIN_RELAIS}/m, parle ou écrit, et voit l'écran en direct.
-import { spawn, execFile } from 'node:child_process';
+import { spawn, spawnSync, execFile } from 'node:child_process';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
+import os from 'node:os';
 import QRCode from 'qrcode';
 
 const DUREE_H = 24; // durée d'un appairage
@@ -39,7 +40,14 @@ export function mountTelecommande(app, { isLocal, root, port, analyser }) {
     for (const d of [HOLO_VENV, path.join(root, '.venv')]) if (fs.existsSync(bin(d)) && (await essai(d))) return (pret = bin(d));
     return null;
   }
-  const lire = () => { try { return JSON.parse(fs.readFileSync(ETAT, 'utf8')); } catch { return null; } };
+  const lire = () => {
+    let a = null;
+    try { a = JSON.parse(fs.readFileSync(ETAT, 'utf8')); } catch { return null; }
+    // Clé AES-256 propre à cet appairage, transmise au téléphone dans le QR code (jamais au serveur) : elle chiffre
+    // les fichiers envoyés au téléphone. Ajoutée aux anciens appairages (il faut alors rescanner le QR une fois).
+    if (a && !a.k) { a.k = crypto.randomBytes(32).toString('base64url'); fs.writeFileSync(ETAT, JSON.stringify(a), { mode: 0o600 }); }
+    return a;
+  };
   const log = (l) => { journal.push(String(l).trim()); journal = journal.slice(-30); };
 
   function run(cmd, args) {
@@ -71,7 +79,14 @@ export function mountTelecommande(app, { isLocal, root, port, analyser }) {
     const out = { disponible: !!cfg, etat, erreur };
     if (!cfg) out.erreur = 'Télécommande indisponible : cette installation n\'a pas de relais Twiin (TWIIN_RELAIS, TWIIN_CLE).';
     if (cfg && a && etat === 'on') {
-      out.url = `${cfg.relais}/m#t=${jeton(cfg.cle, a.pont, a.exp)}`;
+      // Prénom et nom de la fiche Twiin, pour que la dictée du téléphone les reconnaisse. Ils sont dans le fragment (#…),
+      // qui reste sur le téléphone et n'est jamais envoyé au serveur.
+      let noms = '';
+      try {
+        const f = (await (await fetch(`http://127.0.0.1:${port}/api/onboarding/profile`)).json()).profile || {}; // compte en ligne ou fiche locale
+        noms = [f.prenom, f.nom].filter(Boolean).join('|');
+      } catch { /* pas de fiche */ }
+      out.url = `${cfg.relais}/m#t=${jeton(cfg.cle, a.pont, a.exp)}&k=${a.k}${noms ? `&m=${encodeURIComponent(noms)}` : ''}`;
       out.qr = await QRCode.toString(out.url, { type: 'svg', margin: 1, errorCorrectionLevel: 'M', color: { dark: '#121418', light: '#ffffff' } });
       out.expire = a.exp * 1000;
     }
@@ -93,11 +108,15 @@ export function mountTelecommande(app, { isLocal, root, port, analyser }) {
     }
     let a = lire();
     if (nouveau || !a || a.exp * 1000 < Date.now() + 3600e3) { // nouvel appairage : l'ancien QR code ne sert plus à rien
-      a = { pont: crypto.randomUUID(), exp: Math.floor(Date.now() / 1000) + DUREE_H * 3600 };
+      a = { pont: crypto.randomUUID(), exp: Math.floor(Date.now() / 1000) + DUREE_H * 3600, k: crypto.randomBytes(32).toString('base64url') };
       fs.mkdirSync(path.dirname(ETAT), { recursive: true });
       fs.writeFileSync(ETAT, JSON.stringify(a), { mode: 0o600 });
     }
     etat = 'demarrage';
+    // Un ancien pont pour le même appairage peut survivre à un redémarrage brutal de l'app (il n'est pas tué avec elle) :
+    // H refuserait alors le nouveau (« another agent is driving this desktop ») et les outils Twiin ne répondraient plus.
+    spawnSync('pkill', ['-f', `holo local desktop --session-id ${a.pont}`]);
+    await new Promise((r) => setTimeout(r, 600));
     const env = { ...process.env, HAI_API_KEY: cfg.cle, HAI_API_BASE_URL: `${cfg.relais}/hai/agp.eu.hcompany.ai`, PYTHONUNBUFFERED: '1' };
     for (const k of ['HAI_AUTO_BRIDGE', 'HAI_SHELL_POLICY', 'HAI_SHELL_SANDBOX', 'HAI_SHELL_WORKSPACE', 'ELECTRON_RUN_AS_NODE']) delete env[k];
     const p = spawn(holo, ['local', 'desktop', '--session-id', a.pont, '--max-width', '1280'], { env, stdio: ['ignore', 'pipe', 'pipe'] });
@@ -122,6 +141,9 @@ export function mountTelecommande(app, { isLocal, root, port, analyser }) {
 
   // --- Outils Twiin : l'agent H les appelle, ce Mac les exécute (il repère ses sessions au nom « twiin-tc-<pont> ») ---
   const LOCAL = `http://127.0.0.1:${port}`;
+  const importees = new Map(); // « session H : début de la tâche » → enregistrement Twiin (pas de doublon)
+  let derniere = null;          // dernier enregistrement venu du téléphone
+  const donnee = (e) => { const d = e?.data; return (d && typeof d.data === 'object' && d.data) || d || {}; };
   const faits = new Set(), index = new Map();
   let veille = null;
   async function hai(cfg, method, p, body) {
@@ -147,12 +169,151 @@ export function mountTelecommande(app, { isLocal, root, port, analyser }) {
     }
     if (nom === 'twiin_enregistrer_tache') return importer(sid);
     if (nom === 'twiin_etat') return JSON.stringify(await (await fetch(`${LOCAL}/api/automations/etat`)).json());
+    if (nom === 'twiin_envoyer_fichier') return envoyerFichier(args?.chemin);
+    if (nom === 'twiin_enregistrements') {
+      const d = await (await fetch(`${LOCAL}/api/sessions`)).json();
+      return JSON.stringify((d.sessions || []).filter((e) => !e.supprime_le).slice(0, 8).map((e) => ({ id: e.id, titre: e.titre, date: e.startedAt,
+        depuis: e.source === 'telecommande' ? 'téléphone' : 'ordinateur', analyse: e.analyse, etapes: e.nb_etapes })));
+    }
+    if (nom === 'twiin_automatiser') return lancerTravail('automatisation', args?.id, sid);
+    if (nom === 'twiin_creer_video') return lancerTravail('video', args?.id, sid);
+    if (nom === 'twiin_suivi') {
+      const prog = await (await fetch(`${LOCAL}/api/analysis/progress`)).json().catch(() => ({}));
+      return JSON.stringify({ travaux: travaux.map((j) => ({ quoi: j.type, tache: j.titre || j.id, etat: ETATS[j.etat], detail: j.detail || undefined,
+        depuis_min: Math.round((Date.now() - j.debut) / 60e3) })), analyse_en_cours: prog.phase && prog.phase !== 'idle' ? prog.phase : null });
+    }
     throw new Error(`outil inconnu : ${nom}`);
+  }
+
+  // --- Automatiser / faire la vidéo d'une tâche, demandé depuis le téléphone ------------------------------------------
+  // Mêmes fonctions que dans Twiin (analyse → plan n8n → import et test ; ou images → voix off → montage), lancées en
+  // arrière-plan. À la fin, Twiin écrit dans la conversation du téléphone pour le prévenir.
+  const ETATS = { analyse: "analyse de l'enregistrement", creation: 'création en cours', pret: 'prête', echec: 'échec' };
+  const dodo = (ms) => new Promise((r) => setTimeout(r, ms));
+  const getJ = async (u) => (await fetch(`${LOCAL}${u}`)).json();
+  const postJ = async (u, body) => {
+    const r = await fetch(`${LOCAL}${u}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body || {}) });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok || d.error) { const e = new Error(d.error || `refus (${r.status})`); e.status = r.status; throw e; }
+    return d;
+  };
+  async function quelEnregistrement(id) {
+    if (id && /^[\w-]{1,40}$/.test(id)) return id;
+    if (derniere) return derniere; // la dernière tâche faite depuis le téléphone
+    const d = await getJ('/api/sessions');
+    const e = (d.sessions || []).find((x) => !x.supprime_le);
+    if (!e) throw new Error('aucun enregistrement dans Twiin');
+    return e.id;
+  }
+  async function attendreAnalyse(id, job) {
+    let lancee = false;
+    for (let i = 0; i < 100; i++) { // jusqu'à ~8 min
+      const d = await getJ(`/api/sessions/${encodeURIComponent(id)}`);
+      if (d.error) throw new Error(d.error);
+      const wf = d.analyse_complete?.result?.workflows?.[0];
+      if (wf) return { ...wf, session: id };
+      const prog = await getJ('/api/analysis/progress').catch(() => ({}));
+      if (!lancee && (!prog.phase || prog.phase === 'idle')) { lancee = true; postJ(`/api/sessions/${encodeURIComponent(id)}/analyze`).catch(() => { lancee = false; }); }
+      job.detail = prog.phase && prog.phase !== 'idle' ? `analyse : ${prog.phase}` : '';
+      await dodo(5000);
+    }
+    throw new Error("l'analyse de l'enregistrement prend trop de temps");
+  }
+  async function prevenir(job) {
+    const cfg = config();
+    if (!cfg || !job.sid) return;
+    const quoi = job.type === 'automatisation' ? 'automatisation' : 'vidéo de formation';
+    const fait = job.etat === 'pret'
+      ? (job.type === 'automatisation' ? `L'automatisation de « ${job.titre} » est prête et testée : elle est dans « Mes automatisations » (en pause, à activer).`
+        : `La vidéo de formation de « ${job.titre} » est prête : elle est dans « Mes vidéos ».`)
+      : `La ${quoi} de « ${job.titre || job.id} » n'a pas pu être créée : ${job.detail || 'erreur'}.`;
+    await hai(cfg, 'POST', `/sessions/${job.sid}/messages`, { type: 'user_message',
+      message: `[Message automatique de Twiin, pas de l'utilisateur] ${fait} Annonce-le à l'utilisateur en une phrase, sans rien faire à l'écran.` }).catch(() => {});
+  }
+  const travaux = [];
+  async function lancerTravail(type, idDemande, sid) {
+    const id = await quelEnregistrement(idDemande);
+    if (travaux.some((j) => j.id === id && j.type === type && !['pret', 'echec'].includes(j.etat))) return `C'est déjà en cours pour cet enregistrement.`;
+    const job = { type, id, sid, etat: 'analyse', detail: '', debut: Date.now() };
+    travaux.unshift(job); travaux.splice(8);
+    (async () => {
+      try {
+        const wf = await attendreAnalyse(id, job);
+        job.titre = wf.name; job.etat = 'creation'; job.detail = '';
+        if (type === 'automatisation') {
+          await postJ('/api/n8n/create', { workflow: wf });
+          let since = 0, fin = null;
+          for (let i = 0; i < 180 && !fin; i++) { // test compris : jusqu'à ~15 min
+            await dodo(5000);
+            const ev = await getJ(`/api/n8n/events?since=${since}`);
+            since = ev.next ?? since;
+            fin = (ev.events || []).find((e) => e.type === 'done') || (ev.running === false && i > 2 ? { ok: false, status: 'création interrompue' } : null);
+          }
+          job.etat = fin?.ok ? 'pret' : 'echec'; job.detail = fin?.ok ? '' : String(fin?.status || 'trop long').slice(0, 200);
+        } else {
+          await postJ('/api/tuto/create', { workflow: wf });
+          let st = null;
+          for (let i = 0; i < 120; i++) { await dodo(5000); st = await getJ('/api/tuto/status'); if (!st.running) break; job.detail = st.phase || ''; }
+          job.etat = st && !st.running && !st.error ? 'pret' : 'echec'; job.detail = st?.error || (st?.running ? 'trop long' : '');
+        }
+      } catch (e) { job.etat = 'echec'; job.detail = e.message; }
+      log(`${type} depuis le téléphone : ${job.etat}${job.detail ? ` (${job.detail})` : ''}`);
+      prevenir(job);
+    })();
+    const deja = derniere === id ? 'la tâche que tu viens de faire' : `l'enregistrement ${id}`;
+    return `C'est lancé sur le Mac pour ${deja} : ${type === 'automatisation' ? "analyse, puis création et test de l'automatisation" : 'analyse, puis images, voix off et montage de la vidéo'} (quelques minutes). Je te préviens ici quand c'est prêt.`;
+  }
+
+  // --- Un fichier du Mac vers le téléphone : chiffré ici, déposé via le relais, téléchargé et déchiffré par le téléphone ---
+  const MAX_FICHIER = 3 * 1024 * 1024;
+  const INTERDITS = /(^|\/)(\.ssh|\.gnupg|\.aws|\.kube|\.docker|\.config|Keychains|\.Trash)(\/|$)|(^|\/)\.env[^/]*$|config-pilote\.env$|\.(pem|key|p12|keychain-db)$/i;
+  function trouver(chemin) {
+    const maison = os.homedir();
+    let c = String(chemin || '').trim().replace(/^~(?=\/|$)/, maison);
+    if (!c) throw new Error('chemin manquant');
+    if (!c.includes('/')) { // un simple nom : on le cherche dans Documents, Bureau, Téléchargements (le plus récent)
+      const vus = ['Documents', 'Desktop', 'Downloads'].map((d) => path.join(maison, d, c)).filter((f) => fs.existsSync(f));
+      if (!vus.length) throw new Error(`« ${c} » introuvable dans Documents, Bureau ou Téléchargements`);
+      c = vus.sort((x, y) => fs.statSync(y).mtimeMs - fs.statSync(x).mtimeMs)[0];
+    }
+    const vrai = fs.realpathSync(path.resolve(c));
+    if (!vrai.startsWith(maison + path.sep)) throw new Error('seuls les fichiers de ton dossier personnel peuvent être envoyés');
+    if (INTERDITS.test(vrai)) throw new Error('ce fichier est protégé (clés, mots de passe, configuration) : il ne sera pas envoyé');
+    const st = fs.statSync(vrai);
+    if (!st.isFile()) throw new Error("ce n'est pas un fichier");
+    if (st.size > MAX_FICHIER) throw new Error(`fichier trop lourd pour le téléphone (${Math.round(st.size / 1e6)} Mo, 3 Mo maximum)`);
+    return vrai;
+  }
+  const TYPES = { pdf: 'application/pdf', txt: 'text/plain', md: 'text/markdown', csv: 'text/csv', json: 'application/json', rtf: 'application/rtf',
+    png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif', heic: 'image/heic', html: 'text/html',
+    docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation', pages: 'application/x-iwork-pages-sffpages',
+    numbers: 'application/x-iwork-numbers-sffnumbers', key: 'application/x-iwork-keynote-sffkey', zip: 'application/zip' };
+  async function envoyerFichier(chemin) {
+    const cfg = config(), a = lire();
+    if (!cfg || !a?.k) throw new Error('télécommande non appairée');
+    const f = trouver(chemin);
+    const nom = path.basename(f);
+    const type = TYPES[path.extname(f).slice(1).toLowerCase()] || 'application/octet-stream';
+    // en clair (avant chiffrement) : [longueur de l'en-tête sur 4 octets][en-tête JSON {nom, type}][contenu]
+    const entete = Buffer.from(JSON.stringify({ nom, type }));
+    const lg = Buffer.alloc(4); lg.writeUInt32BE(entete.length);
+    const clair = Buffer.concat([lg, entete, fs.readFileSync(f)]);
+    const iv = crypto.randomBytes(12);
+    const c = crypto.createCipheriv('aes-256-gcm', Buffer.from(a.k, 'base64url'), iv);
+    const chiffre = Buffer.concat([iv, c.update(clair), c.final(), c.getAuthTag()]); // iv | données | étiquette (format WebCrypto)
+    const r = await fetch(`${cfg.relais}/mobile/depot`, { method: 'POST', body: chiffre,
+      headers: { authorization: `Bearer ${cfg.cle}`, 'x-twiin-pont': a.pont, 'content-type': 'application/octet-stream' } });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(d.error || `dépôt refusé (${r.status})`);
+    log(`Fichier envoyé au téléphone : ${nom}`);
+    const ko = Math.max(1, Math.round(fs.statSync(f).size / 1024));
+    return `Fichier « ${nom} » envoyé sur le téléphone (${ko} Ko) : il est téléchargeable dans la conversation pendant une heure. [[twiin-fichier:${d.id}:${encodeURIComponent(nom)}:${ko}]]`;
   }
   // --- Enregistrer dans Twiin une tâche faite par Holo depuis le téléphone ---------------------------------------------
   // On relit la session H (captures + actions de l'agent) et on écrit un enregistrement Twiin normal (frames.jsonl,
   // actions.jsonl, session.json) : il apparaît dans « Mes enregistrements », puis passe par le masquage et l'analyse.
-  async function importer(sid) {
+  async function importer(sid, { auto = false } = {}) {
     const cfg = config();
     const tous = [];
     for (let from = 0, i = 0; i < 20; i++) {
@@ -167,9 +328,14 @@ export function mountTelecommande(app, { isLocal, root, port, analyser }) {
     const demandes = tous.map((e, i) => (data(e).kind === 'message_event' && data(e).caller_id === 'user' ? i : -1)).filter((i) => i >= 0);
     // La demande d'enregistrement elle-même n'en fait pas partie : on garde la dernière tâche avant elle.
     let fin = tous.length;
-    for (const i of [...demandes].reverse()) if (/enregistr/i.test(texte(tous[i])) && /twiin/i.test(texte(tous[i]))) { fin = i; break; }
+    if (!auto) for (const i of [...demandes].reverse()) if (/enregistr/i.test(texte(tous[i])) && /twiin/i.test(texte(tous[i]))) { fin = i; break; }
     const debut = [...demandes].reverse().find((i) => i < fin);
     if (debut == null) throw new Error('aucune tâche à enregistrer dans cette session');
+    const cleTache = `${sid}:${debut}`;
+    if (importees.has(cleTache)) { // déjà enregistrée automatiquement à la fin de la tâche
+      if (auto) return null;
+      return `Cette tâche est déjà dans Twiin (« Mes enregistrements »), enregistrée automatiquement à la fin.`;
+    }
     const tranche = tous.slice(debut, fin);
     const instruction = texte(tous[debut]);
     const ts = (e) => Date.parse(e.timestamp) / 1000;
@@ -202,6 +368,7 @@ export function mountTelecommande(app, { isLocal, root, port, analyser }) {
       }
     }
     if (!frames.length) throw new Error("aucune capture d'écran dans cette tâche");
+    if (actions.length <= 2) throw new Error("aucune action à l'écran dans cette tâche"); // une simple question n'est pas une tâche
     const id = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
     const dir = path.join(root, 'workflows', 'sessions', id);
     fs.mkdirSync(dir, { recursive: true });
@@ -209,6 +376,7 @@ export function mountTelecommande(app, { isLocal, root, port, analyser }) {
     fs.writeFileSync(path.join(dir, 'actions.jsonl'), actions.map((a) => JSON.stringify(a)).join('\n') + '\n');
     fs.writeFileSync(path.join(dir, 'session.json'), JSON.stringify({ startedAt: Math.round(t0 * 1000), source: 'telecommande', instruction, session_h: sid }));
     log(`Tâche enregistrée depuis le téléphone : ${id} (${frames.length} captures)`);
+    importees.set(cleTache, id); derniere = id;
     const lance = analyser ? analyser(dir) : false; // masquage puis analyse, en arrière-plan
     return `Tâche enregistrée dans Twiin (${frames.length} captures, ${actions.length - 2} actions) : elle est dans « Mes enregistrements »`
       + (lance ? ", l'analyse a démarré sur le Mac." : '. Une autre analyse est en cours : elle pourra être analysée depuis Twiin.');
@@ -224,6 +392,9 @@ export function mountTelecommande(app, { isLocal, root, port, analyser }) {
       // On redemande toujours le dernier événement : sans événement nouveau, H ne renvoie pas les appels d'outils en attente.
       const c = await hai(cfg, 'GET', `/sessions/${s.id}/changes?from_index=${Math.max(0, (index.get(s.id) || 0) - 1)}&wait_for_seconds=0`);
       if (c?.new_events?.length) index.set(s.id, (c.first_index ?? 0) + c.new_events.length);
+      if ((c?.new_events || []).some((e) => donnee(e).kind === 'answer_event')) {
+        importer(s.id, { auto: true }).catch(() => {}); // pas d'action à l'écran (simple question, outil Twiin) : rien à enregistrer
+      }
       for (const call of c?.pending_tool_calls || []) {
         if (!call?.id || !String(call.tool_name).startsWith('twiin_') || faits.has(call.id)) continue;
         faits.add(call.id);

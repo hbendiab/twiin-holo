@@ -17,6 +17,11 @@
   const RECO = { automatiser: 'À automatiser', simplifier_d_abord: "À simplifier d'abord", ne_pas_automatiser: 'Pas rentable à automatiser', a_preciser: 'À préciser' };
   const RECO_WHY = { simplifier_d_abord: 'trop de cas particuliers ou de décisions au cas par cas', ne_pas_automatiser: "moins d'une heure par semaine",
                      a_preciser: 'fréquence ou durée « je ne sais pas »' };
+  const ICO = {
+    mic: '<svg class="ico-svg" viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>',
+    edit: '<svg class="ico-svg" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h4L19 9l-4-4L4 16v4z"/></svg>',
+    star: '<svg class="ico-svg" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l2.6 5.6 6 .7-4.5 4.1 1.2 6L12 16.6 6.7 19.4l1.2-6L3.4 9.3l6-.7z"/></svg>',
+  };
   const label = (list, v) => (list.find(([k]) => k === v) || [, ''])[1];
 
   // État : réponses (brouillon serveur), questions pré-remplies, outils du temps 1
@@ -25,12 +30,13 @@
 
   // ── voix : la question est lue (si l'employé le veut) ; tout marche au clic sans la voix ─────────────────────────
   let voiceOn = false;
-  try { voiceOn = localStorage.getItem('twiin-a2-voix') === '1'; } catch { /* rien */ }
+  try { const v = localStorage.getItem('twiin-a2-voix'); voiceOn = v === null ? true : v === '1'; } catch { /* rien */ } // Iris et Ilo parlent par défaut
   $('a2Voice').checked = voiceOn;
   $('a2Voice').addEventListener('change', () => { voiceOn = $('a2Voice').checked; try { localStorage.setItem('twiin-a2-voix', voiceOn ? '1' : '0'); } catch { /* rien */ } if (voiceOn) say(); });
   let audio = null, spoken = '';
   function say(text = spoken) {
     if (!text) return;
+    if (window.TwiinNarrateur?.actif()) return window.TwiinNarrateur.dire(text); // voix d'Iris ou d'Ilo, texte synchronisé
     audio?.pause();
     audio = new Audio(`/api/voice/say?text=${encodeURIComponent(text)}`);
     audio.play().catch(() => {});
@@ -170,47 +176,53 @@
 
   const RENDER = {
     async intro() {
-      const reprise = (r().taches || []).length || r().role_metier;
       const nav = st.dirigeant?.sources_autorisees || [];
-      const navOk = nav.includes('historique_navigateur');
+      const navOk = nav.includes('historique_navigateur'); // l'option Chrome n'existe que si l'entreprise l'autorise
+      const deja = !!st.outils?.applications?.length;
+      const ETAPES = [['Tes outils', 'Twiin repère les applis de ton poste, automatiquement.'],
+                      ['Tes tâches', 'Quelques questions, surtout des clics.'],
+                      ['Ton top 3', 'Les tâches qui te coûtent le plus, en heures et en euros.']];
       screenEl.innerHTML = `<div class="a2-intro">${head('On commence par tes outils, puis quelques questions.')}
-        <ol><li><b>Twiin regarde les outils de ton poste</b> : c'est automatique.</li>
-            <li><b>Quelques questions sur tes tâches</b> : surtout des clics, la voix seulement si tu veux.</li>
-            <li><b>Ton résultat</b> : les 3 tâches qui te coûtent le plus de temps, en heures et en euros.</li></ol>
-        <div class="a2-consent">
-          <label class="check"><input type="checkbox" id="a2Usage" ${r().consent_usage !== false ? 'checked' : ''}> Compter les jours d'utilisation de mes applis sur 30 jours
-            (jamais ce que j'y fais)</label>
-          <label class="check"><input type="checkbox" id="a2Nav" ${navOk && r().consent_navigateur !== false ? 'checked' : ''} ${navOk ? '' : 'disabled'}>
-            Repérer les outils pro que j'utilise dans Chrome (seulement les sites métier connus, jamais les pages visitées)
-            ${navOk ? '' : '<small style="color:var(--text-dim)">· non autorisé par ton entreprise</small>'}</label>
+        <ol class="in-steps">${ETAPES.map(([t, d], i) => `<li><span class="n">0${i + 1}</span><b>${t}</b><p>${d}</p></li>`).join('')}</ol>
+        <div class="in-opts">
+          <label class="in-switch"><input type="checkbox" role="switch" id="a2Usage" ${r().consent_usage !== false ? 'checked' : ''}>
+            <span class="sw" aria-hidden="true"></span><span class="txt">Compter mes jours d'utilisation des applis sur 30 jours<em>jamais ce que j'y fais</em></span></label>
+          ${navOk ? `<label class="in-switch"><input type="checkbox" role="switch" id="a2Nav" ${r().consent_navigateur !== false ? 'checked' : ''}>
+            <span class="sw" aria-hidden="true"></span><span class="txt">Repérer mes outils pro utilisés dans Chrome<em>seulement les sites métier connus</em></span></label>`
+            : '<input type="checkbox" id="a2Nav" hidden>'}
         </div>
-        ${reprise ? '<p class="a2-help">Tu avais commencé : tes réponses sont gardées, tu reprends où tu en étais.</p>' : ''}</div>`;
-      $('a2Next').textContent = st.outils?.applications?.length ? 'Refaire l\'audit des outils' : 'Lancer l\'audit';
-      if (st.outils?.applications?.length) {
-        screenEl.insertAdjacentHTML('beforeend', '<div class="a2-input"><button type="button" id="a2Skip">Garder l\'audit déjà fait et continuer →</button></div>');
-        $('a2Skip').onclick = () => go('role');
-      }
+        <div class="in-actions">
+          ${deja ? '<button type="button" id="a2Skip">Garder mes outils déjà repérés</button>' : ''}
+          <button type="button" class="primary" id="a2Go">${deja ? 'Refaire le scan' : 'Commencer'}</button>
+        </div></div>`;
+      $('a2Next').hidden = true; // les deux choix sont dans l'écran, pas besoin du bouton « Suivant »
+      $('a2Go').onclick = () => $('a2Next').click();
+      $('a2Skip')?.addEventListener('click', () => { st.scanAFaire = false; r().consent_usage = $('a2Usage').checked; go('role'); });
     },
     role() {
       const roles = st.roles || [];
       const cur = r().role_metier || '';
-      const autre = cur && !roles.includes(cur);
-      screenEl.innerHTML = `${head('Quel est ton rôle ?', 'Il sert à te proposer des tâches typiques de ton métier.')}
-        <div class="a2-chips">${roles.map((x) => chip(`data-role="${escapeHtml(x)}"`, x, cur === x)).join('')}${chip('data-role="__autre"', 'Autre', autre)}</div>
-        <div class="a2-input" ${autre ? '' : 'hidden'} id="a2RoleOther"><input id="a2RoleText" placeholder="Ton rôle, en quelques mots" value="${autre ? escapeHtml(cur) : ''}"></div>`;
-      screenEl.querySelectorAll('[data-role]').forEach((b) => b.onclick = () => {
-        const v = b.dataset.role;
-        $('a2RoleOther').hidden = v !== '__autre';
-        r().role_metier = v === '__autre' ? $('a2RoleText').value.trim() : v;
-        screenEl.querySelectorAll('[data-role]').forEach((x) => x.setAttribute('aria-pressed', x === b ? 'true' : 'false'));
+      screenEl.innerHTML = `${head('Quel est ton rôle ?')}
+        <div class="a2-combo a2-combo-big"><input id="a2Role" placeholder="Tape ton rôle ou choisis dans la liste" value="${escapeHtml(cur)}"><div class="a2-pop" id="a2RolePop" hidden></div></div>`;
+      const inp = $('a2Role');
+      combo(inp, $('a2RolePop'), {
+        openOnFocus: true,
+        items: (q) => {
+          const exact = roles.some((x) => norm(x) === norm(q)); // rôle déjà choisi : on montre toute la liste
+          const nq = exact ? '' : norm(q);
+          const hits = roles.filter((x) => !nq || norm(x).includes(nq)).map((x) => ({ label: x, html: nq ? mark(x, q) : escapeHtml(x) }));
+          if (q && !roles.some((x) => norm(x) === nq)) hits.push({ free: true, label: q, html: `Utiliser « ${escapeHtml(q)} »` });
+          return hits;
+        },
+        onPick: (it) => { inp.value = it.label; r().role_metier = it.label; inp.blur(); },
       });
-      $('a2RoleText').oninput = () => { r().role_metier = $('a2RoleText').value.trim(); };
+      inp.oninput = () => { r().role_metier = inp.value.trim(); };
     },
     q1() {
       const opts = st.q.q1_outils.options;
       if (!r().outils_confirmes) r().outils_confirmes = opts.map((o) => o.application_id); // cochés par défaut
       const conf = new Set(r().outils_confirmes);
-      screenEl.innerHTML = `${head(st.q.q1_outils.question, 'Ils ont été repérés sur ton poste, les plus utilisés d\'abord. Décoche ceux qui ne servent pas à ton travail.')}
+      screenEl.innerHTML = `${head(st.q.q1_outils.question)}
         <div class="a2-grid">${opts.map((o) => `<button type="button" class="a2-tool" data-app="${o.application_id}" aria-pressed="${conf.has(o.application_id)}">
             ${toolIcon(o.nom)}<span>${escapeHtml(o.nom)}</span>${o.usage?.jours_utilises_30 != null ? `<small>${o.usage.jours_utilises_30} j / 30</small>` : ''}</button>`).join('')}
           ${(r().outils_ajoutes || []).map((o) => `<button type="button" class="a2-tool" data-added="${o.id}" aria-pressed="true">${toolIcon(o.nom)}<span>${escapeHtml(o.nom)}</span><small>ajouté</small></button>`).join('')}
@@ -252,11 +264,11 @@
         const o = t.suggestion_id && opts.find((x) => x.suggestion_id === t.suggestion_id);
         return o ? (o.applis_detectees.length ? o.applis_detectees : o.applis_typiques).slice(0, 3).map(iconOf).join('') : '';
       };
-      screenEl.innerHTML = `${head(st.q.q2_taches.question, 'Ajoute-les une par une : choisis dans la liste ou écris la tienne.')}
+      screenEl.innerHTML = `${head(st.q.q2_taches.question)}
         ${cur.length ? `<ul class="a2-added">${cur.map((t) => `<li><span class="box">✓</span><span class="lib">${escapeHtml(t.libelle)}</span>
             <span class="icons">${icons(t)}</span><button type="button" class="rm" data-rm="${t.id}" aria-label="Retirer ${escapeHtml(t.libelle)}">×</button></li>`).join('')}</ul>` : ''}
         <div class="a2-combo a2-combo-big"><input id="a2Other" placeholder="${cur.length ? 'Ajouter une autre tâche…' : 'Ajouter une tâche…'}"><div class="a2-pop" id="a2TaskPop" hidden></div>
-          <button type="button" id="a2OtherMic" class="quiet" title="Dicter la tâche">🎙</button></div>
+          <button type="button" id="a2OtherMic" class="quiet" title="Dicter la tâche" aria-label="Dicter la tâche">${ICO.mic}</button></div>
         ${cur.length ? '' : '<p class="a2-help" style="margin-top:10px"><button type="button" class="a2-chip dim" id="a2NoTask">Je ne sais pas</button></p>'}`;
       screenEl.querySelectorAll('[data-rm]').forEach((b) => b.onclick = () => { r().taches = (r().taches || []).filter((t) => t.id !== b.dataset.rm); RENDER.q2(); });
       const addSug = (o) => {
@@ -287,40 +299,49 @@
     q34() {
       const ts = r().taches || [];
       spoken = 'Pour chaque tâche : combien de fois par semaine, et combien de temps à chaque fois ?';
-      screenEl.innerHTML = `${head(spoken, 'Un clic par ligne suffit. « Je ne sais pas » est une réponse valable.')}
-        ${ts.map((t) => `<div class="a2-row"><b>${escapeHtml(t.libelle)}</b>
+      screenEl.innerHTML = `${head(spoken)}
+        <div class="a2-seq">${ts.map((t, i) => `<div class="a2-row" data-i="${i}" hidden><span class="a2-of">Tâche ${i + 1} sur ${ts.length}</span><b>${escapeHtml(t.libelle)}</b>
           <div class="lbl">Combien de fois par semaine ?</div><div class="a2-chips">${FREQ.map(([k, l]) => chip(`data-t="${t.id}" data-f="${k}"`, l, t.frequence_tranche === k)).join('')}</div>
-          <div class="lbl">Combien de temps à chaque fois ?</div><div class="a2-chips">${DUREE.map(([k, l]) => chip(`data-t="${t.id}" data-d="${k}"`, l, t.duree_tranche === k)).join('')}</div></div>`).join('')}`;
+          <div class="lbl">Combien de temps à chaque fois ?</div><div class="a2-chips">${DUREE.map(([k, l]) => chip(`data-t="${t.id}" data-d="${k}"`, l, t.duree_tranche === k)).join('')}</div></div>`).join('')}</div>`;
+      const rows = [...screenEl.querySelectorAll('.a2-row[data-i]')];
+      const complete = (t) => t.frequence_tranche && t.duree_tranche;
+      // une tâche à la fois : la suivante apparaît quand on a répondu à celle-ci pendant cette visite
+      // (une réponse déjà pré-remplie se confirme d'un clic)
+      const vus = new Set();
+      const devoiler = (anim) => {
+        let k = 0;
+        while (k < ts.length - 1 && vus.has(ts[k].id) && complete(ts[k])) k++;
+        rows.forEach((row, i) => {
+          if (i > k || !row.hidden) return;
+          row.hidden = false;
+          if (anim) { row.classList.add('a2-arrive'); setTimeout(() => row.scrollIntoView({ behavior: 'smooth', block: 'center' }), 60); }
+        });
+      };
+      devoiler(false);
       screenEl.querySelectorAll('[data-f],[data-d]').forEach((b) => b.onclick = () => {
         const t = tache(b.dataset.t);
         if (b.dataset.f) t.frequence_tranche = b.dataset.f; else t.duree_tranche = b.dataset.d;
         b.parentElement.querySelectorAll('.a2-chip').forEach((x) => x.setAttribute('aria-pressed', x === b ? 'true' : 'false'));
+        const autre = b.dataset.f ? 'duree_tranche' : 'frequence_tranche';
+        const ligne = b.closest('.a2-row');
+        ligne.dataset[b.dataset.f ? 'f' : 'd'] = '1';
+        // remplie = les deux réponses données (ou l'autre était déjà là et on vient de confirmer celle-ci)
+        if (complete(t) && (ligne.dataset.f && ligne.dataset.d || t[autre])) { vus.add(t.id); setTimeout(() => devoiler(true), 250); }
       });
     },
     q567(i) {
       const t = tache(st.lourdes[i]);
       if (!t) return go('q8');
-      const tools = outilsChoisis();
-      const order = t.applis_ids || [];
-      spoken = `Pour « ${t.libelle} » : quels outils ouvres-tu, dans l'ordre ? Recopies-tu des infos de l'un à l'autre ?`;
-      screenEl.innerHTML = `<p class="a2-help" style="margin:0 0 4px">Tâche ${i + 1} sur ${st.lourdes.length} parmi les plus lourdes</p>
-        <h3 class="a2-q">${escapeHtml(t.libelle)}</h3>
-        <div class="a2-row"><b>Quels outils ouvres-tu pour cette tâche ? Clique-les dans l'ordre.</b>
-          <div class="a2-grid">${tools.map((o) => { const k = order.indexOf(o.id); return `<button type="button" class="a2-tool" data-tool="${o.id}" aria-pressed="${k >= 0}">${k >= 0 ? `<span class="rank">${k + 1}</span>` : ''}${toolIcon(o.nom)}<span>${escapeHtml(o.nom)}</span></button>`; }).join('')}</div>
-          <div class="lbl">Recopies-tu des informations d'un outil à l'autre ?</div>
-          <div class="a2-chips">${RECOPIE.map(([v, l]) => chip(`data-rec="${v}"`, l, t.recopie === v || (v === null && t.recopie === null))).join('')}</div></div>
-        <div class="a2-row"><b>Qu'est-ce qui la déclenche ?</b>
-          <div class="a2-chips">${DECL.map(([k, l]) => chip(`data-decl="${k}"`, l, t.declencheur === k)).join('')}</div>
+      // Les outils ouverts et leur ordre ne sont plus demandés : l'enregistrement (computer use) les observe en vrai.
+      screenEl.innerHTML = `<p class="a2-help a2-of">Tâche ${i + 1} sur ${st.lourdes.length}</p>
+        ${head(`« ${t.libelle} » : qu'est-ce qui la déclenche ?`)}
+        <div class="a2-row"><div class="a2-chips">${DECL.map(([k, l]) => chip(`data-decl="${k}"`, l, t.declencheur === k)).join('')}</div>
           <div class="a2-input" ${t.declencheur === 'autre' ? '' : 'hidden'} id="a2DeclOther"><input id="a2DeclText" placeholder="Ce qui la déclenche" value="${escapeHtml(t.declencheur_autre || '')}"></div></div>
-        <div class="a2-row"><b>Que se passe-t-il quand ça ne se passe pas comme d'habitude ? <span style="font-weight:400;color:var(--text-dim)">(facultatif)</span></b>
-          <p class="a2-help" style="margin:0 0 6px">Raconte à voix haute ou écris. Ta réponse reste sur ce poste.</p>
+        <div class="a2-row"><b>Recopies-tu des informations d'un outil à l'autre ?</b>
+          <div class="a2-chips">${RECOPIE.map(([v, l]) => chip(`data-rec="${v}"`, l, t.recopie === v || (v === null && t.recopie === null))).join('')}</div></div>
+        <div class="a2-row"><b>Et quand ça ne se passe pas comme d'habitude ?</b>
           <textarea id="a2Exc" placeholder="Par exemple : il manque une pièce, je relance par mail…">${escapeHtml(t.exceptions_transcript || '')}</textarea>
-          <div class="a2-input"><button type="button" id="a2ExcMic">🎙 Répondre à voix haute</button></div></div>`;
-      screenEl.querySelectorAll('[data-tool]').forEach((b) => b.onclick = () => {
-        const id = b.dataset.tool;
-        t.applis_ids = order.includes(id) ? order.filter((x) => x !== id) : [...order, id];
-        RENDER.q567(i);
-      });
+          <div class="a2-input"><button type="button" id="a2ExcMic">${ICO.mic} Répondre à voix haute</button></div></div>`;
       screenEl.querySelectorAll('[data-rec]').forEach((b) => b.onclick = () => {
         t.recopie = b.dataset.rec === 'true' ? true : b.dataset.rec === 'false' ? false : null;
         b.parentElement.querySelectorAll('.a2-chip').forEach((x) => x.setAttribute('aria-pressed', x === b ? 'true' : 'false'));
@@ -349,21 +370,30 @@
     recap() {
       const ts = r().taches || [];
       const tools = outilsChoisis();
-      const edit = (s) => `<a href="#" class="edit" data-go="${s}">Modifier</a>`;
+      const edit = (s) => `<a href="#" class="a2-edit" data-go="${s}">${ICO.edit}<span>Modifier</span></a>`;
+      const deleg = ts.find((t) => t.deleguer_en_premier);
+      const parSem = (t) => label(FREQ, t.frequence_tranche);
+      const duree = (t) => label(DUREE, t.duree_tranche);
       spoken = "Voici ce qu'on a compris. Tu peux tout modifier avant d'envoyer.";
-      screenEl.innerHTML = `<div class="a2-recap">${head("Voici ce qu'on a compris", 'Vérifie, modifie si besoin, puis envoie.')}
-        <dl>
-          <dt>Ton rôle ${edit('role')}</dt><dd>${escapeHtml(r().role_metier || 'non précisé')}</dd>
-          <dt>Tes outils de travail ${edit('q1')}</dt><dd><div class="apps-strip" style="margin:0">${tools.map((o) => `<span class="app-pill">${toolIcon(o.nom).replace('<img', '<img class="ticon"')}${escapeHtml(o.nom)}</span>`).join('') || '—'}</div></dd>
-          <dt>Tes tâches de la semaine ${edit('q2')}</dt><dd>${ts.length ? ts.map((t) => `<div><b>${escapeHtml(t.libelle)}</b> · ${escapeHtml(label(FREQ, t.frequence_tranche) || '?')} fois, ${escapeHtml(label(DUREE, t.duree_tranche) || '?')} ${edit('q34')}</div>`).join('') : 'aucune'}</dd>
-          ${st.lourdes.map((id, i) => { const t = tache(id); if (!t) return ''; const apps = (t.applis_ids || []).map((a) => tools.find((o) => o.id === a)?.nom || a);
-            return `<dt>Détail : ${escapeHtml(t.libelle)} ${edit(`q567:${i}`)}</dt><dd>${apps.length ? escapeHtml(apps.join(' → ')) : 'outils non précisés'}
-              · ${t.recopie === true ? 'recopie entre outils' : t.recopie === false ? 'pas de recopie' : 'recopie : ?'}
-              · déclenchée par : ${escapeHtml(t.declencheur === 'autre' ? t.declencheur_autre || 'autre' : label(DECL, t.declencheur) || '?')}
-              ${t.exceptions_transcript ? `<br><span style="color:var(--text-dim)">« ${escapeHtml(t.exceptions_transcript)} »</span>` : ''}</dd>`; }).join('')}
-          <dt>À déléguer en premier ${edit('q8')}</dt><dd>${escapeHtml(ts.find((t) => t.deleguer_en_premier)?.libelle || 'je ne sais pas')}</dd>
-        </dl></div>`;
-      screenEl.querySelectorAll('[data-go]').forEach((a) => a.onclick = (e) => { e.preventDefault(); go(a.dataset.go); });
+      screenEl.innerHTML = `<div class="a2-recap">${head("Voici ce qu'on a compris")}
+        <div class="rc-keys">
+          <div class="rc-key"><span>Rôle</span><b>${escapeHtml(r().role_metier || 'Non précisé')}</b>${edit('role')}</div>
+          <div class="rc-key"><span>Outils</span><b>${tools.length}</b>${edit('q1')}</div>
+          <div class="rc-key"><span>Tâches</span><b>${ts.length}</b>${edit('q2')}</div>
+        </div>
+        <section class="rc-block">
+          <header><h4>Tes tâches de la semaine</h4>${edit('q34')}</header>
+          ${ts.length ? `<ul class="rc-tasks">${ts.map((t) => `<li${t === deleg ? ' class="deleg"' : ''}>
+              <span class="nom">${escapeHtml(t.libelle)}${t === deleg ? `<em>${ICO.star}À déléguer en premier</em>` : ''}</span>
+              <span class="val">${parSem(t) ? `${escapeHtml(parSem(t))} <small>/ sem.</small>` : '<small>?</small>'}</span>
+              <span class="val">${duree(t) ? escapeHtml(duree(t)) : '<small>?</small>'}</span></li>`).join('')}</ul>`
+            : '<p class="rc-vide">Aucune tâche pour l\'instant.</p>'}
+        </section>
+        <section class="rc-block">
+          <header><h4>Tes outils de travail</h4>${edit('q1')}</header>
+          <div class="rc-tools">${tools.map((o) => `<span class="rc-tool" title="${escapeHtml(o.nom)}">${toolIcon(o.nom)}<span>${escapeHtml(o.nom)}</span></span>`).join('') || '<p class="rc-vide">Aucun outil choisi.</p>'}</div>
+        </section></div>`;
+      screenEl.querySelectorAll('[data-go]').forEach((x) => x.onclick = (e) => { e.preventDefault(); go(x.dataset.go); });
       $('a2Next').textContent = 'Envoyer et voir mon top 3';
     },
     async resultat() {
@@ -402,30 +432,76 @@
   };
 
   // Validations (passage à l'écran suivant)
+  // ── scan du poste : Iris et Ilo en bas, les logos des applis « se chargent » au-dessus d'eux, en arc ─────────────
+  // L'arc se remplit de gauche à droite comme une barre de chargement ; tant que le scan tourne, il se vide et recommence.
+  // Résultat : l'arc montre les vrais outils repérés, puis on passe à « Voici les outils que tu utilises le plus ».
+  async function scanner() {
+    const texte = 'On regarde les outils de ton poste…';
+    spoken = texte;
+    screenEl.innerHTML = `<h3 class="a2-q">${texte}</h3><p class="a2-help" id="a2ScanTxt">Seulement le nom des applications, jamais tes fichiers.</p>
+      <div class="a2-flux" data-twn-libre="1" aria-hidden="true"></div>`;
+    $('a2').classList.add('twn-scanning');
+    $('a2Next').disabled = true; $('a2Next').textContent = 'Audit en cours…'; $('a2Back').hidden = true;
+    window.TwiinNarrateur?.scene('scan', texte, 0, voiceOn);
+    const flux = screenEl.querySelector('.a2-flux');
+    const ECART = 66, still = matchMedia('(prefers-reduced-motion: reduce)').matches;
+    let logos = [], vitesse = 110, decal = 0, avant = performance.now(), tourne = true;
+    const remplir = (liste) => {
+      const l = [...liste]; while (l.length && l.length < 16) l.push(...liste); // assez de logos pour dépasser la largeur
+      flux.innerHTML = '';
+      logos = l.slice(0, 24).map((e) => { const s = document.createElement('span'); s.className = 'a2-fl'; s.innerHTML = `<img src="icons/${e.file}" alt="">`; flux.append(s); return s; });
+    };
+    const image = (now) => {
+      if (!tourne) return;
+      const dt = Math.min(.05, (now - avant) / 1000); avant = now;
+      const W = logos.length * ECART, cw = flux.clientWidth;
+      if (!still) decal = (decal + vitesse * dt) % W;
+      logos.forEach((s, i) => {
+        const x = ((i * ECART - decal) % W + W) % W - (W - cw) / 2;
+        const d = x + 22 - cw / 2, k = Math.exp(-((d / 120) ** 2)); // le logo au centre, juste au-dessus des jumeaux, grossit
+        s.style.transform = `translate(${x}px, ${-k * 16}px) scale(${.72 + .6 * k})`;
+        s.style.opacity = String(.3 + .7 * k);
+      });
+      requestAnimationFrame(image);
+    };
+    remplir([...ICONS].sort(() => Math.random() - 0.5));
+    requestAnimationFrame(image);
+    try {
+      const t0 = Date.now();
+      st.outils = await api('/api/audit/outils', { usage: r().consent_usage, navigateur: r().consent_navigateur });
+      await new Promise((res) => setTimeout(res, Math.max(0, 3500 - (Date.now() - t0)))); // le temps de voir l'animation
+      const metier = st.outils.applications.filter((a) => a.filtre_metier?.est_metier);
+      const vus = metier.map((a) => findIcons(a.nom, 1)[0]).filter(Boolean);
+      // les vrais outils prennent la place des logos de chargement, et le flux ralentit
+      flux.classList.add('change');
+      await new Promise((res) => setTimeout(res, 350));
+      if (vus.length) remplir(vus);
+      vitesse = 45; flux.classList.remove('change');
+      $('a2ScanTxt').textContent = `${metier.length} outils de travail repérés.`;
+      await new Promise((res) => setTimeout(res, 1800));
+      delete r().outils_confirmes; // nouveaux outils : cochés par défaut
+      return true;
+    } catch (e) {
+      $('a2').classList.remove('twn-scanning');
+      render();
+      screenEl.insertAdjacentHTML('beforeend', `<p class="a2-help" style="color:var(--bad)">${escapeHtml(e.message)}</p>`);
+      return false;
+    } finally {
+      tourne = false;
+      $('a2Next').disabled = false;
+    }
+  }
+
   const VALIDATE = {
     async intro() {
       r().consent_usage = $('a2Usage').checked;
       r().consent_navigateur = $('a2Nav').checked;
-      $('a2Next').disabled = true; $('a2Next').textContent = 'Audit en cours…';
-      sphereSearching();
-      try {
-        const t0 = Date.now();
-        st.outils = await api('/api/audit/outils', { usage: r().consent_usage, navigateur: r().consent_navigateur });
-        await new Promise((res) => setTimeout(res, Math.max(0, 2500 - (Date.now() - t0))));
-        sphereResult(st.outils.applications.filter((a) => a.filtre_metier?.est_metier));
-        delete r().outils_confirmes; // nouveaux outils : cochés par défaut
-        await loadQuestions();
-        return true;
-      } catch (e) {
-        screenEl.insertAdjacentHTML('beforeend', `<p class="a2-help" style="color:var(--bad)">${escapeHtml(e.message)}</p>`);
-        $('sphereBox').hidden = true;
-        return false;
-      } finally {
-        $('a2Next').disabled = false;
-      }
+      st.scanAFaire = true; // le scan se lance après le rôle, juste avant « les outils que tu utilises le plus »
+      return true;
     },
     async role() {
       if (!r().role_metier) r().role_metier = '';
+      if (st.scanAFaire || !st.outils) { if (!(await scanner())) return false; st.scanAFaire = false; }
       await loadQuestions(); // les tâches proposées dépendent du rôle
       return true;
     },
@@ -473,6 +549,7 @@
   }
 
   function render() {
+    $('a2').classList.remove('twn-scanning');
     const [name, arg] = st.screen.split(':');
     $('a2Next').textContent = 'Suivant →';
     $('a2Next').hidden = st.screen === 'resultat';
@@ -481,8 +558,13 @@
     if (name !== 'intro') $('sphereBox').hidden = true;
     RENDER[name](arg !== undefined ? Number(arg) : undefined);
     progress();
+    // Mode narrateur (2e écran « on fait connaissance ») : Iris et Ilo posent la question, mot par mot
+    if (window.TwiinNarrateur?.scene(st.screen, spoken, screens().indexOf(st.screen), voiceOn)) return;
     if (voiceOn && st.screen !== 'resultat') say();
   }
+
+  // Fin de la page d'ouverture (« Allons-y ») : on montre les questions, même si l'audit est déjà fait
+  window.twiinAuditReprendre = () => { if (st.screen === 'resultat') { go('intro'); return true; } return false; };
 
   // ── démarrage : brouillon et audit déjà faits ? on reprend où on en était ──────────────────────────────────────────
   document.getElementById('toRecordBtn').addEventListener('click', () => {
@@ -497,7 +579,9 @@
       st.outils = outils.applications?.length ? outils : null;
       st.dirigeant = dir.dirigeant;
       if (st.outils) await loadQuestions();
-      if (st.rep.envoye && st.outils) { st.screen = 'resultat'; }
+      const connaissance = new URLSearchParams(location.search).has('faire-connaissance'); // arrivée depuis la page d'ouverture
+      if (connaissance) { st.screen = 'intro'; } // on refait connaissance : réponses pré-remplies, rien n'est effacé
+      else if (st.rep.envoye && st.outils) { st.screen = 'resultat'; }
       else if ((st.rep.taches || []).length && st.outils) {
         const { ids } = await api('/api/onboarding/lourdes', { taches: st.rep.taches }).catch(() => ({ ids: [] }));
         st.lourdes = ids;

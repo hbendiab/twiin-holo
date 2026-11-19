@@ -13,14 +13,14 @@
   .tc ol { margin: 0 0 22px; padding-left: 22px; display: grid; gap: 10px; font-size: 14.5px; }
   .tc ol b { font-weight: 600; }
   .phone { justify-self: center; width: 300px; aspect-ratio: 9 / 18.5; border-radius: 44px; padding: 14px; position: relative;
-    background: linear-gradient(160deg, #1b1e26, #0d0f14); box-shadow: 0 30px 80px -20px rgba(60, 70, 140, .55), inset 0 0 0 2px #2a2e38; }
+    background: linear-gradient(160deg, #2a2a28, #0d0d0c); box-shadow: 0 40px 90px -30px rgba(22, 22, 21, .55), inset 0 0 0 1.5px #8f8f8a, inset 0 0 0 3px #1b1b1a; }
   .phone::before { content: ""; position: absolute; top: 22px; left: 50%; width: 84px; height: 22px; margin-left: -42px; border-radius: 12px; background: #000; z-index: 2; }
   .screen { height: 100%; border-radius: 32px; overflow: hidden; display: grid; place-items: center; text-align: center; padding: 26px 20px; color: #f1f2f5;
-    background: radial-gradient(120% 60% at 15% -10%, rgba(143,211,255,.25), transparent 60%), radial-gradient(100% 60% at 110% 10%, rgba(124,108,255,.3), transparent 60%), #0d0f14; }
+    background: radial-gradient(120% 60% at 15% -10%, rgba(255,255,255,.14), transparent 60%), radial-gradient(100% 60% at 110% 10%, rgba(0,157,255,.12), transparent 60%), #0d0d0c; }
   .qr { background: #fff; border-radius: 18px; padding: 10px; width: 210px; height: 210px; margin: 0 auto 14px; display: grid; place-items: center; }
   .qr svg { width: 100%; height: 100%; display: block; }
   .screen small { display: block; color: #9aa1b2; font-size: 12.5px; line-height: 1.4; }
-  .twins { display: flex; gap: 12px; justify-content: center; margin-bottom: 18px; }
+  .twins { display: flex; gap: 8px; justify-content: center; margin-bottom: 18px; }
   .twins span { width: 40px; height: 40px; border-radius: 50%; animation: float 3s ease-in-out infinite; }
   .twins span:first-child { background: radial-gradient(circle at 35% 30%, #fff, #8fd3ff 45%, #3a7bd5); box-shadow: 0 0 26px rgba(143,211,255,.6); }
   .twins span:last-child { background: radial-gradient(circle at 35% 30%, #fff, #7c6cff 45%, #3b2db0); box-shadow: 0 0 26px rgba(124,108,255,.6); animation-delay: -1.5s; }
@@ -60,7 +60,7 @@
     </div>
     <div class="phone" aria-hidden="false">
       <div class="screen" id="screen">
-        <div id="idle"><div class="twins"><span></span><span></span></div><small>Active la télécommande pour afficher le QR code.</small></div>
+        <div id="idle"><div class="twins"><i class="tw-orb iris" style="--s:44px"></i><i class="tw-orb ilo" style="--s:44px"></i></div><small>Active la télécommande pour afficher le QR code.</small></div>
         <div id="qrBox" hidden>
           <div class="qr" id="qr"></div>
           <small>Scanne avec l'appareil photo<br>Valable jusqu'à <span id="exp"></span></small>

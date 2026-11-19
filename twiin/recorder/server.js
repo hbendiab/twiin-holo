@@ -1880,6 +1880,13 @@ const VOICE_CACHE = path.join(WORKFLOWS_DIR, 'voice-cache');         // phrases 
 const ELEVEN_KEY = process.env.ELEVENLABS_API_KEY;
 // Voix de l'audit : Lucie (française native, ton de conseillère, qualité studio). ELEVENLABS_AUDIT_VOICE_ID pour en changer.
 const ELEVEN_VOICE = process.env.ELEVENLABS_AUDIT_VOICE_ID || 'YxrwjAKoUKULGd0g8K9Y';
+// Voix des jumeaux (bibliothèque ElevenLabs) : Iris = « Victoria », Ilo = « Corentin »
+// Ilo est réglé plus posé (plus stable, moins expressif) pour ne pas couvrir Iris ; le volume est ensuite égalisé dans la page.
+const JUMEAUX = {
+  iris: { id: 'O31r762Gb3WFygrEOGh0', reglages: { stability: 0.4, similarity_boost: 0.8, style: 0.5, use_speaker_boost: true } }, // « Victoria »
+  ilo: { id: 'IHngRooVccHyPqB4uQkG', reglages: { stability: 0.6, similarity_boost: 0.8, style: 0.15, use_speaker_boost: false } },
+};
+const voixEnCours = new Map(); // une seule génération à la fois par phrase (deux demandes simultanées ne s'écrasent plus)
 const ELEVEN_STT_MODEL = process.env.ELEVENLABS_STT_MODEL || 'scribe_v2';
 
 // La voix et la transcription coûtent des crédits ElevenLabs : réservées à ce Mac (pas aux autres postes du réseau).
@@ -1956,14 +1963,23 @@ app.get('/api/voice/say', async (req, res) => {
     if (!text) return res.status(400).end();
     if (!ELEVEN_KEY) return res.status(503).json({ error: 'ELEVENLABS_API_KEY manquante dans .env' });
     fs.mkdirSync(VOICE_CACHE, { recursive: true });
-    const file = path.join(VOICE_CACHE, crypto.createHash('sha1').update(`${ELEVEN_VOICE}|${text}`).digest('hex') + '.mp3');
+    // Iris et Ilo posent les questions de l'audit avec leurs propres voix (les mêmes que sur la page d'ouverture)
+    const voix = JUMEAUX[req.query.voix] || null;
+    const voiceId = voix?.id || ELEVEN_VOICE;
+    const file = path.join(VOICE_CACHE, crypto.createHash('sha1').update(`${voiceId}|${voix ? 'v5' : ''}|${text}`).digest('hex') + '.mp3');
+    if (!fs.existsSync(file) && voixEnCours.has(file)) await voixEnCours.get(file);
     if (!fs.existsSync(file)) {
-      const r = await fetch(`${ELEVEN_BASE}/v1/text-to-speech/${ELEVEN_VOICE}?output_format=mp3_44100_128`, {
-        method: 'POST', headers: { 'xi-api-key': ELEVEN_KEY, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text, model_id: 'eleven_multilingual_v2' }),
-      });
-      if (!r.ok) throw new Error(`ElevenLabs (voix) : ${r.status} ${(await r.text()).slice(0, 200)}`);
-      fs.writeFileSync(file, Buffer.from(await r.arrayBuffer()));
+      let fini; voixEnCours.set(file, new Promise((ok) => { fini = ok; }));
+      try {
+        const r = await fetch(`${ELEVEN_BASE}/v1/text-to-speech/${voiceId}?output_format=mp3_44100_128`, {
+          method: 'POST', headers: { 'xi-api-key': ELEVEN_KEY, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ text, model_id: 'eleven_multilingual_v2', ...(voix ? { language_code: 'fr', voice_settings: voix.reglages } : {}) }),
+        });
+        if (!r.ok) throw new Error(`ElevenLabs (voix) : ${r.status} ${(await r.text()).slice(0, 200)}`);
+        const tmp = `${file}.${process.pid}.tmp`; // écrit d'un bloc : jamais de fichier à moitié servi
+        fs.writeFileSync(tmp, Buffer.from(await r.arrayBuffer()));
+        fs.renameSync(tmp, file);
+      } finally { voixEnCours.delete(file); fini(); }
     }
     res.type('audio/mpeg').sendFile(file);
   } catch (err) {
@@ -2702,12 +2718,31 @@ app.get('/api/onboarding/questions', async (req, res) => {
     const rep = readA2('reponses.json', {});
     const fiche = ficheEnCours({ ...rep, role_metier: req.query.role || rep.role_metier });
     const q = await auditPy(['questions'], fiche);
-    res.json({ questions: q, roles: ROLES_AUDIT, brouillon: rep, temps1: { resume: fiche.resume, genere_le: readA2('outils.json', {}).genere_le || null } });
+    res.json({ questions: q, roles: listeRoles(), brouillon: rep, temps1: { resume: fiche.resume, genere_le: readA2('outils.json', {}).genere_le || null } });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
 });
 const ROLES_AUDIT = ['Assistant(e) de direction', 'Gestion de la scolarité', 'Comptable', 'RH', 'Commercial'];
+// Liste proposée à « Quel est ton rôle ? » : les 5 métiers de la bibliothèque, leurs intitulés équivalents (qui donnent
+// les mêmes tâches suggérées) et les postes du dictionnaire. Sans doublon (casse et accents ignorés), triée.
+let rolesProposes = null;
+function listeRoles() {
+  if (rolesProposes) return rolesProposes;
+  const vus = new Set(), out = [];
+  const cle = (x) => x.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/\(e\)/g, '').replace(/\s+/g, ' ').trim();
+  const maj = (x) => (x.length <= 4 ? x.toUpperCase() : x[0].toUpperCase() + x.slice(1));
+  const ajouter = (x) => { const k = cle(x); if (x && !vus.has(k)) { vus.add(k); out.push(maj(x.trim()).replace(/\brh\b/gi, 'RH')); } };
+  try {
+    const yaml = fs.readFileSync(path.join(REPO_ROOT, 'audit', 'data', 'taches_par_role.yaml'), 'utf8');
+    const bloc = yaml.split(/^taches:/m)[0];
+    for (const m of bloc.matchAll(/libelle:\s*"([^"]+)"/g)) ajouter(m[1]);
+    for (const m of bloc.matchAll(/alias:\s*\[([^\]]*)\]/g)) for (const a of m[1].matchAll(/"([^"]+)"/g)) ajouter(a[1]);
+  } catch { ROLES_AUDIT.forEach(ajouter); }
+  (lexicon().postes || []).forEach(ajouter);
+  rolesProposes = out.sort((a, b) => a.localeCompare(b, 'fr'));
+  return rolesProposes;
+}
 // Les 3 tâches les plus lourdes (fréquence × durée) : les questions 5 à 7 ne portent que sur elles
 app.post('/api/onboarding/lourdes', async (req, res) => {
   try { res.json({ ids: await auditPy(['lourdes'], req.body?.taches || []) }); } catch (e) { res.status(500).json({ error: e.message }); }

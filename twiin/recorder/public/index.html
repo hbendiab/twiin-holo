@@ -435,9 +435,60 @@
   .a2 textarea { width: 100%; min-height: 80px; resize: vertical; }
   .a2-intro ol { margin: 8px 0 14px; padding-left: 20px; font-size: 14px; display: grid; gap: 4px; }
   .a2-consent { display: grid; gap: 8px; padding: 12px 14px; border-radius: 12px; background: var(--panel-2); margin: 10px 0; }
-  .a2-recap dl { display: grid; grid-template-columns: 170px minmax(0, 1fr); gap: 8px 14px; font-size: 13.5px; margin: 0; }
-  .a2-recap dt { color: var(--text-dim); } .a2-recap dd { margin: 0; }
-  .a2-recap .edit { font-size: 12px; margin-left: 6px; }
+  /* introduction : 3 étapes en cartes, consentements en interrupteurs, deux choix clairs */
+  .in-steps { list-style: none; padding: 0; margin: 22px 0 18px; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; text-align: left; }
+  .in-steps li { padding: 16px 16px 14px; border-radius: 16px; background: var(--brand-tint, var(--wash)); border: 1px solid var(--brand-rule, var(--rule)); }
+  .in-steps .n { display: inline-grid; place-items: center; width: 28px; height: 28px; border-radius: 9px; background: var(--brand, var(--chip));
+    color: var(--brand-ink, var(--ink)); font: 600 12px var(--mono); margin-bottom: 12px; }
+  .in-steps b { display: block; font-size: 15.5px; font-weight: 600; letter-spacing: -0.01em; }
+  .in-steps p { margin: 4px 0 0; font-size: 14px; line-height: 1.45; color: color-mix(in srgb, var(--ink) 72%, transparent); }
+  .in-opts { display: grid; gap: 8px; text-align: left; }
+  .in-switch { display: flex; align-items: center; gap: 14px; padding: 14px 16px; border-radius: 14px; border: 1px solid var(--brand-rule, var(--rule)); cursor: pointer; }
+  .in-switch input { position: absolute; opacity: 0; pointer-events: none; }
+  .in-switch .sw { flex: none; width: 40px; height: 24px; border-radius: 999px; background: var(--brand-chip, var(--chip)); position: relative; transition: background-color .25s var(--ease); }
+  .in-switch .sw::after { content: ""; position: absolute; top: 3px; left: 3px; width: 18px; height: 18px; border-radius: 50%; background: #fff;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, .25); transition: transform .3s var(--ease); }
+  .in-switch input:checked + .sw { background: var(--brand-strong, var(--accent)); }
+  .in-switch input:checked + .sw::after { transform: translateX(16px); }
+  .in-switch input:focus-visible + .sw { outline: 2px solid var(--brand-strong, var(--accent)); outline-offset: 2px; }
+  .in-switch .txt { font-size: 14.5px; font-weight: 500; line-height: 1.35; }
+  .in-switch .txt em { display: block; font-style: normal; font-weight: 400; font-size: 13.5px; color: color-mix(in srgb, var(--ink) 62%, transparent); }
+  .in-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 22px; flex-wrap: wrap; }
+  .in-actions button { padding: 12px 18px !important; font-size: 15px !important; }
+  @media (max-width: 640px) { .in-steps { grid-template-columns: minmax(0, 1fr); } .in-actions { justify-content: stretch; } .in-actions button { flex: 1; } }
+  /* les petites lignes d'aide : lisibles (encre adoucie, taille normale), plus de gris pâle */
+  .a2 .a2-help { font-size: 14.5px !important; line-height: 1.5; color: color-mix(in srgb, var(--ink) 70%, transparent) !important; }
+  .a2 .a2-row .lbl { font-size: 13.5px !important; font-weight: 500; color: var(--ink) !important; margin: 12px 0 6px !important; }
+  .a2 .a2-meta { font: 500 12px var(--mono) !important; color: var(--brand-strong, var(--accent)) !important; }
+  .a2 .a2-of { color: var(--brand-strong, var(--accent)) !important; font: 500 11.5px var(--mono) !important; }
+
+  /* récap : 3 repères, puis les tâches (l'essentiel), puis les outils */
+  .ico-svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; flex: none; vertical-align: -3px; }
+  .a2-recap { text-align: left; }
+  .rc-keys { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin: 18px 0 26px; }
+  .rc-key { position: relative; padding: 14px 16px; border-radius: 16px; background: var(--brand-tint, var(--wash)); border: 1px solid var(--brand-rule, var(--rule)); }
+  .rc-key span { display: block; font: 500 11px var(--mono); text-transform: uppercase; letter-spacing: .05em; color: var(--text-dim); }
+  .rc-key b { display: block; margin-top: 6px; font-size: 20px; font-weight: 600; letter-spacing: -0.02em; line-height: 1.2; }
+  .rc-key .a2-edit { position: absolute; top: 10px; right: 10px; }
+  .rc-key .a2-edit span { display: none; }
+  .a2-edit { display: inline-flex; align-items: center; gap: 5px; font-size: 13px; color: var(--brand-strong, var(--accent)); text-decoration: none; padding: 4px 8px; border-radius: 8px; }
+  .a2-edit:hover { background: var(--brand-chip, var(--chip)); }
+  .rc-block { margin-top: 22px; }
+  .rc-block header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+  .rc-block h4 { margin: 0; font-size: 15px; font-weight: 600; letter-spacing: -0.01em; }
+  .rc-tasks { list-style: none; margin: 0; padding: 0; border-top: 1px solid var(--brand-rule, var(--rule)); }
+  .rc-tasks li { display: grid; grid-template-columns: minmax(0, 1fr) 130px 110px; gap: 12px; align-items: center; padding: 12px 4px; border-bottom: 1px solid var(--brand-rule, var(--rule)); }
+  .rc-tasks .nom { font-size: 14.5px; font-weight: 500; min-width: 0; }
+  .rc-tasks .nom em { display: inline-flex; align-items: center; gap: 4px; margin-left: 10px; font: 500 11px var(--mono); font-style: normal; color: var(--brand-strong, var(--accent));
+    background: var(--brand-chip, var(--chip)); padding: 3px 8px; border-radius: 999px; vertical-align: 1px; }
+  .rc-tasks .nom em .ico-svg { width: 12px; height: 12px; }
+  .rc-tasks .val { font: 500 13px var(--mono); text-align: right; font-variant-numeric: tabular-nums; }
+  .rc-tasks .val small { color: var(--text-dim); font-size: 11px; }
+  .rc-tools { display: flex; flex-wrap: wrap; gap: 8px; }
+  .rc-tool { display: inline-flex; align-items: center; gap: 8px; padding: 6px 12px 6px 6px; border-radius: 999px; background: var(--brand-tint, var(--wash)); border: 1px solid var(--brand-rule, var(--rule)); font-size: 13px; }
+  .rc-tool img, .rc-tool .noicon { width: 22px; height: 22px; border-radius: 6px; object-fit: contain; }
+  .rc-vide { color: var(--text-dim); margin: 6px 0 0; }
+  @media (max-width: 640px) { .rc-keys { grid-template-columns: minmax(0, 1fr); } .rc-tasks li { grid-template-columns: minmax(0, 1fr) auto; } .rc-tasks .val:last-child { grid-column: 2; } }
   .a2-top3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin: 6px 0 16px; }
   .a2-opp { position: relative; padding: 16px; border-radius: 14px; border: 1px solid var(--accent); background: var(--accent-soft); display: flex; flex-direction: column; gap: 6px; }
   .a2-opp .n { font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--accent); }
@@ -519,6 +570,7 @@
   .a2-opt[aria-selected="true"] { background: var(--accent-soft); }
   .a2-opt .ico { width: 24px; height: 24px; display: grid; place-items: center; flex: none; border-radius: 7px; }
   .a2-opt .ico img { width: 22px; height: 22px; object-fit: contain; }
+  .a2-opt .ico:empty { display: none; } /* pas de logo (ex. les rôles) : pas de retrait vide */
   .a2-opt.free .ico { background: var(--accent); color: var(--accent-ink); font-weight: 700; border-radius: 50%; }
   .a2-opt .txt { flex: 1; min-width: 0; color: var(--text); }
   .a2-opt .txt b { font-weight: 700; }
@@ -557,7 +609,7 @@
     <div id="a2Screen"></div>
     <div class="sphere-box" id="sphereBox" hidden><div id="scanSphere"></div><p class="sphere-caption" id="sphereCaption"></p></div>
     <div class="a2-nav"><button type="button" id="a2Back" class="quiet">← Retour</button>
-      <span class="a2-voice"><button type="button" id="a2Listen" class="quiet" title="Écouter la question">🔊 Écouter</button>
+      <span class="a2-voice"><button type="button" id="a2Listen" class="quiet" title="Écouter la question">Écouter</button>
         <label class="check"><input type="checkbox" id="a2Voice"> Lire les questions à voix haute</label></span>
       <button type="button" id="a2Next">Suivant →</button></div>
   </section>
@@ -573,7 +625,7 @@
     <button id="addBtn" disabled>+ Ajouter un écran</button>
     <button id="pauseBtn" disabled title="Met en pause l'enregistrement : rien n'est noté ni capturé">Pause</button>
     <label id="voiceToggle" class="voice-toggle" title="Enregistre ta voix pendant la tâche (explique ce que tu fais et pourquoi). Elle est transcrite sur ton Mac : seul le texte est envoyé au modèle d'analyse.">
-      <input type="checkbox" id="voiceSwitch" role="switch"><span class="track"></span><span>🎤 Capture vocale</span>
+      <input type="checkbox" id="voiceSwitch" role="switch"><span class="track"></span><span>Capture vocale</span>
     </label>
     <span id="voiceNote" class="voice-note" role="status" hidden></span>
     <div id="voiceInstallBox" class="voice-engine" hidden>
@@ -651,6 +703,7 @@
   <script src="ui/twiin-ui.js"></script>
   <script src="app.js"></script>
   <script src="discovery.js"></script>
+  <script src="narrateur.js"></script>
   <script src="audit2.js"></script>
 </body>
 </html>
