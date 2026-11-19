@@ -1,0 +1,150 @@
+{
+  "name": "Supreme vs StockX margin tracking",
+  "schedule_cron": null,
+  "warnings": [
+    "Taille non enregistrée pour le Puffer Pink et le Textured Sweater Pink sur StockX, à confirmer (seul le Puffer Black a une taille XL)",
+    "La feuille « TEST Holo computer use » n'est pas dans les ressources n8n disponibles, l'écriture est faite par Holo"
+  ],
+  "blocks": [
+    {
+      "type": "holo",
+      "name": "Holo — lire prix Supreme Puffer Pink",
+      "steps": [
+        "In Google Chrome, open https://eu.supreme.com/collections/all. Scroll through the product grid and find the product titled « Reversible Reflective Down Puffer Jacket » in the PINK colorway. Click on it to open the product page. Verify the page title contains « Reversible Reflective Down Puffer Jacket » and the color shown is Pink. Read the retail price displayed on the page (the price in euros, e.g. 528). Copy the number EXACTLY as displayed (without the € symbol, without currency code)."
+      ],
+      "expect": {
+        "prix_supreme": "retail price as a number, e.g. 528"
+      }
+    },
+    {
+      "type": "holo",
+      "name": "Holo — lire prix StockX Puffer Pink",
+      "steps": [
+        "In Google Chrome, open https://stockx.com. In the search bar at the top, type « reversible reflective down puffer » and press Enter. In the search results, find and click on the product « Supreme Reversible Reflective Down Puffer Jacket » in PINK. Verify the page title contains « Supreme Reversible Reflective Down Puffer Jacket » and the color is Pink. Read the « Buy Now » price displayed on the page. Copy the number EXACTLY as displayed (without the € symbol, without currency code, without thousands separator)."
+      ],
+      "expect": {
+        "prix_stockx": "Buy Now price as a number, e.g. 1361"
+      }
+    },
+    {
+      "type": "holo",
+      "name": "Holo — lire prix Supreme Puffer Black",
+      "steps": [
+        "In Google Chrome, open https://eu.supreme.com/collections/all. Scroll through the product grid and find the product titled « Reversible Reflective Down Puffer Jacket » in the BLACK colorway. Click on it to open the product page. Verify the page title contains « Reversible Reflective Down Puffer Jacket » and the color shown is Black. Read the retail price displayed on the page. Copy the number EXACTLY as displayed (without the € symbol, without currency code)."
+      ],
+      "expect": {
+        "prix_supreme": "retail price as a number, e.g. 528"
+      }
+    },
+    {
+      "type": "holo",
+      "name": "Holo — lire prix StockX Puffer Black",
+      "steps": [
+        "In Google Chrome, open https://stockx.com. In the search bar at the top, type « reversible reflective down puffer black » and press Enter. In the search results, find and click on the product « Supreme Reversible Reflective Down Puffer Jacket » in BLACK. Verify the page title contains « Supreme Reversible Reflective Down Puffer Jacket » and the color is Black. Select the size XL from the size selector. Read the « Buy Now » price displayed for size XL. Copy the number EXACTLY as displayed (without the € symbol, without currency code, without thousands separator)."
+      ],
+      "expect": {
+        "prix_stockx": "Buy Now price for size XL as a number, e.g. 1710"
+      }
+    },
+    {
+      "type": "holo",
+      "name": "Holo — lire prix Supreme Textured Sweater Pink",
+      "steps": [
+        "In Google Chrome, open https://eu.supreme.com/collections/all. Scroll through the product grid and find the product titled « Textured Sweater » in the PINK colorway. Click on it to open the product page. Verify the page title contains « Textured Sweater » and the color shown is Pink. Read the retail price displayed on the page. Copy the number EXACTLY as displayed (without the € symbol, without currency code)."
+      ],
+      "expect": {
+        "prix_supreme": "retail price as a number, e.g. 198"
+      }
+    },
+    {
+      "type": "holo",
+      "name": "Holo — lire prix StockX Textured Sweater Pink",
+      "steps": [
+        "In Google Chrome, open https://stockx.com. In the search bar at the top, type « textured sweater supreme pink » and press Enter. In the search results, find and click on the product « Supreme Textured Sweater » in PINK. Verify the page title contains « Supreme Textured Sweater » and the color is Pink. Read the « Buy Now » price displayed on the page. Copy the number EXACTLY as displayed (without the € symbol, without currency code, without thousands separator)."
+      ],
+      "expect": {
+        "prix_stockx": "Buy Now price as a number, e.g. 731"
+      }
+    },
+    {
+      "type": "row",
+      "name": "Préparer la ligne",
+      "fields": {
+        "Puffer Pink - Prix Supreme": "{{Holo — lire prix Supreme Puffer Pink.prix_supreme}}",
+        "Puffer Pink - Prix StockX": "{{Holo — lire prix StockX Puffer Pink.prix_stockx}}",
+        "Puffer Black - Prix Supreme": "{{Holo — lire prix Supreme Puffer Black.prix_supreme}}",
+        "Puffer Black - Prix StockX": "{{Holo — lire prix StockX Puffer Black.prix_stockx}}",
+        "Textured Sweater Pink - Prix Supreme": "{{Holo — lire prix Supreme Textured Sweater Pink.prix_supreme}}",
+        "Textured Sweater Pink - Prix StockX": "{{Holo — lire prix StockX Textured Sweater Pink.prix_stockx}}"
+      }
+    },
+    {
+      "type": "verify",
+      "name": "Vérifier les valeurs",
+      "rules": {
+        "Puffer Pink - Prix Supreme": {
+          "required": true,
+          "pattern": "^\\d{2,4}$",
+          "forbid": [
+            "€",
+            "eur",
+            "EUR"
+          ]
+        },
+        "Puffer Pink - Prix StockX": {
+          "required": true,
+          "pattern": "^\\d{2,5}$",
+          "forbid": [
+            "€",
+            "eur",
+            "EUR"
+          ]
+        },
+        "Puffer Black - Prix Supreme": {
+          "required": true,
+          "pattern": "^\\d{2,4}$",
+          "forbid": [
+            "€",
+            "eur",
+            "EUR"
+          ]
+        },
+        "Puffer Black - Prix StockX": {
+          "required": true,
+          "pattern": "^\\d{2,5}$",
+          "forbid": [
+            "€",
+            "eur",
+            "EUR"
+          ]
+        },
+        "Textured Sweater Pink - Prix Supreme": {
+          "required": true,
+          "pattern": "^\\d{2,4}$",
+          "forbid": [
+            "€",
+            "eur",
+            "EUR"
+          ]
+        },
+        "Textured Sweater Pink - Prix StockX": {
+          "required": true,
+          "pattern": "^\\d{2,5}$",
+          "forbid": [
+            "€",
+            "eur",
+            "EUR"
+          ]
+        }
+      }
+    },
+    {
+      "type": "holo",
+      "name": "Holo — écrire dans Google Sheets",
+      "steps": [
+        "In Google Chrome, open the Google Sheet titled « TEST Holo computer use » (it should already be open in a tab; if not, find it in Google Sheets). Navigate to the sheet. In cell B4, type: {{Préparer la ligne.Puffer Pink - Prix Supreme}}. In cell C4, type: {{Préparer la ligne.Puffer Pink - Prix StockX}}. In cell D4, type the formula: =C4-B4. In cell B5, type: {{Préparer la ligne.Puffer Black - Prix Supreme}}. In cell C5, type: {{Préparer la ligne.Puffer Black - Prix StockX}}. In cell D5, type the formula: =C5-B5. In cell B6, type: {{Préparer la ligne.Textured Sweater Pink - Prix Supreme}}. In cell C6, type: {{Préparer la ligne.Textured Sweater Pink - Prix StockX}}. In cell D6, type the formula: =C6-B6. Press Enter after each cell entry. Do not modify any other cells. Stop when all 9 cells are filled."
+      ]
+    }
+  ],
+  "id": "twiinsupremevsst"
+}

@@ -55,3 +55,11 @@ workflows/audit2/
 workflows/automations-programmees.json
 desktop/node_modules/
 tuto/video/public/pitch/
+
+workflows/voice-venv/
+workflows/tuto-sessions/
+
+workflows/sauvegarde-*/
+
+# Corbeille des enregistrements (captures d'écran du Mac) : jamais publiée
+workflows/corbeille/

@@ -1,0 +1,36 @@
+{
+  "id": "twiindemofacture",
+  "name": "Démo · Facture PDF saisie dans QONTA",
+  "schedule_cron": null,
+  "blocks": [
+    {
+      "type": "source_read",
+      "name": "Lire la facture reçue (PDF)",
+      "folder": "C:/Users/fouqu/Documents/Twiin demo/Factures reçues",
+      "pattern": "INV",
+      "columns": [
+        "Fournisseur",
+        "Référence fournisseur",
+        "Date de facture"
+      ],
+      "line_columns": [
+        "Libellé",
+        "Quantité",
+        "Prix unitaire HT",
+        "TVA"
+      ]
+    },
+    {
+      "type": "holo_fill",
+      "name": "Saisir dans QONTA (Holo, invisible)",
+      "url": "http://127.0.0.1:8042/factures/nouvelle",
+      "label": "la facture fournisseur"
+    },
+    {
+      "type": "gmail_send",
+      "name": "Prévenir l'employé par mail",
+      "subject": "Twiin : ta facture est dans QONTA",
+      "message": "={{ (() => { const f = $('Saisir dans QONTA (Holo, invisible)').first().json, d = $('Lire la facture reçue (PDF)').first().json.data; if (!d) return 'Aucune nouvelle facture à saisir.'; if (f.ok) return 'La facture ' + (d['Référence fournisseur'] || '') + ' de ' + (d.Fournisseur || '') + ' est saisie en brouillon dans QONTA,' + ' et chaque champ a été vérifié (' + Math.round(f.seconds || 0) + ' s). Tu n\\'as rien eu à faire : tu pouvais continuer à travailler.'; return 'La saisie de la facture ' + (d['Référence fournisseur'] || '') + ' a besoin de ton regard : ' + JSON.stringify((f.check && (f.check.missing || f.check.page_errors)) || f.error || 'erreur inconnue'); })() }}"
+    }
+  ]
+}

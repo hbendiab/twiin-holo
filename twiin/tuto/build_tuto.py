@@ -163,6 +163,9 @@ VOIX_TUTO = {
 
 
 def voix_pour(nom_tuto):
+    # ELEVENLABS_TUTO_VOICE_ID (facultatif) : une voix unique pour tous les tutos, ex. une voix du forfait gratuit
+    if ENV.get("ELEVENLABS_TUTO_VOICE_ID", "").strip():
+        return "Voix imposée", ENV["ELEVENLABS_TUTO_VOICE_ID"].strip()
     import hashlib
     noms = list(VOIX_TUTO)
     nom = noms[int(hashlib.sha1(nom_tuto.encode()).hexdigest(), 16) % len(noms)]
