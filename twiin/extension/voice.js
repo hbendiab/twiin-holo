@@ -40,6 +40,19 @@ const Voice = (() => {
     paint();
   }
 
+  // Extension Chrome : le panneau latéral ne peut pas afficher la demande de micro ; elle se fait dans une page de l'extension (mic-permission.html)
+  async function extMicGranted() {
+    try { return (await navigator.permissions.query({ name: 'microphone' })).state === 'granted'; } catch { return true; } // état inconnu : on tente directement
+  }
+  function askMicPage() {
+    return new Promise((res) => {
+      const done = (ok) => { clearTimeout(t); chrome.runtime.onMessage.removeListener(h); res(ok); };
+      const h = (m) => { if (m?.type === 'twiin:mic') done(!!m.ok); };
+      const t = setTimeout(() => done(false), 120000);
+      chrome.runtime.onMessage.addListener(h);
+      chrome.tabs.create({ url: chrome.runtime.getURL('mic-permission.html') }).catch(() => done(false));
+    });
+  }
   // Avant l'enregistrement : autorisation + micro. Renvoie le flux, ou null (avec un avertissement) : l'enregistrement continue sans voix.
   async function open() {
     S.warning = '';
@@ -47,6 +60,7 @@ const Voice = (() => {
     if (!S.ready) { await refresh(); if (!S.ready) { S.warning = `Voix indisponible : ${S.reason || 'non prête'} : enregistrement sans la voix.`; paint(); return null; } }
     try {
       if (globalThis.twiinDesktop?.askMic && !(await twiinDesktop.askMic())) throw new Error('micro refusé dans les Réglages macOS');
+      if (!globalThis.twiinDesktop && globalThis.chrome?.tabs?.create && !(await extMicGranted()) && !(await askMicPage())) throw new Error('micro non autorisé');
       return await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } });
     } catch (e) {
       S.warning = `Micro non disponible (${e.name || e.message}) : enregistrement sans la voix.`; paint(); return null;
