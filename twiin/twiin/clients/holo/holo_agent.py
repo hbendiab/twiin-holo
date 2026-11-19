@@ -53,7 +53,9 @@ class HoloAgent:
     ):
         if not (api_key or os.environ.get("HAI_API_KEY")):
             raise ValueError("HAI_API_KEY not set — pass api_key= or set it in .env")
-        self.client = Client(api_key=api_key) if api_key else Client()
+        base_url = os.environ.get("HAI_BASE_URL")  # relais Twiin sur les postes clients
+        kw = {"base_url": base_url} if base_url else {}
+        self.client = Client(api_key=api_key, **kw) if api_key else Client(**kw)
         self.agent = agent
         self.browser_profile_id = browser_profile_id or os.environ.get("HOLO_BROWSER_PROFILE_ID")
 

@@ -72,6 +72,9 @@ async function install({ resources, dataDir, appDir, version, report }) {
     copyCode(path.join(resources, 'twiin'), appDir);
     state.code = version; save();
   });
+  // Accès intégrés (relais Twiin + jeton du poste) : deviennent le .env s'il n'y en a pas encore. Aucune clé de service dedans.
+  const pilote = path.join(appDir, 'config-pilote.env'), env = path.join(appDir, '.env');
+  if (fs.existsSync(pilote) && !fs.existsSync(env)) fs.copyFileSync(pilote, env);
 
   await step('python', async () => {
     if (fs.existsSync(venvPy)) return;

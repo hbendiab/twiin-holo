@@ -189,7 +189,7 @@ async function refresh() {
   render();
 }
 function render() {
-  list = SCREENS.filter((s) => !s.mac || S.platform === 'darwin');
+  list = SCREENS.filter((s) => (!s.mac || S.platform === 'darwin') && !(s.id === 'config' && S.pilote));
   i = Math.min(i, list.length - 1);
   try { localStorage.setItem('twiin-ob-step', String(i)); } catch { /* rien */ }
   const id = list[i].id;

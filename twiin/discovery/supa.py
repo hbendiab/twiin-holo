@@ -9,8 +9,17 @@ class Supa:
     def __init__(self):
         self.url = os.environ["SUPABASE_URL"].rstrip("/")
         self.key = os.environ["SUPABASE_PUBLISHABLE_KEY"]
-        r = self._req("POST", "/auth/v1/token?grant_type=password",
-                      {"email": os.environ["SUPABASE_EMAIL"], "password": os.environ["SUPABASE_PASSWORD"]}, auth=False)
+        relais = os.environ.get("TWIIN_RELAIS", "").rstrip("/")
+        if relais and not os.environ.get("SUPABASE_PASSWORD"):
+            # poste client : le mot de passe du compte reste sur le relais Twiin, qui renvoie la session
+            req = urllib.request.Request(relais + "/sb/session", data=b"{}", method="POST",
+                                         headers={"Authorization": f"Bearer {os.environ.get('TWIIN_CLE', '')}",
+                                                  "Content-Type": "application/json"})
+            with urllib.request.urlopen(req, timeout=60) as resp:
+                r = json.loads(resp.read())
+        else:
+            r = self._req("POST", "/auth/v1/token?grant_type=password",
+                          {"email": os.environ["SUPABASE_EMAIL"], "password": os.environ["SUPABASE_PASSWORD"]}, auth=False)
         self.token = r["access_token"]
         self.user = r["user"]
         self.company_id = (self.user.get("app_metadata") or {}).get("company_id")

@@ -17,6 +17,7 @@ d'actions ; on garde les images de ce moment, avec la position des clics.
 """
 import argparse
 import json
+import os
 import re
 import shutil
 import sys
@@ -31,6 +32,10 @@ sys.path.insert(0, str(ROOT))
 from twiin.clients.holo.holo_agent import HoloAgent  # noqa: E402
 
 ENV = dotenv_values(ROOT / ".env")
+ENV.update({k: v for k, v in os.environ.items() if k in ("HF_TOKEN", "ELEVENLABS_API_KEY", "HAI_API_KEY", "HF_BASE_URL",
+                                                         "ELEVENLABS_BASE_URL", "HAI_BASE_URL", "TWIIN_RELAIS") and v})  # relais Twiin
+HF_BASE = ENV.get("HF_BASE_URL") or "https://router.huggingface.co/v1"
+ELEVEN_BASE = (ENV.get("ELEVENLABS_BASE_URL") or "https://api.elevenlabs.io").rstrip("/")
 REMOTION_PUBLIC = ROOT / "tuto" / "video" / "public" / "tutos"
 FPS = 30
 MAX_SHOTS_PER_STEP = 2  # une image par étape, deux au plus : une vidéo calme, qui montre ce que dit la voix
@@ -106,7 +111,7 @@ def pick(shots, n):
 def write_narration(task_name, steps, answers, advice):
     """Texte de la voix off (français, tutoiement), via le modèle d'analyse d'ImproveMe (texte seul)."""
     from openai import OpenAI
-    client = OpenAI(base_url="https://router.huggingface.co/v1", api_key=ENV["HF_TOKEN"])
+    client = OpenAI(base_url=HF_BASE, api_key=ENV["HF_TOKEN"])
     tips = "\n".join(f"- {r.get('title')}: {r.get('suggestion')}" for r in (advice or {}).get("recommendations", []))
     prompt = (
         "Tu écris la voix off d'un tuto vidéo qui montre à un salarié comment faire sa tâche plus vite. "
@@ -170,7 +175,7 @@ def voix_pour(nom_tuto):
 
 
 def tts(text, out: Path, vid):
-    r = requests.post(f"https://api.elevenlabs.io/v1/text-to-speech/{vid}?output_format=mp3_44100_192",
+    r = requests.post(f"{ELEVEN_BASE}/v1/text-to-speech/{vid}?output_format=mp3_44100_192",
                       headers={"xi-api-key": ENV["ELEVENLABS_API_KEY"].strip(), "Content-Type": "application/json"},
                       json={"text": text, "model_id": "eleven_multilingual_v2"}, timeout=120)
     if not r.ok:
@@ -207,7 +212,7 @@ def action_line(e, t0):
 def map_steps_to_time(steps, actions, frames, t0):
     """Le modèle relie chaque étape à son moment dans l'enregistrement (début et fin, en secondes)."""
     from openai import OpenAI
-    client = OpenAI(base_url="https://router.huggingface.co/v1", api_key=ENV["HF_TOKEN"])
+    client = OpenAI(base_url=HF_BASE, api_key=ENV["HF_TOKEN"])
     log = "\n".join(x for x in (action_line(e, t0) for e in actions) if x)
     imgs = "\n".join(f"image {i}: t+{f.get('seconds', 0)}s écran {f.get('screen', 1)}" for i, f in enumerate(frames))
     prompt = ("Voici les étapes d'une tâche et le journal horodaté de l'enregistrement où l'employé l'a faite. Pour chaque "
@@ -333,7 +338,10 @@ def shots_from_holo_run(a, out_dir):
         shots = pick(shots_for_session(client, sid), MAX_SHOTS_PER_STEP)
         for k, s in enumerate(shots, 1):
             f = out_dir / f"etape{n}_{k}.jpg"
-            f.write_bytes(requests.get(s["url"], headers={"Authorization": f"Bearer {key}"}, timeout=60).content)
+            u = s["url"]
+            if ENV.get("TWIIN_RELAIS") and re.match(r"https://[a-z0-9.-]+\.hcompany\.ai/", u):  # images Holo via le relais
+                u = ENV["TWIIN_RELAIS"].rstrip("/") + "/hai/" + u[len("https://"):]
+            f.write_bytes(requests.get(u, headers={"Authorization": f"Bearer {key}"}, timeout=60).content)
             s["src"] = f"tutos/{a.name}/{f.name}"
             from PIL import Image
             with Image.open(f) as im:

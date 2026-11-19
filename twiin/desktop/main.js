@@ -147,7 +147,7 @@ async function runInstall() {
 }
 function envReady() {
   const env = fs.existsSync(path.join(APP_DIR, '.env')) ? fs.readFileSync(path.join(APP_DIR, '.env'), 'utf8') : '';
-  return /^HF_TOKEN=\s*\S+/m.test(env);
+  return /^(HF_TOKEN|TWIIN_CLE)=\s*\S+/m.test(env);
 }
 function createOnboarding() {
   onb = new BrowserWindow({ width: 820, height: 640, minWidth: 720, minHeight: 560, title: 'Bienvenue dans Twiin', backgroundColor: '#e9ebef',
@@ -159,14 +159,15 @@ function createOnboarding() {
 // Ce que l'onboarding demande à l'app
 const py = () => path.join(APP_DIR, '.venv', IS_MAC ? 'bin/python' : 'Scripts/python.exe');
 const pyCheck = (code) => new Promise((res) => execFile(py(), ['-c', code], { timeout: 8000 }, (err, out) => res(err ? null : String(out).trim())));
-ipcMain.handle('ob:state', () => ({ platform: process.platform, version: app.getVersion(), packaged: app.isPackaged, configured: envReady(), install: installState }));
+ipcMain.handle('ob:state', () => ({ platform: process.platform, version: app.getVersion(), packaged: app.isPackaged, configured: envReady(),
+  pilote: app.isPackaged && fs.existsSync(path.join(process.resourcesPath, 'twiin', 'config-pilote.env')), install: installState })); // pilote : accès déjà intégrés, pas d'écran Configuration
 ipcMain.handle('ob:import', async () => {
   const r = await dialog.showOpenDialog(onb, { title: 'Fichier de configuration Twiin', properties: ['openFile', 'showHiddenFiles'],
     message: 'Choisis le fichier de configuration envoyé par l\'équipe Twiin (twiin.env ou .env)' });
   if (r.canceled || !r.filePaths[0]) return { ok: false };
   const text = fs.readFileSync(r.filePaths[0], 'utf8');
   const keys = [...text.matchAll(/^([A-Z0-9_]+)=\s*(\S+)/gm)].map((m) => m[1]); // les noms seulement, jamais les valeurs
-  if (!keys.includes('HF_TOKEN')) return { ok: false, error: 'Ce fichier ne contient pas de clé HF_TOKEN : ce n\'est pas une configuration Twiin.' };
+  if (!keys.includes('HF_TOKEN') && !keys.includes('TWIIN_CLE')) return { ok: false, error: 'Ce fichier ne contient pas d\'accès Twiin : ce n\'est pas une configuration Twiin.' };
   const dest = path.join(APP_DIR, '.env');
   fs.mkdirSync(APP_DIR, { recursive: true });
   if (fs.existsSync(dest)) fs.copyFileSync(dest, `${dest}.ancien`);

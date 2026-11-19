@@ -27,6 +27,18 @@ const CANDIDATES_PATH = path.join(REPO_ROOT, 'workflows', 'candidates.json');
 
 // project-wide .env lives at the repo root, same file Holo's pieces read
 dotenv.config({ path: path.join(REPO_ROOT, '.env') });
+// Relais Twiin (postes clients) : TWIIN_RELAIS + TWIIN_CLE remplacent les clés des services, qui restent sur le relais.
+// Les scripts Python lancés par le serveur héritent de ces variables.
+const RELAIS = (process.env.TWIIN_RELAIS || '').replace(/\/+$/, '');
+if (RELAIS) {
+  for (const k of ['HF_TOKEN', 'ELEVENLABS_API_KEY', 'HAI_API_KEY']) if (!process.env[k]) process.env[k] = process.env.TWIIN_CLE || '';
+  process.env.HF_BASE_URL ||= `${RELAIS}/hf/v1`;
+  process.env.ELEVENLABS_BASE_URL ||= `${RELAIS}/eleven`;
+  process.env.HAI_BASE_URL ||= `${RELAIS}/hai/agp.eu.hcompany.ai`;
+  process.env.HAI_API_BASE_URL ||= `${RELAIS}/hai/api.hcompany.ai/v1/`;
+}
+const HF_BASE = process.env.HF_BASE_URL || 'https://router.huggingface.co/v1';
+const ELEVEN_BASE = (process.env.ELEVENLABS_BASE_URL || 'https://api.elevenlabs.io').replace(/\/+$/, '');
 // n8n local : sans clé dans le .env, on reprend celles de n8ncli (n8ncli envs edit LOCAL …), comme les scripts Python.
 try {
   const l = JSON.parse(fs.readFileSync(path.join(os.homedir(), '.n8ncli-global.json'), 'utf8')).environments?.LOCAL || {};
@@ -112,7 +124,7 @@ app.use('/api', async (req, res, next) => {
 // --- Hugging Face (routeur compatible OpenAI) ---------------------------------
 // Mets HF_TOKEN dans .env (ton token Hugging Face). HF_MODEL est optionnel.
 const client = new OpenAI({
-  baseURL: 'https://router.huggingface.co/v1',
+  baseURL: HF_BASE,
   apiKey: process.env.HF_TOKEN,
 });
 const HF_MODEL = process.env.HF_MODEL || 'Qwen/Qwen3.8-27B'; // généraliste vision ; changeable
@@ -133,7 +145,7 @@ const LAST_RUN_PATH = path.join(REPO_ROOT, 'workflows', 'last_run.json'); // OCR
 
 // Prix du modèle par fournisseur ($ / million de tokens), lus une fois au démarrage pour estimer le coût.
 let PRICING = {};
-fetch('https://router.huggingface.co/v1/models', { headers: { Authorization: `Bearer ${process.env.HF_TOKEN}` } })
+fetch(`${HF_BASE}/models`, { headers: { Authorization: `Bearer ${process.env.HF_TOKEN}` } })
   .then((r) => r.json())
   .then((j) => {
     const m = (j.data || []).find((x) => x.id === HF_MODEL);
@@ -685,7 +697,7 @@ const workerBusy = (st) => !!st && (['upload', 'cadrage', 'answered', 'casse'].i
 function startDiscovery(dir) {
   // Interrupteur TEMPORAIRE, pendant la phase de test seulement (À SUPPRIMER pour le rendu final) : DISCOVERY=off
   if ((process.env.DISCOVERY || 'on') === 'off') return false;
-  const missing = ['SUPABASE_URL', 'SUPABASE_PUBLISHABLE_KEY', 'SUPABASE_EMAIL', 'SUPABASE_PASSWORD', 'HAI_API_KEY'].filter((k) => !process.env[k]);
+  const missing = ['SUPABASE_URL', 'SUPABASE_PUBLISHABLE_KEY', ...(RELAIS ? [] : ['SUPABASE_EMAIL', 'SUPABASE_PASSWORD']), 'HAI_API_KEY'].filter((k) => !process.env[k]);
   if (missing.length) { console.warn(`[découverte] désactivée, variables manquantes : ${missing.join(', ')}`); return false; }
   const st = discoveryState(dir);
   if (workerBusy(st)) { console.log(`[découverte] déjà en cours pour ${path.basename(dir)} (${st.phase})`); discovery.dir = dir; return true; }
@@ -1431,7 +1443,7 @@ app.get('/api/voice/say', async (req, res) => {
     fs.mkdirSync(VOICE_CACHE, { recursive: true });
     const file = path.join(VOICE_CACHE, crypto.createHash('sha1').update(`${ELEVEN_VOICE}|${text}`).digest('hex') + '.mp3');
     if (!fs.existsSync(file)) {
-      const r = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${ELEVEN_VOICE}?output_format=mp3_44100_128`, {
+      const r = await fetch(`${ELEVEN_BASE}/v1/text-to-speech/${ELEVEN_VOICE}?output_format=mp3_44100_128`, {
         method: 'POST', headers: { 'xi-api-key': ELEVEN_KEY, 'Content-Type': 'application/json' },
         body: JSON.stringify({ text, model_id: 'eleven_multilingual_v2' }),
       });
@@ -1458,10 +1470,10 @@ app.post('/api/voice/transcribe', express.raw({ type: '*/*', limit: '25mb' }), a
     const qid = String(req.query.q || '');
     for (const k of keytermsFor(qid)) form.append('keyterms', k);
     form.append('file', new Blob([req.body], { type: req.headers['content-type'] || 'audio/webm' }), 'reponse.webm');
-    let r = await fetch('https://api.elevenlabs.io/v1/speech-to-text', { method: 'POST', headers: { 'xi-api-key': ELEVEN_KEY }, body: form });
+    let r = await fetch(`${ELEVEN_BASE}/v1/speech-to-text`, { method: 'POST', headers: { 'xi-api-key': ELEVEN_KEY }, body: form });
     if (!r.ok && form.has('keyterms')) { // liste de mots refusée : on retranscrit sans elle plutôt que d'échouer
       form.delete('keyterms');
-      r = await fetch('https://api.elevenlabs.io/v1/speech-to-text', { method: 'POST', headers: { 'xi-api-key': ELEVEN_KEY }, body: form });
+      r = await fetch(`${ELEVEN_BASE}/v1/speech-to-text`, { method: 'POST', headers: { 'xi-api-key': ELEVEN_KEY }, body: form });
     }
     const d = await r.json();
     if (!r.ok) throw new Error(`ElevenLabs (transcription) : ${r.status} ${JSON.stringify(d).slice(0, 200)}`);

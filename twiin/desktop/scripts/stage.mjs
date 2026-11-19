@@ -35,6 +35,16 @@ for (const top of INCLUDE) {
     return true;
   } });
 }
+// Accès du pilote (relais Twiin + jeton du poste) : seulement les réglages autorisés, jamais une clé de service
+const PILOTE = path.join(DESKTOP, 'config-pilote.env');
+const PILOTE_OK = /^(TWIIN_RELAIS|TWIIN_CLE|HF_MODEL|HOLO_AGENT|HOLO_MODEL|RECORDER_MODE|ELEVENLABS_VOICE_ID|TWIIN_COMPTES|SUPABASE_URL|SUPABASE_PUBLISHABLE_KEY)=/;
+if (fs.existsSync(PILOTE)) {
+  const lignes = fs.readFileSync(PILOTE, 'utf8').split('\n').filter((l) => /^[A-Z0-9_]+=/.test(l));
+  const interdites = lignes.filter((l) => !PILOTE_OK.test(l)).map((l) => l.split('=')[0]);
+  if (interdites.length) { console.error(`config-pilote.env : réglages refusés (${interdites.join(', ')})`); process.exit(1); }
+  fs.writeFileSync(path.join(OUT, 'config-pilote.env'), lignes.join('\n') + '\n', { mode: 0o600 });
+  console.log(`Accès pilote intégrés (relais) : ${lignes.length} réglages`);
+} else console.warn('Pas de config-pilote.env : le client devra importer un fichier de configuration.');
 // Contrôle : aucun secret ne doit être embarqué
 const leaks = [];
 const walk = (d) => { for (const e of fs.readdirSync(d, { withFileTypes: true })) {

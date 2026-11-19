@@ -56,4 +56,6 @@ workflows/automations-programmees.json
 desktop/node_modules/
 tuto/video/public/pitch/
 desktop/build/
+desktop/config-pilote.env
 desktop/dist/
+relais/.vercel/
