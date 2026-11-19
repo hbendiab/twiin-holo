@@ -1040,11 +1040,31 @@ app.post('/api/replay/stop', (req, res) => {
 // Une analyse n'est refaite que sur demande : les anciens enregistrements gardent leurs images, sans appel à Holo.
 const CORBEILLE_DIR = path.join(REPO_ROOT, 'workflows', 'corbeille');
 const lireJson = (file) => { try { return JSON.parse(fs.readFileSync(file, 'utf8')); } catch { return null; } };
+// Titre court pour retrouver un enregistrement : l'application la plus utilisée et sa fenêtre (sinon « Enregistrement »).
+function titreAuto(dir) {
+  try {
+    const ev = fs.readFileSync(path.join(dir, 'actions.jsonl'), 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l));
+    const compte = {};
+    let fenetre = {};
+    for (const e of ev) {
+      if (!e.app || /^Twiin|Enregistrement/.test(e.window || '')) continue;
+      compte[e.app] = (compte[e.app] || 0) + 1;
+      if (e.window && !fenetre[e.app]) fenetre[e.app] = e.window;
+    }
+    const top = Object.entries(compte).sort((a, b) => b[1] - a[1])[0];
+    if (!top) return 'Enregistrement';
+    const fen = fenetre[top[0]] ? ` · ${fenetre[top[0]].slice(0, 50)}` : '';
+    return `${top[0]}${fen}`;
+  } catch {
+    return 'Enregistrement';
+  }
+}
 function infoEnregistrement(dir, id) {
   const an = lireJson(path.join(dir, 'analysis.json'));
   const sess = lireJson(path.join(dir, 'session.json'));
   const wfs = an?.result?.workflows || [];
   return {
+    titre: wfs[0]?.name || titreAuto(dir),
     id,
     startedAt: sess?.startedAt ? new Date(sess.startedAt).toISOString() : null,
     analyse: !!an,
