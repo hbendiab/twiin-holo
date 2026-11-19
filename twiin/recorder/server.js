@@ -100,7 +100,7 @@ const keepUser = (fn) => { const u = als.getStore(); return (...a) => (u ? als.r
 app.get('/api/config', (req, res) => res.json({ supabase: SB_ON ? { url: SB_URL, anonKey: SB_ANON } : null }));
 // Toutes les routes /api demandent un employé connecté, sauf : la config, la voix (balise <audio>), le pont n8n → Holo
 // (il a son propre jeton) et les fichiers servis.
-const OPEN_API = ['/config', '/voice/say', '/holo/run', '/holo/web', '/excel/write']; // ponts n8n : jeton Twiin propre
+const OPEN_API = ['/config', '/voice/say', '/holo/run', '/holo/web', '/excel/write', '/extension/']; // ponts n8n : jeton Twiin propre
 app.use('/api', async (req, res, next) => {
   if (!SB_ON || OPEN_API.some((p) => req.path.startsWith(p))) return next();
   const token = (req.headers.authorization || '').replace(/^Bearer\s+/i, '');
@@ -482,6 +482,15 @@ app.post('/api/session/:id/review', (req, res) => {
   console.log(`Relecture : ${remove.size} image(s) retirée(s) par l'employé, ${keep.length} gardée(s)`);
   res.json({ ok: true, left: keep.length });
 });
+
+// ── Extension Chrome : elle se signale régulièrement ; l'onboarding de l'app coche « extension connectée » tout seul ──
+let extensionSeen = null;
+app.post('/api/extension/ping', (req, res) => {
+  extensionSeen = { at: Date.now(), version: String(req.body?.version || '').slice(0, 20) };
+  res.json({ ok: true });
+});
+app.get('/api/extension/status', (req, res) =>
+  res.json({ connected: !!extensionSeen && Date.now() - extensionSeen.at < 90000, version: extensionSeen?.version || null }));
 
 app.post('/api/frames', (req, res) => {
   try {

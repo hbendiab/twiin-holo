@@ -145,7 +145,13 @@ chrome.runtime.onInstalled.addListener(() => {
   chrome.alarms.create('etat', { periodInMinutes: 0.5 });
 });
 chrome.runtime.onStartup.addListener(() => chrome.alarms.create('etat', { periodInMinutes: 0.5 }));
-chrome.alarms.onAlarm.addListener((a) => { if (a.name === 'etat') etat(true); });
+// L'extension se signale au serveur Twiin : l'onboarding de l'app la voit connectée
+const ping = async () => fetch((await base()) + '/api/extension/ping', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({ version: chrome.runtime.getManifest().version }) }).catch(() => {});
+chrome.runtime.onInstalled.addListener(ping);
+chrome.runtime.onStartup.addListener(ping);
+chrome.alarms.onAlarm.addListener((a) => { if (a.name === 'etat') { etat(true); ping(); } });
+ping();
 chrome.contextMenus.onClicked.addListener((info, tab) => {
   if (info.menuItemId === 'record') startRecording(tab?.windowId);
   if (info.menuItemId === 'autos') openPage('automatisations.html');

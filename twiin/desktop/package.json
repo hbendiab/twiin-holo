@@ -5,9 +5,93 @@
   "description": "Twiin pour le Mac : fenêtre flottante par-dessus toutes les applis, icône dans la barre des menus.",
   "main": "main.js",
   "scripts": {
-    "start": "env -u ELECTRON_RUN_AS_NODE electron ."
+    "start": "env -u ELECTRON_RUN_AS_NODE electron .",
+    "stage": "node scripts/stage.mjs",
+    "dist:mac": "node scripts/stage.mjs && env -u ELECTRON_RUN_AS_NODE electron-builder --mac --arm64",
+    "dist:win": "node scripts/stage.mjs && env -u ELECTRON_RUN_AS_NODE electron-builder --win --x64"
   },
   "devDependencies": {
-    "electron": "^45.3.4"
+    "electron": "^45.3.4",
+    "electron-builder": "^26.18.1"
+  },
+  "productName": "Twiin",
+  "build": {
+    "appId": "com.twiin.app",
+    "productName": "Twiin",
+    "copyright": "Twiin · Hackathon Build The Future, Team 10",
+    "directories": {
+      "output": "dist",
+      "buildResources": "assets"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "setup.js",
+      "onboarding.html",
+      "loading.html",
+      "assets/**",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "build/twiin",
+        "to": "twiin"
+      }
+    ],
+    "asar": true,
+    "mac": {
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "arm64"
+          ]
+        }
+      ],
+      "icon": "assets/icon.png",
+      "category": "public.app-category.productivity",
+      "identity": null,
+      "hardenedRuntime": false,
+      "extendInfo": {
+        "LSUIElement": false,
+        "NSMicrophoneUsageDescription": "Twiin utilise le micro seulement quand tu dictes une réponse dans l'audit."
+      }
+    },
+    "dmg": {
+      "title": "Twiin",
+      "contents": [
+        {
+          "x": 150,
+          "y": 190
+        },
+        {
+          "x": 390,
+          "y": 190,
+          "type": "link",
+          "path": "/Applications"
+        }
+      ],
+      "window": {
+        "width": 540,
+        "height": 380
+      }
+    },
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "assets/icon.png"
+    },
+    "nsis": {
+      "oneClick": true,
+      "perMachine": false,
+      "shortcutName": "Twiin",
+      "runAfterFinish": true
+    }
   }
 }
