@@ -188,6 +188,9 @@ def mcp(tool, args, timeout=1800):
                       headers={"Authorization": f"Bearer {ENV.get('N8N_LOCAL_MCP_TOKEN', '').strip()}",
                                "Content-Type": "application/json", "Accept": "application/json, text/event-stream"},
                       json={"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": {"name": tool, "arguments": args}})
+    # une réponse refusée (401 : jeton MCP invalide) ne doit pas passer pour un succès vide
+    if r.status_code != 200:
+        raise RuntimeError(f"MCP HTTP {r.status_code} : {r.text[:200]}")
     text = r.content.decode("utf-8", errors="replace")
     payload = next((l[6:] for l in text.splitlines() if l.startswith("data: ")), text)
     d = json.loads(payload)
