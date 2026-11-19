@@ -10,6 +10,7 @@
 <style>
   .tabs { display: flex; gap: 8px; margin: 0 0 20px; }
   .rec { margin: 0 0 12px; }
+  .rec-src { display: inline-block; font-size: 11.5px; font-weight: 600; padding: 2px 8px; border-radius: 999px; margin-left: 6px; vertical-align: 2px; background: var(--accent-soft); color: var(--text); }
   .rec-titre { font-size: 15px; font-weight: 600; letter-spacing: -0.01em; margin: 0 0 4px; }
   .rec-date { font-size: 13px; color: var(--text-dim); margin: 0; }
   .rec-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
@@ -73,7 +74,7 @@ async function charger() {
 function carteEnr(e) {
   const statut = (e.analyse ? `${e.nb_taches} tâche(s), ${e.nb_etapes} étape(s)` : 'pas encore analysé') + (e.ajouts ? ` · ${e.ajouts} ajout(s) de tâche oubliée` : '');
   return `<article class="panel rec" data-id="${esc(e.id)}">
-    <p class="rec-titre">${esc(e.titre || 'Enregistrement')}</p>
+    <p class="rec-titre">${esc(e.titre || 'Enregistrement')}${e.source === 'telecommande' ? '<span class="rec-src">📱 Depuis le téléphone</span>' : ''}</p>
     <p class="rec-date">${fmt(e.startedAt)} · ${statut}</p>
     <div class="rec-actions">
       ${e.analyse
@@ -88,7 +89,7 @@ function carteEnr(e) {
 function carteCorb(e) {
   const reste = e.jours_restants != null ? ` · supprimé définitivement dans ${e.jours_restants} jour(s)` : '';
   return `<article class="panel rec" data-id="${esc(e.id)}">
-    <p class="rec-titre">${esc(e.titre || 'Enregistrement')}</p>
+    <p class="rec-titre">${esc(e.titre || 'Enregistrement')}${e.source === 'telecommande' ? '<span class="rec-src">📱 Depuis le téléphone</span>' : ''}</p>
     <p class="rec-date">${fmt(e.startedAt)} · mis à la corbeille le ${fmt(e.supprime_le)}${reste}</p>
     <div class="rec-actions">
       <button data-act="restaurer">Restaurer</button>

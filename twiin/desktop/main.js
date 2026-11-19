@@ -89,6 +89,7 @@ function trayMenu() {
     { label: rec.on ? 'Terminer et analyser' : 'Enregistrer une tâche', click: () => { win.show(); win.webContents.send('cmd', { type: rec.on ? 'stop' : 'record' }); } },
     { type: 'separator' },
     { label: 'Tout arrêter (automatisations, Holo)', click: () => fetch(`${BASE}/api/automations/stop`, { method: 'POST' }).catch(() => {}) },
+    { label: 'Contrôler depuis mon téléphone…', click: () => shell.openExternal(`${BASE}/telecommande.html`) },
     { label: 'Ouvrir Twiin dans le navigateur', click: () => shell.openExternal(BASE) },
     { label: 'Revoir la configuration…', click: () => { if (onb) onb.focus(); else createOnboarding(); } },
     { type: 'separator' },

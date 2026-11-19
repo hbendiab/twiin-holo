@@ -1,5 +1,5 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "functions": { "api/relais.js": { "maxDuration": 300 } },
-  "rewrites": [{ "source": "/:path*", "destination": "/api/relais?__p=:path*" }]
+  "functions": { "api/relais.js": { "maxDuration": 300, "includeFiles": "mobile/**" } },
+  "rewrites": [{ "source": "/(.*)", "destination": "/api/relais?__p=$1" }]
 }

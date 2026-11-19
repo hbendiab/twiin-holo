@@ -68,3 +68,7 @@ desktop/build/
 desktop/config-pilote.env
 desktop/dist/
 relais/.vercel/
+
+# Télécommande : appairage du téléphone et pont H (dev)
+workflows/telecommande.json
+workflows/holo-venv/

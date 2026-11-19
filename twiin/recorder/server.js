@@ -21,6 +21,7 @@ import { fileURLToPath } from 'url';
 import crypto from 'crypto';
 import { AsyncLocalStorage } from 'async_hooks';
 import { mergeVoice } from './voice.js';
+import { mountTelecommande } from './telecommande.js';
 import { appReport, effectiveExcluded, excludedTime, filterEvents, isCopy, isPaste, timePerApp } from './apps_filter.js';
 
 // recorder/ sits one level below the repo root, alongside the twiin/ Python package
@@ -1760,6 +1761,7 @@ function infoEnregistrement(dir, id) {
     nb_etapes: wfs.reduce((n, w) => n + (w.steps || []).length, 0),
     supprime_le: lireJson(path.join(dir, 'corbeille.json'))?.deletedAt || null,
     ajout_de: sess?.ajouterA || null, // enregistrement d'une tâche oubliée : rangé dans la tâche d'origine
+    source: sess?.source || null, // « telecommande » : tâche faite par Holo, demandée depuis le téléphone
   };
 }
 const listeDossiers = (base) => (fs.existsSync(base)
@@ -1882,6 +1884,11 @@ const ELEVEN_STT_MODEL = process.env.ELEVENLABS_STT_MODEL || 'scribe_v2';
 
 // La voix et la transcription coûtent des crédits ElevenLabs : réservées à ce Mac (pas aux autres postes du réseau).
 const isLocal = (req) => ['127.0.0.1', '::1', '::ffff:127.0.0.1'].includes(req.socket.remoteAddress);
+mountTelecommande(app, { isLocal, root: REPO_ROOT, port: PORT, analyser: (dir) => { // tâche faite depuis le téléphone : masquage + analyse
+  if (analysisProgress.phase !== 'idle' && Date.now() - analysisProgress.at < 600000) return false;
+  analyzeSessionDir(dir).catch((e) => console.error('Analyse (télécommande) :', e.message)).finally(() => setPhase('idle'));
+  return true;
+} }); // piloter ce Mac depuis son téléphone (voir telecommande.js)
 
 // Dictionnaire de l'accueil vocal (lexicon.json, relu à chaque réponse : l'équipe peut le compléter sans redémarrer).
 const LEXICON_PATH = path.join(path.dirname(fileURLToPath(import.meta.url)), 'lexicon.json');

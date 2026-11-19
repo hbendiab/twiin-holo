@@ -7,6 +7,7 @@
     reco: '<path d="M12 3l2.6 5.6 6 .7-4.5 4.1 1.2 6L12 16.6 6.7 19.4l1.2-6L3.4 9.3l6-.7z"/>',
     video: '<rect x="3" y="6" width="13" height="12" rx="3"/><path d="M16 10l5-3v10l-5-3"/>',
     auto: '<path d="M7 7h10v10H7z"/><path d="M12 2v5M12 17v5M2 12h5M17 12h5"/>',
+    phone: '<rect x="7" y="2" width="10" height="20" rx="2.5"/><path d="M11 18h2"/>',
     moon: '<path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z"/>',
     sun: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>',
     chevron: '<path d="M15 6l-6 6 6 6"/>',
@@ -22,6 +23,7 @@
   const GROUPES = [
     ['Analyser une tâche', [['/#audit', 'audit', 'Audit'], ['/#enregistrer', 'rec', 'Enregistrer'], ['/#reco', 'reco', 'Recommandation']]],
     ['Mes résultats', [['/enregistrements.html', 'rec', 'Mes enregistrements'], ['/videos.html', 'video', 'Mes vidéos'], ['/automatisations.html', 'auto', 'Mes automatisations']]],
+    ['À distance', [['/telecommande.html', 'phone', 'Télécommande']]],
   ];
 
   // Repliée ou dépliée : mémorisé sur ce navigateur ; appliqué tout de suite, sans animation au chargement
