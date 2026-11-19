@@ -1009,6 +1009,23 @@ async function createN8n(wf, verdict, el) {
           if (e.ok) links.innerHTML = `<a class="link-btn" href="/automatisations.html#${encodeURIComponent(e.id || '')}">Régler et suivre dans Mes automatisations</a> · ` + links.innerHTML;
           st.textContent = e.ok ? '✅ Automatisation créée et testée avec succès. Elle est en pause : choisis quand elle tourne dans « Mes automatisations ».'
                                 : `❌ Le test a échoué (${e.status}). Ouvre l'exécution dans n8n pour voir le nœud en erreur.`;
+          // Relancer l'étape échouée : n8n repart du nœud qui a planté, sans refaire les étapes réussies
+          if (!e.ok && e.id && e.execution) {
+            links.insertAdjacentHTML('beforeend', ` · <button type="button" class="btn-relance" data-wf="${escapeHtml(e.id)}">Relancer l'étape échouée</button>`);
+            links.querySelector('.btn-relance').onclick = async (ev) => {
+              const b = ev.currentTarget;
+              b.disabled = true; b.textContent = 'Relance…';
+              try {
+                const r = await fetch(`/api/automations/${encodeURIComponent(e.id)}/retry`, { method: 'POST' });
+                const d = await r.json();
+                if (d.error) throw new Error(d.error);
+                st.textContent = 'Relance lancée à partir de l\'étape qui a échoué. Suis-la dans n8n ou dans « Mes automatisations ».';
+              } catch (err) {
+                st.textContent = `Relance impossible : ${err.message}`;
+              }
+              b.disabled = false; b.textContent = 'Relancer l\'étape échouée';
+            };
+          }
         }
       }
       const last = (hs || []).at(-1);
