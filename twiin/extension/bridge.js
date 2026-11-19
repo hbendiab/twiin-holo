@@ -20,11 +20,11 @@
   // 2. Jeton Supabase (comptes activés) : l'extension appelle le serveur au nom de l'employé connecté
   const token = () => {
     try {
-      const k = Object.keys(localStorage).find((x) => /^sb-.*-auth-token$/.test(x));
+      const k = Object.keys(localStorage).find((x) => x === 'twiin-auth' || /^sb-.*-auth-token$/.test(x)); // auth.js range la session sous « twiin-auth »
       send({ type: 'token', token: k ? JSON.parse(localStorage.getItem(k))?.access_token : null });
     } catch { /* stockage illisible */ }
   };
-  token(); setInterval(token, 60000);
+  token(); setInterval(token, 5000); // juste après la connexion, le panneau la récupère en quelques secondes
 
   // 3. Démarrer : Chrome n'autorise le partage d'écran qu'après un vrai clic dans la page → grand bouton au centre
   function prompt() {

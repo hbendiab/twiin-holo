@@ -6,7 +6,7 @@
   const BASE = location.origin;
   const token = () => {
     try {
-      const k = Object.keys(localStorage).find((x) => /^sb-.*-auth-token$/.test(x));
+      const k = Object.keys(localStorage).find((x) => x === 'twiin-auth' || /^sb-.*-auth-token$/.test(x));
       return k ? JSON.parse(localStorage.getItem(k))?.access_token || null : null;
     } catch { return null; }
   };
@@ -32,7 +32,9 @@
   const HANDLERS = {
     state: async () => ({ etat: await api('/api/automations/etat'), rec: null, prefs: await store.get(['bubble', 'hidden']) }),
     api: (m) => api(m.path, m),
-    open: (m) => openUrl(`${BASE}/${m.page || m.hash || ''}`),
+    open: (m) => (String(m.page || '').startsWith('login.html')
+      ? location.assign(`${BASE}/login.html?next=${encodeURIComponent('/ext/desktop.html')}`) // dans l'app, pas dans Chrome
+      : openUrl(`${BASE}/${m.page || m.hash || ''}`)),
     stop: () => api('/api/automations/stop', { method: 'POST' }),
     run: (m) => api(`/api/automations/${encodeURIComponent(m.id)}/run`, { method: 'POST' }),
     'recorder:config': async () => ({ base: BASE, token: token() }),
