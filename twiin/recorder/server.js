@@ -483,6 +483,9 @@ async function analyze({ frames, transcript, actionLog = '', ocrLines = 0, scree
   meta.json_repaired = repaired;
   meta.session = session;
   for (const w of result.workflows || []) w.session = session; // la tâche garde le lien vers SON enregistrement
+  // Filet de sécurité : les étapes qui ne concernent que Twiin (démarrer ou terminer l'enregistrement) ne font pas partie de la tâche
+  const TWIIN_STEP = /(terminer et analyser|enregistrer ma t[âa]che|(panneau|page|fen[êe]tre|extension|bulle) twiin|twiin (panel|page|window))/i;
+  for (const w of result.workflows || []) if (Array.isArray(w.steps)) w.steps = w.steps.filter((st) => !TWIIN_STEP.test(String(st)));
   if (sbUser()) {
     // Table d'équipe « taches » (fusion validée par Hanine) : une ligne par tâche, rattachée à l'entreprise de l'employé.
     // Plusieurs tâches dans un même enregistrement : source_session_id suffixé (#2, #3…) car il est unique par entreprise.
