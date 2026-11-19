@@ -1087,7 +1087,9 @@ document.getElementById('lastBtn').addEventListener('click', () => {
 });
 // À l'ouverture : la dernière tâche analysée revient toute seule (étapes à relire, Recommandation)
 fetch('/api/candidates').then((r) => r.json()).then(async (d) => {
-  if (!d.workflows?.length || resultsEl.children.length) return;
+  // une page ouverte avec ?session= (enregistrement choisi dans « Mes enregistrements ») ne doit pas être remplacée
+  // par la dernière analyse : sinon on ne voit ni le bon enregistrement, ni l'écran d'enregistrement
+  if (!d.workflows?.length || resultsEl.children.length || new URLSearchParams(location.search).get('session')) return;
   lastWorkflows = d.workflows;
   await iconsReady;
   if (!resultsEl.children.length && !recording) renderWorkflows(d.workflows, { silent: true });
