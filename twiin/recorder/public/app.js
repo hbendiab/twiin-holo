@@ -1112,7 +1112,18 @@ fetch('/api/candidates').then((r) => r.json()).then(async (d) => {
   if (!d.workflows?.length || resultsEl.children.length || new URLSearchParams(location.search).get('session')) return;
   lastWorkflows = d.workflows;
   await iconsReady;
-  if (!resultsEl.children.length && !recording) renderWorkflows(d.workflows, { silent: true });
+  if (!resultsEl.children.length && !recording) {
+    renderWorkflows(d.workflows, { silent: true });
+    // même ligne « ajouter un enregistrement » que juste après une analyse (la dernière tâche rechargée à l'ouverture)
+    const sid = d.workflows[0]?.session;
+    if (sid) {
+      const barre = document.createElement('div');
+      barre.className = 'ajout-bandeau';
+      barre.style.cssText = 'margin:0 0 18px;padding:12px 16px;border-radius:14px;background:var(--panel-2,rgba(127,127,127,.08));border:1px solid var(--panel-border,rgba(127,127,127,.3));font-size:14px';
+      barre.innerHTML = `Un passage a été oublié ou a bugué ? <a href="/?session=${encodeURIComponent(sid)}&ajout=1#enregistrer" style="font-weight:600">Ajouter un enregistrement à cette tâche</a>`;
+      resultsEl.prepend(barre);
+    }
+  }
 }).catch(() => {});
 
 function escapeHtml(str) {
