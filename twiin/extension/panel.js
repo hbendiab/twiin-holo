@@ -88,6 +88,7 @@ const task = () => (C.result?.workflows?.length ? C.result.workflows[sel] || C.r
 
 // --- Affichage (redessiné seulement si quelque chose a changé : la vidéo et les champs ouverts ne sont pas effacés) ---
 const PHASES = [['upload', 'Envoi des dernières images'], ['ocr', 'Lecture du texte de l\'écran, sur ton Mac'], ['model', 'Analyse des étapes'], ['parse', 'Mise en forme de la tâche']];
+const phases = () => (C.hadVoice ? [PHASES[0], ['transcription', 'Traitement de la voix, sur ton Mac'], ...PHASES.slice(1)] : PHASES); // avec la voix : une étape de plus
 function render() {
   const e = S.etat || {};
   let h = '';
@@ -140,9 +141,9 @@ function captureBlock() {
         <button class="link" data-act="reccancel" type="button">Annuler sans analyser</button></div></div>`;
   }
   if (C.analyzing) {
-    const k = Math.max(0, PHASES.findIndex(([p]) => p === C.phase));
-    return `<div class="card"><h3>Twiin analyse ta tâche</h3><p class="sub">${C.frames} images · environ une minute.</p>
-      <ul class="checks">${PHASES.map(([, l], i) => `<li class="${i < k ? 'done' : i === k ? 'now' : ''}"><span class="c">${i < k ? '✓' : ''}</span>${l}</li>`).join('')}</ul></div>`;
+    const PH = phases(), k = Math.max(0, PH.findIndex(([p]) => p === C.phase));
+    return `<div class="card"><h3>Twiin analyse ta tâche</h3><p class="sub">${C.frames ? `${C.frames} images · ` : ''}environ une minute.</p>
+      <ul class="checks">${PH.map(([, l], i) => `<li class="${i < k ? 'done' : i === k ? 'now' : ''}"><span class="c">${i < k ? '✓' : ''}</span>${l}</li>`).join('')}</ul></div>`;
   }
   let h = '';
   if (S.rec?.on) { // enregistrement lancé depuis la page Twiin
@@ -153,6 +154,7 @@ function captureBlock() {
   if (C.error) h += `<div class="card"><div class="live plan"><span class="t"><b>Enregistrement interrompu</b><span>${esc(C.error)}</span></span>
     <button class="link" data-act="recclear" type="button">OK</button></div></div>`;
   h += `<button class="b dark big" data-act="rec" type="button"><span class="recdot"></span>Enregistrer une tâche</button>`;
+  if (last || C.result || C.error) h += `<button class="b big" style="margin-top:8px" data-act="reanalyze" type="button">Réanalyser le dernier enregistrement</button>`;
   return h;
 }
 
@@ -309,6 +311,7 @@ document.addEventListener('click', async (ev) => {
   if (act === 'recstop') return Capture.stop();
   if (act === 'reccancel') return Capture.cancel();
   if (act === 'recclear') return Capture.clear();
+  if (act === 'reanalyze') return Capture.reanalyze();
   if (act === 'recstoppage') { ask({ type: 'record:stop' }); return; }
   if (act === 'sel') { sel = Number(el.dataset.i); autoJob = null; tutoMine = false; tutoJob = null; return render(); }
   if (act === 'mkauto') return createAutomation();

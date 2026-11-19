@@ -5,7 +5,7 @@
 const Capture = (() => {
   const MIN_GAP_MS = 1500, SETTLE_MAX_MS = 3000, HEARTBEAT_MS = 60000;
   const CHANGE_THRESHOLD = 3, STABLE_THRESHOLD = 1.5, MODEL_MAX_DIMENSION = 1024, OCR_MAX_DIMENSION = 1600;
-  const S = { recording: false, analyzing: false, phase: null, startedAt: 0, frames: 0, screens: [], thumbs: [], error: null, result: null };
+  const S = { recording: false, analyzing: false, phase: null, hadVoice: false, startedAt: 0, frames: 0, screens: [], thumbs: [], error: null, result: null };
   let base = 'http://localhost:3000', token = null, onUpdate = () => {};
   let shared = [], nextScreen = 1, sessionId = null, journalNext = 0, uploads = [], uploadErrors = 0, busy = false, stopping = false;
 
@@ -40,7 +40,7 @@ const Capture = (() => {
     if (S.recording) return addScreen(opts);
     const stream = await ask(opts); // avant tout le reste : le clic de l'employé n'est valable qu'un instant
     const mic = await globalThis.Voice?.open(); // voix : seulement si voice.js est chargé et l'interrupteur activé
-    Object.assign(S, { recording: true, analyzing: false, phase: null, startedAt: Date.now(), frames: 0, screens: [], thumbs: [], error: null, result: null });
+    Object.assign(S, { recording: true, analyzing: false, phase: null, hadVoice: false, startedAt: Date.now(), frames: 0, screens: [], thumbs: [], error: null, result: null });
     shared = []; nextScreen = 1; uploads = []; uploadErrors = 0; journalNext = 0;
     addStream(stream);
     try { sessionId = (await (await post('/api/actions/start', { startedAt: S.startedAt })).json()).session || null; } catch { sessionId = null; }
@@ -128,16 +128,22 @@ const Capture = (() => {
     for (const s of S.screens) s.stream.getTracks().forEach((t) => t.stop());
     S.screens = [];
     stopping = false;
+    S.hadVoice = !cancel && !!globalThis.Voice?.state.recording; // le micro tournait : l'analyse aura une étape « voix »
     const voiceSent = cancel ? globalThis.Voice?.cancel() : globalThis.Voice?.stop(sessionId); // l'audio part pendant l'envoi des images
     if (cancel) { S.analyzing = false; return emit(); }
     if (!S.frames) { Object.assign(S, { analyzing: false, error: 'Aucune image gardée.' }); return emit(); }
 
     await Promise.allSettled([...uploads, voiceSent]);
+    await runAnalysis('/api/generate-workflows', { session: sessionId, startedAt: S.startedAt, screens: shared }, uploadErrors);
+  }
+
+  // Analyse (nouvelle ou relancée) : suit la progression du serveur, puis garde le résultat ou l'erreur
+  async function runAnalysis(url, body, uploadErrors = 0) {
     const poll = setInterval(async () => {
-      try { const p = await (await fetch(`${base}/api/analysis/progress`, { headers: hdr(false) })).json(); if (p.phase !== 'idle') { S.phase = p.phase; emit(); } } catch { /* rien */ }
+      try { const p = await (await fetch(`${base}/api/analysis/progress`, { headers: hdr(false) })).json(); if (p.phase !== 'idle') { if (p.phase === 'transcription') S.hadVoice = true; S.phase = p.phase; emit(); } } catch { /* rien */ }
     }, 1000);
     try {
-      const data = await (await post('/api/generate-workflows', { session: sessionId, startedAt: S.startedAt, screens: shared })).json();
+      const data = await (await post(url, body)).json();
       if (data.error) throw new Error(data.error);
       S.result = { workflows: data.workflows || [], uploadErrors };
       globalThis.Voice?.report(data._meta?.voice);
@@ -149,11 +155,18 @@ const Capture = (() => {
       emit();
     }
   }
+  // « Réanalyser » : relance sur le dernier enregistrement gardé par le serveur (comme la page Twiin)
+  async function reanalyze() {
+    if (S.recording || S.analyzing || stopping) return;
+    Object.assign(S, { analyzing: true, phase: 'ocr', hadVoice: false, frames: 0, error: null, result: null });
+    emit();
+    await runAnalysis('/api/reanalyze', {});
+  }
 
   return {
     state: S,
     config(o) { if (o.base) base = o.base; if ('token' in o) token = o.token; if (o.onUpdate) onUpdate = o.onUpdate; },
-    start, addScreen, stop, cancel: () => stop({ cancel: true }),
+    start, addScreen, reanalyze, stop, cancel: () => stop({ cancel: true }),
     clear() { S.error = null; S.result = null; emit(); },
   };
 })();

@@ -1,4 +1,4 @@
-/* Twiin · interrupteur de la capture vocale (pied de fenêtre de l'app Mac) */
+/* Twiin · interrupteur de la capture vocale (en haut de la fenêtre de l'app Mac, au-dessus de « Enregistrer une tâche ») */
 #voiceSlot { display: grid; gap: 4px; }
 .vswitch { display: inline-flex; align-items: center; gap: 8px; cursor: pointer; user-select: none; }
 .vswitch input { position: absolute; opacity: 0; pointer-events: none; }
@@ -9,3 +9,6 @@
 .vswitch input:focus-visible + .vtrack { outline: 2px solid var(--coral, #e5484d); outline-offset: 2px; }
 .vswitch:has(input:disabled) { opacity: .5; cursor: default; }
 .vnote { font-size: 11px; line-height: 1.35; }
+
+.voicebar { padding: 0 0 8px; }
+.voicebar:has(#voiceSlot:empty) { display: none; }
