@@ -518,6 +518,14 @@ async function analyzeRequest(url, body, message, nScreens) {
         `<a href="/?session=${encodeURIComponent(a.cible)}#enregistrer" style="font-weight:600">Ouvrir la tâche complète →</a> · ` +
         `<a href="/?session=${encodeURIComponent(a.cible)}&ajout=1#enregistrer" style="font-weight:600">Ajouter un enregistrement à cette tâche</a>`;
       resultsEl.prepend(bandeau);
+    } else if (data.workflows?.[0]?.session) {
+      // enregistrement normal : on peut compléter cette tâche directement, sans passer par « Mes enregistrements »
+      const sid = data.workflows[0].session;
+      const barre = document.createElement('div');
+      barre.className = 'ajout-bandeau';
+      barre.style.cssText = 'margin:0 0 18px;padding:12px 16px;border-radius:14px;background:var(--panel-2,rgba(127,127,127,.08));border:1px solid var(--panel-border,rgba(127,127,127,.3));font-size:14px';
+      barre.innerHTML = `Un passage a été oublié ou a bugué ? <a href="/?session=${encodeURIComponent(sid)}&ajout=1#enregistrer" style="font-weight:600">Ajouter un enregistrement à cette tâche</a>`;
+      resultsEl.prepend(barre);
     }
     const m = data._meta || {};
     const n = data.workflows?.length ?? 0;
