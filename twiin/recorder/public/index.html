@@ -435,6 +435,44 @@
   .a2 textarea { width: 100%; min-height: 80px; resize: vertical; }
   .a2-intro ol { margin: 8px 0 14px; padding-left: 20px; font-size: 14px; display: grid; gap: 4px; }
   .a2-consent { display: grid; gap: 8px; padding: 12px 14px; border-radius: 12px; background: var(--panel-2); margin: 10px 0; }
+  /* « Mon travail » : priorités, poste, tâches, outils (l'historique de l'audit) */
+  #a2.a2-fini > .a2-top, #a2.a2-fini > .a2-nav { display: none !important; }
+  .mt-bloc + .mt-bloc { margin-top: 30px; }
+  .mt-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 10px; }
+  .mt-head h3 { margin: 0; font-size: 19px; font-weight: 600; letter-spacing: -0.02em; }
+  .mt-date { font: 500 12px var(--mono); color: var(--brand-strong, var(--accent)); }
+  .mt .rc-keys { margin: 0; }
+  .rc-tasks .nom em.dim { color: color-mix(in srgb, var(--ink) 60%, transparent); background: transparent; border: 1px solid var(--brand-rule, var(--rule)); }
+  .mt-fin { margin-top: 26px; display: flex; justify-content: flex-end; }
+  .mt-fin button { padding: 11px 18px !important; font-size: 14.5px !important; background: #fff !important; border: 1px solid var(--brand-strong, var(--accent)) !important;
+    color: var(--brand-strong, var(--accent)) !important; border-radius: var(--r-btn, 10px) !important; }
+  :root[data-theme="dark"] .mt-fin button { background: transparent !important; }
+
+  /* « Mes tâches déjà enregistrées » : une carte par tâche, avec les logos de ses applis */
+  .task-card { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 14px; align-items: center; padding: 14px 16px !important; }
+  .tc-logos { display: flex; }
+  .tc-logos img, .tc-vide { width: 40px; height: 40px; border-radius: 11px; object-fit: contain; background: #fff; padding: 6px;
+    border: 1px solid var(--brand-rule, var(--rule)); box-shadow: 0 6px 14px -10px rgba(24, 21, 32, .4); }
+  .tc-logos img + img { margin-left: -12px; }
+  .tc-vide { display: block; background: var(--brand-chip, var(--chip)); }
+  .tc-txt b { display: block; font-size: 15px; font-weight: 600; letter-spacing: -0.01em; }
+  .tc-meta { display: block; margin-top: 2px; font-size: 13.5px; color: color-mix(in srgb, var(--ink) 65%, transparent); }
+  .tc-actions { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+  .tc-actions .btn, .tc-actions button { white-space: nowrap; }
+  .tc-ajout { display: inline-flex; align-items: center; gap: 6px; text-decoration: none; }
+  .tc-ajout svg, .ac-ico svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; }
+  @media (max-width: 760px) { .task-card { grid-template-columns: auto minmax(0, 1fr); } .tc-actions { grid-column: 1 / -1; justify-content: flex-start; } }
+  /* « Un passage a été oublié ? » : un encadré bien visible, accroché à la tâche */
+  .ajout-cta { display: flex; align-items: center; gap: 14px; margin: 0 0 18px; padding: 14px 16px; border-radius: var(--r-card, 10px);
+    background: var(--brand-tint, var(--wash)); border: 1px solid var(--brand-strong, var(--accent)); }
+  .ajout-cta .ac-ico { flex: none; width: 36px; height: 36px; border-radius: 10px; display: grid; place-items: center; background: var(--brand, var(--chip)); color: var(--brand-ink, var(--ink)); }
+  .ajout-cta .ac-txt { flex: 1; min-width: 0; }
+  .ajout-cta .ac-txt b { display: block; font-size: 15px; }
+  .ajout-cta .ac-txt span { display: block; font-size: 14px; color: color-mix(in srgb, var(--ink) 70%, transparent); }
+  .ajout-cta .btn { flex: none; white-space: nowrap; text-decoration: none; }
+  .ajout-cta .btn, .tc-actions a.btn { padding: 10px 16px !important; border-radius: var(--r-btn, 10px) !important; font-size: 14.5px; font-weight: 600 !important; display: inline-flex; align-items: center; gap: 6px; }
+  @media (max-width: 640px) { .ajout-cta { flex-wrap: wrap; } .ajout-cta .btn { width: 100%; text-align: center; } }
+
   /* introduction : 3 étapes en cartes, consentements en interrupteurs, deux choix clairs */
   .in-steps { list-style: none; padding: 0; margin: 22px 0 18px; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; text-align: left; }
   .in-steps li { padding: 16px 16px 14px; border-radius: 16px; background: var(--brand-tint, var(--wash)); border: 1px solid var(--brand-rule, var(--rule)); }
@@ -602,7 +640,7 @@
   </ol>
 
   <section class="view" data-view="1">
-  <h1 class="page-title">Audit de ton poste</h1>
+  <h1 class="page-title">Mon travail</h1>
 
   <section class="panel a2" id="a2" aria-live="polite">
     <div class="a2-top"><div class="a2-progress"><span id="a2Bar"></span></div><span class="a2-meta" id="a2Meta"></span></div>
@@ -651,9 +689,8 @@
     </div>
   </section>
   <section class="view panel" data-view="2" id="myTasks" hidden>
-    <h3 style="margin:0 0 8px">Mes tâches déjà enregistrées</h3>
-    <p class="meta" style="margin:0 0 10px">Rouvre une tâche pour relire ses étapes et sa recommandation, ou réanalyse son enregistrement.</p>
-    <ul id="myTasksList" style="list-style:none;margin:0;padding:0;display:grid;gap:8px"></ul>
+    <h3 style="margin:0 0 14px">Mes tâches déjà enregistrées</h3>
+    <ul id="myTasksList" style="list-style:none;margin:0;padding:0;display:grid;gap:10px"></ul>
   </section>
 
   <section id="launchN8n" hidden>

@@ -723,11 +723,7 @@ async function analyzeRequest(url, body, message, nScreens) {
     } else if (data.workflows?.[0]?.session) {
       // enregistrement normal : on peut compléter cette tâche directement, sans passer par « Mes enregistrements »
       const sid = data.workflows[0].session;
-      const barre = document.createElement('div');
-      barre.className = 'ajout-bandeau';
-      barre.style.cssText = 'margin:0 0 18px;padding:12px 16px;border-radius:14px;background:var(--panel-2,rgba(127,127,127,.08));border:1px solid var(--panel-border,rgba(127,127,127,.3));font-size:14px';
-      barre.innerHTML = `Un passage a été oublié ou a bugué ? <a href="/?session=${encodeURIComponent(sid)}&ajout=1#enregistrer" style="font-weight:600">Ajouter un enregistrement à cette tâche</a>`;
-      resultsEl.prepend(barre);
+      resultsEl.prepend(bandeauAjout(sid));
     }
     const m = data._meta || {};
     const n = data.workflows?.length ?? 0;
@@ -1429,11 +1425,7 @@ Promise.all([fetch('/api/candidates').then((r) => r.json()), fetch('/api/discove
       // même ligne « ajouter un enregistrement » que juste après une analyse (la dernière tâche rechargée à l'ouverture)
       const sid = d.workflows[0]?.session;
       if (sid) {
-        const barre = document.createElement('div');
-        barre.className = 'ajout-bandeau';
-        barre.style.cssText = 'margin:0 0 18px;padding:12px 16px;border-radius:14px;background:var(--panel-2,rgba(127,127,127,.08));border:1px solid var(--panel-border,rgba(127,127,127,.3));font-size:14px';
-        barre.innerHTML = `Un passage a été oublié ou a bugué ? <a href="/?session=${encodeURIComponent(sid)}&ajout=1#enregistrer" style="font-weight:600">Ajouter un enregistrement à cette tâche</a>`;
-        resultsEl.prepend(barre);
+        resultsEl.prepend(bandeauAjout(sid));
       }
     }
   }).catch(() => {});
@@ -1442,18 +1434,37 @@ function renderMyTasks(list) {
   const box = document.getElementById('myTasks'), ul = document.getElementById('myTasksList');
   if (!box || !list.length) return;
   box.hidden = false;
-  ul.innerHTML = list.map((w, i) => `<li style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;justify-content:space-between;
-      border:1px solid var(--panel-border);border-radius:10px;padding:10px 12px">
-    <span style="min-width:0"><b>${escapeHtml(w.name || 'Tâche')}</b><br><span class="meta">${w.created_at ? new Date(w.created_at)
-      .toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' }) : ''} · ${(w.steps || []).length} étape(s)</span></span>
-    <span style="display:flex;gap:8px"><button type="button" data-open="${i}">Rouvrir</button>
-      <button type="button" data-re="${i}" ${w.has_images === false ? 'disabled title="Images de cet enregistrement absentes de ce poste"' : ''}>Réanalyser</button></span></li>`).join('');
+  const PLUS = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>';
+  ul.innerHTML = list.map((w, i) => {
+    // les applis de la tâche, devinées à partir de son nom et de ses étapes (YouTube, Excel, Gmail…)
+    const logos = findIcons(`${w.name || ''} ${(w.steps || []).join(' ')}`, 3);
+    const date = w.created_at ? new Date(w.created_at).toLocaleString('fr-FR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '';
+    return `<li class="card task-card">
+      <span class="tc-logos" aria-hidden="true">${logos.length ? logos.map((x) => `<img src="icons/${x.file}" alt="" title="${escapeHtml(x.label)}">`).join('') : '<span class="tc-vide"></span>'}</span>
+      <span class="tc-txt"><b>${escapeHtml(w.name || 'Tâche')}</b>
+        <span class="tc-meta">${logos.length ? `${logos.map((x) => escapeHtml(x.label)).join(' · ')} · ` : ''}${(w.steps || []).length} étapes${date ? ` · ${date}` : ''}</span></span>
+      <span class="tc-actions">
+        <button type="button" class="primary" data-open="${i}">Rouvrir</button>
+        ${w.session ? `<a class="btn tc-ajout" href="/?session=${encodeURIComponent(w.session)}&ajout=1#enregistrer">${PLUS}Ajouter un passage oublié</a>` : ''}
+        <button type="button" class="quiet" data-re="${i}" ${w.has_images === false ? 'disabled title="Images de cet enregistrement absentes de ce poste"' : ''}>Réanalyser</button>
+      </span></li>`;
+  }).join('');
   ul.querySelectorAll('[data-open]').forEach((b) => b.onclick = () => {
     renderWorkflows([list[+b.dataset.open]]);
     statusEl.textContent = 'Tâche rouverte : relis les étapes, puis passe à la Reco.';
   });
   ul.querySelectorAll('[data-re]').forEach((b) => b.onclick = () =>
     analyzeRequest('/api/reanalyze', { session: list[+b.dataset.re].session }, `Nouvelle analyse de « ${list[+b.dataset.re].name} »…`));
+}
+
+// Un passage oublié ou raté : bien visible, accroché à la tâche (au-dessus de ses étapes)
+function bandeauAjout(sid) {
+  const barre = document.createElement('div');
+  barre.className = 'ajout-bandeau ajout-cta';
+  barre.innerHTML = `<span class="ac-ico" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></span>
+    <span class="ac-txt"><b>Un passage a été oublié ou a raté ?</b><span>Enregistre juste ce passage : il sera ajouté à la fin de cette tâche.</span></span>
+    <a class="btn primary" href="/?session=${encodeURIComponent(sid)}&ajout=1#enregistrer">Ajouter un passage</a>`;
+  return barre;
 }
 
 function escapeHtml(str) {

@@ -8,7 +8,7 @@
   const still = matchMedia('(prefers-reduced-motion: reduce)').matches;
 
   const DIRE = {
-    '#audit': 'On a regardé ta semaine. Voilà ce qu\'on ferait à ta place.',
+    '#audit': 'Ton travail, tes outils et tes priorités, au même endroit.',
     '#enregistrer': 'Fais ta tâche comme d\'habitude. On regarde, on retient.',
     '#reco': 'Voilà ce qu\'on peut prendre en charge pour toi.',
     '/enregistrements.html': 'Tout ce que tu nous as montré. Rien ne quitte ton Mac sans toi.',

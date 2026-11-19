@@ -3,6 +3,7 @@
 (() => {
   const I = {
     audit: '<circle cx="11" cy="11" r="6.5"/><path d="M20 20l-4-4"/>',
+    travail: '<rect x="3" y="7" width="18" height="13" rx="2.5"/><path d="M9 7V5.5A1.5 1.5 0 0 1 10.5 4h3A1.5 1.5 0 0 1 15 5.5V7M3 12.5h18"/>',
     rec: '<circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3" fill="currentColor"/>',
     reco: '<path d="M12 3l2.6 5.6 6 .7-4.5 4.1 1.2 6L12 16.6 6.7 19.4l1.2-6L3.4 9.3l6-.7z"/>',
     video: '<rect x="3" y="6" width="13" height="12" rx="3"/><path d="M16 10l5-3v10l-5-3"/>',
@@ -21,7 +22,7 @@
   const LOGO = still ? '/logo-twiin.png' : '/logo-twiin.webp'; // image animée : les deux sphères tournent, comme un GIF
 
   const GROUPES = [
-    ['Analyser une tâche', [['/#audit', 'audit', 'Audit'], ['/#enregistrer', 'rec', 'Enregistrer'], ['/#reco', 'reco', 'Recommandation']]],
+    ['Analyser une tâche', [['/#audit', 'travail', 'Mon travail'], ['/#enregistrer', 'rec', 'Enregistrer'], ['/#reco', 'reco', 'Recommandation']]],
     ['Mes résultats', [['/enregistrements.html', 'rec', 'Mes enregistrements'], ['/videos.html', 'video', 'Mes vidéos'], ['/automatisations.html', 'auto', 'Mes automatisations']]],
     ['À distance', [['/telecommande.html', 'phone', 'Télécommande']]],
   ];

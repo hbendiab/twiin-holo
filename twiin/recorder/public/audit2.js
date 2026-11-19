@@ -407,26 +407,56 @@
       const hTop = top.reduce((n, o) => n + (o.gain_heures_semaine || 0), 0);
       const eTop = top.reduce((n, o) => n + (o.gain_euros_an || 0), 0);
       const fmtE = (x) => `${Math.round(x).toLocaleString('fr-FR')} €`;
-      spoken = top.length ? `Voici les ${top.length} tâches qui te coûtent le plus de temps.` : "On n'a pas trouvé de tâche assez lourde pour être automatisée.";
-      screenEl.innerHTML = `${head(top.length ? `Ton top ${top.length} des tâches à automatiser` : 'Pas de tâche assez lourde à automatiser pour l\'instant')}
-        ${top.length ? `<p class="a2-total">Ensemble, elles représentent <b>${hTop.toLocaleString('fr-FR', { maximumFractionDigits: 1 })} h par semaine</b>, soit environ <b>${fmtE(eTop)} par an</b>
-          (au coût horaire de ${f.dirigeant?.cout_horaire ?? 35} €).</p>` : ''}
-        <div class="a2-top3">${top.map((o, k) => `<div class="a2-opp"><span class="n">N° ${k + 1}</span><b>${escapeHtml(byId[o.tache_id]?.libelle || o.tache_id)}</b>
-            <span class="big">${(o.gain_heures_semaine ?? 0).toLocaleString('fr-FR')} h <small>par semaine</small></span>
-            <span class="eur">≈ ${fmtE(o.gain_euros_an || 0)} par an</span>
-            <span class="tags">Automatisation ${o.tranche_facilite === 'facile' ? 'facile' : o.tranche_facilite === 'moyen' ? 'moyennement facile' : 'difficile'}${byId[o.tache_id]?.deleguer_en_premier ? ' · celle que tu délèguerais en premier' : ''}</span>
-            <button type="button" data-observe="${o.tache_id}">Observer cette tâche</button></div>`).join('')}</div>
-        ${autres.length ? `<h4 style="margin:6px 0 4px;font-size:14px">Les autres tâches</h4><ul class="a2-others">${autres.map((o) => `<li><b>${escapeHtml(byId[o.tache_id]?.libelle || o.tache_id)}</b> · ${RECO[o.recommandation]}
-            ${RECO_WHY[o.recommandation] ? `<span class="why">(${RECO_WHY[o.recommandation]})</span>` : ''}</li>`).join('')}</ul>` : ''}
-        ${f.alertes.length ? `<div class="a2-alerts"><h4>À vérifier</h4><ul>${f.alertes.slice(0, 6).map((a) => `<li>${escapeHtml(a.message)}</li>`).join('')}</ul></div>` : ''}
-        <p class="a2-help" style="margin-top:12px"><a href="#" id="a2Redo">Refaire l'audit</a></p>`;
+      // « Mon travail » : ce que la personne fait et avec quoi (l'historique de son audit), ses priorités en tête
+      const conf = r().outils_confirmes;
+      const outils = [...(f.applications || []).filter((x) => (conf ? conf.includes(x.id) : x.filtre_metier?.est_metier)).map((x) => ({ id: x.id, nom: x.nom })),
+                      ...(r().outils_ajoutes || [])].filter((o, i, l) => l.findIndex((x) => x.nom.toLowerCase() === o.nom.toLowerCase()) === i); // sans doublon
+      const rang = Object.fromEntries(top.map((o, k) => [o.tache_id, k + 1]));
+      const ts = [...(f.taches || [])].sort((x, y) => (rang[x.id] || 99) - (rang[y.id] || 99));
+      const dateAudit = f.date_audit ? new Date(f.date_audit).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' }) : '';
+      const facile = (o) => (o.tranche_facilite === 'facile' ? 'Facile à automatiser' : o.tranche_facilite === 'moyen' ? 'Moyennement facile' : 'Difficile à automatiser');
+      spoken = '';
+      screenEl.innerHTML = `<div class="mt">
+        <section class="mt-bloc">
+          <header class="mt-head"><h3>Mes priorités</h3>${dateAudit ? `<span class="mt-date">Audit du ${dateAudit}</span>` : ''}</header>
+          ${top.length ? `<p class="a2-total">Ensemble, elles représentent <b>${hTop.toLocaleString('fr-FR', { maximumFractionDigits: 1 })} h par semaine</b>, soit environ <b>${fmtE(eTop)} par an</b>
+            (au coût horaire de ${f.dirigeant?.cout_horaire ?? 35} €).</p>` : '<p class="a2-total">Pas encore de tâche assez lourde pour être automatisée.</p>'}
+          <div class="a2-top3">${top.map((o, k) => `<div class="a2-opp"><span class="n">Priorité ${k + 1}</span><b>${escapeHtml(byId[o.tache_id]?.libelle || o.tache_id)}</b>
+              <span class="big">${(o.gain_heures_semaine ?? 0).toLocaleString('fr-FR')} h <small>par semaine</small></span>
+              <span class="eur">≈ ${fmtE(o.gain_euros_an || 0)} par an</span>
+              <span class="tags">${facile(o)}${byId[o.tache_id]?.deleguer_en_premier ? ' · celle que tu délèguerais en premier' : ''}</span>
+              <button type="button" data-observe="${o.tache_id}">Observer cette tâche</button></div>`).join('')}</div>
+        </section>
+        <section class="mt-bloc">
+          <header class="mt-head"><h3>Mon poste</h3></header>
+          <div class="rc-keys">
+            <div class="rc-key"><span>Rôle</span><b>${escapeHtml(f.poste?.role_metier || r().role_metier || 'Non précisé')}</b></div>
+            <div class="rc-key"><span>Outils de travail</span><b>${outils.length}</b></div>
+            <div class="rc-key"><span>Tâches de la semaine</span><b>${ts.length}</b></div>
+          </div>
+        </section>
+        <section class="mt-bloc">
+          <header class="mt-head"><h3>Mes tâches de la semaine</h3></header>
+          ${ts.length ? `<ul class="rc-tasks">${ts.map((t) => {
+            const o = f.opportunites.find((x) => x.tache_id === t.id);
+            return `<li${rang[t.id] ? ' class="deleg"' : ''}><span class="nom">${escapeHtml(t.libelle)}${rang[t.id] ? `<em>Priorité ${rang[t.id]}</em>` : o ? `<em class="dim">${escapeHtml(RECO[o.recommandation] || '')}</em>` : ''}</span>
+              <span class="val">${label(FREQ, t.frequence_tranche) ? `${escapeHtml(label(FREQ, t.frequence_tranche))} <small>/ sem.</small>` : '<small>?</small>'}</span>
+              <span class="val">${escapeHtml(label(DUREE, t.duree_tranche) || '?')}</span></li>`; }).join('')}</ul>` : '<p class="rc-vide">Aucune tâche.</p>'}
+        </section>
+        <section class="mt-bloc">
+          <header class="mt-head"><h3>Mes outils</h3></header>
+          <div class="rc-tools">${outils.map((o) => `<span class="rc-tool" title="${escapeHtml(o.nom)}">${toolIcon(o.nom)}<span>${escapeHtml(o.nom)}</span></span>`).join('') || '<p class="rc-vide">Aucun outil.</p>'}</div>
+        </section>
+        ${f.alertes.length ? `<div class="a2-alerts"><h4>À vérifier</h4><ul>${f.alertes.slice(0, 6).map((x) => `<li>${escapeHtml(x.message)}</li>`).join('')}</ul></div>` : ''}
+        <div class="mt-fin"><button type="button" id="a2Redo">Refaire l'audit</button></div>
+      </div>`;
       screenEl.querySelectorAll('[data-observe]').forEach((b) => b.onclick = () => {
         const lib = byId[b.dataset.observe]?.libelle || '';
         setStep(2);
         setPrimary(startBtn);
         statusEl.textContent = `À enregistrer : « ${lib} ». Clique sur « Enregistrer ma tâche », puis fais-la comme d'habitude.`;
       });
-      $('a2Redo').onclick = (e) => { e.preventDefault(); go('intro'); };
+      $('a2Redo').onclick = () => go('intro');
       setPrimary(screenEl.querySelector('[data-observe]') || document.getElementById('toRecordBtn'));
     },
   };
@@ -550,6 +580,7 @@
 
   function render() {
     $('a2').classList.remove('twn-scanning');
+    $('a2').classList.toggle('a2-fini', st.screen === 'resultat'); // « Mon travail » : pas de barre de progression ni de « Retour »
     const [name, arg] = st.screen.split(':');
     $('a2Next').textContent = 'Suivant →';
     $('a2Next').hidden = st.screen === 'resultat';
