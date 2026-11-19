@@ -1,13 +1,13 @@
 {
   "name": "twiin-desktop",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
   "description": "Twiin pour le Mac : fenêtre flottante par-dessus toutes les applis, icône dans la barre des menus.",
   "main": "main.js",
   "scripts": {
     "start": "env -u ELECTRON_RUN_AS_NODE electron .",
     "stage": "node scripts/stage.mjs",
-    "dist:mac": "node scripts/stage.mjs && env -u ELECTRON_RUN_AS_NODE electron-builder --mac --arm64",
+    "dist:mac": "node scripts/stage.mjs && env -u ELECTRON_RUN_AS_NODE electron-builder --mac --arm64 && rm -rf dist/mac-arm64",
     "dist:win": "node scripts/stage.mjs && env -u ELECTRON_RUN_AS_NODE electron-builder --win --x64"
   },
   "devDependencies": {
