@@ -76,6 +76,16 @@ def sheets_credential():
     return {"googleSheetsOAuth2Api": {"id": row[0], "name": row[1]}}
 
 
+def credential_ref(ctype, label):
+    """Référence (id + nom, jamais le secret) d'une connexion n8n du type donné (ex. gmailOAuth2)."""
+    con = sqlite3.connect(N8N_DB)
+    row = con.execute("select id, name from credentials_entity where type=? limit 1", (ctype,)).fetchone()
+    con.close()
+    if not row:
+        raise SystemExit(f"Aucune connexion {label} dans n8n : ajoute-la dans n8n (Credentials) puis relance.")
+    return {ctype: {"id": row[0], "name": row[1]}}
+
+
 def js_template(text):
     """« Veille – {{Holo — lire.entreprise}} » → template JS n8n qui lit la valeur du nœud Holo précédent."""
     def repl(m):
@@ -160,7 +170,8 @@ def compile_plan(plan):
                 "method": "POST", "url": url,
                 "sendHeaders": True, "headerParameters": {"parameters": [{"name": "x-twiin-token", "value": token}]},
                 "sendBody": True, "specifyBody": "json", "jsonBody": body,
-                "options": {"timeout": 900000, "response": {"response": {"responseFormat": "json"}}},
+                # holo_fill : un échec de saisie (code 409) ne coupe pas le workflow, la suite (mail) peut le dire à l'employé
+                "options": {"timeout": 900000, "response": {"response": {"responseFormat": "json", **({"neverError": True} if t == "holo_fill" else {})}}},
             }, x))
         elif t == "rows_from":
             src = ", ".join("$(" + json.dumps(n, ensure_ascii=False) + ").first().json.data || {}" for n in b["sources"])
@@ -205,6 +216,19 @@ def compile_plan(plan):
                                         "type": "string", "canBeUsedToMatch": True} for c in cols]},
                 "options": {},
             }, x, sheets_credential()))
+        elif t == "gmail_send":
+            # Notification par mail à l'employé : l'adresse est lue sur le compte Gmail connecté (jamais écrite dans le plan).
+            gm = credential_ref("gmailOAuth2", "Gmail")
+            nodes.append(node("Adresse Gmail connectée", "n8n-nodes-base.httpRequest", 4.2, {
+                "method": "GET", "authentication": "predefinedCredentialType", "nodeCredentialType": "gmailOAuth2",
+                "url": "https://gmail.googleapis.com/gmail/v1/users/me/profile", "options": {}}, x, gm))
+            chain.append("Adresse Gmail connectée")
+            x += 300
+            nodes.append(node(b["name"], "n8n-nodes-base.gmail", 2.1, {
+                "resource": "message", "operation": "send",
+                "sendTo": "={{ $('Adresse Gmail connectée').first().json.emailAddress }}",
+                "subject": b["subject"], "message": b["message"], "options": {"appendAttribution": False}}, x, gm))
+            nodes[-1]["notes"] = "Prévient l'employé par mail une fois l'automatisation terminée."
         elif t == "http":
             p = {"method": b.get("method", "GET"), "url": b["url"], "options": {"timeout": 60000}}
             if b.get("auth") == "comptarex":  # jeton admin de comptarex (lecture de la vérité, jamais affiché)

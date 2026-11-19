@@ -1,0 +1,61 @@
+{
+  "id": "twiindemoprix",
+  "name": "Démo · Prix du casque sur 3 boutiques",
+  "schedule_cron": null,
+  "blocks": [
+    {
+      "type": "holo_web",
+      "name": "Lire le prix chez AudioMax",
+      "url": "http://127.0.0.1:3000/demo/shop-a.html",
+      "label": "le casque audio Aurora X2 (nom de la boutique, prix actuel)",
+      "columns": [
+        "site",
+        "prix",
+        "lien"
+      ]
+    },
+    {
+      "type": "holo_web",
+      "name": "Lire le prix chez SonoShop",
+      "url": "http://127.0.0.1:3000/demo/shop-b.html",
+      "label": "le casque audio Aurora X2 (nom de la boutique, prix actuel)",
+      "columns": [
+        "site",
+        "prix",
+        "lien"
+      ]
+    },
+    {
+      "type": "holo_web",
+      "name": "Lire le prix chez HiFi Direct",
+      "url": "http://127.0.0.1:3000/demo/shop-c.html",
+      "label": "le casque audio Aurora X2 (nom de la boutique, prix actuel)",
+      "columns": [
+        "site",
+        "prix",
+        "lien"
+      ]
+    },
+    {
+      "type": "rows_from",
+      "name": "Préparer les lignes",
+      "sources": [
+        "Lire le prix chez AudioMax",
+        "Lire le prix chez SonoShop",
+        "Lire le prix chez HiFi Direct"
+      ]
+    },
+    {
+      "type": "excel_append",
+      "name": "Écrire dans Veille prix casque.xlsx",
+      "workbook": "Veille prix casque",
+      "path": "C:/Users/fouqu/Documents/Twiin demo/Veille prix casque.xlsx"
+    },
+    {
+      "type": "gmail_send",
+      "name": "Envoyer le récapitulatif par mail",
+      "subject": "Twiin : prix du casque Aurora X2 relevés",
+      "message": "={{ 'Prix relevés sur ' + $('Préparer les lignes').first().json.rows.length + ' boutiques :<br>' + $('Préparer les lignes').first().json.rows.map((r) => r.site + ' : ' + r.prix).join('<br>') + '<br><br>' + ($('Écrire dans Veille prix casque.xlsx').first().json.added || 0) + ' ligne(s) ajoutée(s) dans le classeur Excel.' + ' Tu pouvais continuer à travailler pendant ce temps.' }}"
+    }
+  ]
+}
