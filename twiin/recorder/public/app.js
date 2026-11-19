@@ -27,6 +27,7 @@ let frames = [];
 let ticks = 0;
 let startedAt = 0;
 let recording = false;
+let ajouterA = null; // enregistrement à compléter (tâche oubliée) : pris en compte au prochain démarrage seulement
 let sessionId = null;        // dossier de l'enregistrement côté serveur (images + journal d'actions)
 let sharedScreens = [];      // { n, label } de tous les écrans partagés pendant l'enregistrement
 let journalNext = 0, journalTimer = null;
@@ -304,8 +305,9 @@ async function startJournal() {
   journalNext = 0;
   try {
     const r = await fetch('/api/actions/start', { method: 'POST', headers: { 'Content-Type': 'application/json' },
-                                                 body: JSON.stringify({ startedAt }) });
+                                                 body: JSON.stringify({ startedAt, ajouterA }) });
     sessionId = (await r.json()).session || null;
+    ajouterA = null; // ne vaut que pour cet enregistrement
   } catch { sessionId = null; }
   journalTimer = setInterval(pollJournal, 1000);
 }
@@ -1100,8 +1102,16 @@ function escapeHtml(str) {
 // Ouvert depuis « Mes enregistrements » (?session=ID) : le même écran que juste après un enregistrement,
 // avec les étapes modifiables et sauvegardées dans l'enregistrement.
 iconsReady.then(async () => {
-  const sid = new URLSearchParams(location.search).get('session');
+  const params = new URLSearchParams(location.search);
+  const sid = params.get('session');
   if (!sid) return;
+  if (params.get('ajout')) {
+    // tâche oubliée : le prochain enregistrement complète celui-ci, sans rien afficher d'autre
+    ajouterA = sid;
+    const d = await (await fetch(`/api/sessions/${encodeURIComponent(sid)}`)).json().catch(() => ({}));
+    statusEl.textContent = `Tu ajoutes une tâche oubliée à « ${d.titre || 'cet enregistrement'} ». Clique sur « Enregistrer ma tâche » : à l'arrêt, ses étapes seront ajoutées à la fin.`;
+    return;
+  }
   try {
     const d = await (await fetch(`/api/sessions/${encodeURIComponent(sid)}`)).json();
     if (d.error) throw new Error(d.error);

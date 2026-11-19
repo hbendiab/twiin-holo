@@ -77,7 +77,8 @@ function carteEnr(e) {
     <p class="rec-date">${fmt(e.startedAt)} · ${statut}</p>
     <div class="rec-actions">
       ${e.analyse
-        ? `<a class="btn primary" href="/?session=${encodeURIComponent(e.id)}#enregistrer">Ouvrir et modifier</a>`
+        ? `<a class="btn primary" href="/?session=${encodeURIComponent(e.id)}#enregistrer">Ouvrir et modifier</a>
+           <a class="btn" href="/?session=${encodeURIComponent(e.id)}&ajout=1#enregistrer">Ajouter une tâche oubliée</a>`
         : '<button data-act="analyser">Analyser (utilise Holo)</button>'}
       <button class="danger" data-act="supprimer">Mettre à la corbeille</button>
     </div>

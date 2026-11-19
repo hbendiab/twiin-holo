@@ -371,7 +371,9 @@ app.post('/api/actions/start', (req, res) => {
     proc.stderr.on('data', (d) => console.warn('[journal]', String(d).trim().slice(0, 300)));
     proc.on('close', (code) => console.log(`Journal d'actions arrêté (code ${code})`));
     recorderSession = { id, dir, proc, startedAt: req.body?.startedAt || Date.now() };
-    fs.writeFileSync(path.join(dir, 'session.json'), JSON.stringify({ startedAt: recorderSession.startedAt }));
+    // ajouterA : cet enregistrement complète une tâche déjà enregistrée (tâche oubliée), ses étapes y seront ajoutées
+    recorderSession.ajouterA = req.body?.ajouterA || null;
+    fs.writeFileSync(path.join(dir, 'session.json'), JSON.stringify({ startedAt: recorderSession.startedAt, ajouterA: recorderSession.ajouterA }));
     console.log(`Journal d'actions démarré : ${dir}`);
     res.json({ session: id });
   } catch (err) {
@@ -476,6 +478,9 @@ async function analyze({ frames, transcript, actionLog = '', ocrLines = 0, scree
   if (session && fs.existsSync(path.join(SESSIONS_DIR, path.basename(session)))) {
     fs.writeFileSync(path.join(SESSIONS_DIR, path.basename(session), 'analysis.json'),
       JSON.stringify({ analysedAt: new Date().toISOString(), meta, result }, null, 2) + '\n');
+    // enregistrement d'ajout : ses étapes complètent la tâche d'origine
+    const cible = lireJson(path.join(SESSIONS_DIR, path.basename(session), 'session.json'))?.ajouterA;
+    if (cible) fusionnerAjout(path.join(SESSIONS_DIR, path.basename(cible)), path.basename(session), result);
   }
   console.log(`Wrote ${result.workflows.length} candidate workflow(s) to ${CANDIDATES_PATH}`);
   backLog('analyse', { model: HF_MODEL, provider, tokens_in: usage.prompt_tokens, tokens_out: usage.completion_tokens, cost_usd,
@@ -1035,6 +1040,21 @@ app.post('/api/replay/stop', (req, res) => {
   if (replay?.running) replay.proc.kill('SIGTERM');
   res.json({ ok: true });
 });
+
+// Tâche oubliée : les étapes d'un enregistrement d'ajout sont ajoutées à la fin de la tâche d'origine.
+function fusionnerAjout(cibleDir, segmentId, result) {
+  const file = path.join(cibleDir, 'analysis.json');
+  if (!fs.existsSync(cibleDir)) return;
+  const nouvelles = (result?.workflows || []).flatMap((w) => w.steps || []);
+  if (!nouvelles.length) return;
+  const an = lireJson(file) || { meta: {}, result: { workflows: [] } };
+  an.result = an.result || { workflows: [] };
+  if (!an.result.workflows?.length) an.result.workflows = [{ name: 'Tâche', summary: null, steps: [] }];
+  an.result.workflows[0].steps = [...(an.result.workflows[0].steps || []), ...nouvelles];
+  an.segments = [...(an.segments || []), { id: segmentId, ajouteLe: new Date().toISOString(), etapes: nouvelles.length }];
+  an.analysedAt = new Date().toISOString();
+  fs.writeFileSync(file, JSON.stringify(an, null, 2) + '\n');
+}
 
 // --- Mes enregistrements : historique, analyse à la demande (coûteuse), corbeille ------------------------------
 // Une analyse n'est refaite que sur demande : les anciens enregistrements gardent leurs images, sans appel à Holo.
