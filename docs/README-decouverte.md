@@ -93,8 +93,8 @@ Pour une saisie automatique dans un logiciel qui demande une connexion, mettre s
 
 | Cas | Résultat |
 |---|---|
-| Cas 4 (comparatif casques) | plusieurs parcours à 100 % ; n8n natif 93 % en 2,5 s ; automatisation sans gêner l'employé de bout en bout en 51 s |
-| Cas 1 (facture QONTA, jumeau) | 57-71 % → **100 %** après la gestion des champs à suggestions |
+| Cas 4 (comparatif casques) | copie de test : plusieurs parcours à 100 % (un essai par parcours, indicatif) ; n8n natif 93 % en 2,5 s ; automatisation sans gêner l'employé de bout en bout en 51 s |
+| Cas 1 (facture QONTA, copie de test) | 57-71 % → **100 %** après la gestion des champs à suggestions (un essai après, indicatif) |
 | Facture réelle dans QONTA | PDF INV-002 lu puis saisi en brouillon par Holo invisible en **79 s**, toutes les valeurs exactes (contrôle champ par champ) |
 | Windows | rejeu Holo dans le Bloc-notes en 75 s ; audit : 39 outils détectés |
 
