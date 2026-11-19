@@ -349,7 +349,8 @@ chrome.tabs.onActivated.addListener(() => readSite().then(render));
 (async () => {
   const cfg = await ask({ type: 'recorder:config' }).catch(() => ({}));
   if (cfg?.base) BASE = cfg.base;
-  Capture.config({ base: BASE, token: cfg?.token || null });
+  // les appels de la capture passent par le service worker, comme le reste du panneau
+  Capture.config({ base: BASE, token: cfg?.token || null, transport: (path, o) => ask({ type: 'api', path, method: o.method, body: o.body }) });
   await readSite();
   await load();
   render();
