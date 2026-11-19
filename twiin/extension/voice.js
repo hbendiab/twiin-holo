@@ -95,5 +95,6 @@ const Voice = (() => {
   }
   return { state: S, mount, open, start, stop, cancel, report, refresh };
 })();
+globalThis.Voice = Voice; // un `const` de script classique n'est pas une propriété de globalThis : capture.js la lit par globalThis.Voice
 if (typeof document !== 'undefined') Voice.mount(document.getElementById('voiceSlot'));
 if (typeof module !== 'undefined') module.exports = Voice;

@@ -109,3 +109,11 @@ test('statut illisible (serveur injoignable) : interrupteur grisé avec une rais
   assert.equal(Voice.state.ready, false);
   assert.match(Voice.state.reason, /ne répond pas/);
 });
+
+test('chargé comme script de navigateur (balise <script>), Voice est lisible par globalThis.Voice', async () => {
+  const vm = await import('node:vm'); const fs = await import('node:fs');
+  const ctx = vm.createContext({ localStorage: { getItem: () => null, setItem() {} } });
+  ctx.globalThis = ctx;
+  vm.runInContext(fs.readFileSync(new URL('../extension/voice.js', import.meta.url), 'utf8'), ctx);
+  assert.equal(typeof vm.runInContext('globalThis.Voice?.open', ctx), 'function');
+});
