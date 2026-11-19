@@ -10,6 +10,7 @@ import crypto from 'crypto';
 import os from 'os';
 import { AsyncLocalStorage } from 'async_hooks';
 import { mergeVoice } from './voice.js';
+import { appReport, effectiveExcluded, excludedTime, filterEvents, isCopy, isPaste, timePerApp } from './apps_filter.js';
 
 // recorder/ sits one level below the repo root, alongside the twiin/ Python package
 const REPO_ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
@@ -313,6 +314,19 @@ function displayToScreen(screens) {
 
 const IS_RECORDER = (e) => /improveme|Twiin · Enregistrement/i.test(e.window || '') || /localhost:3000/.test(e.window || '');
 
+// --- Fausses applis : applis ouvertes par erreur, hors tâche ---------------------------------------------------------
+// Détection automatique (peu de temps, ni saisie ni copier-coller) → préremplit ; l'employé corrige (apps.json de la session).
+// Dans le doute, l'appli reste comptée.
+const APPS_FILE = 'apps.json';
+function readAppChoice(dir) {
+  try { const j = JSON.parse(fs.readFileSync(path.join(dir, APPS_FILE), 'utf8')); return Array.isArray(j.excluded) ? j.excluded.map(String) : null; }
+  catch { return null; }
+}
+// Applis exclues pour cette session = choix de l'employé s'il existe, sinon suggestions automatiques.
+function excludedApps(dir, events) {
+  return effectiveExcluded(events.filter((e) => !IS_RECORDER(e)), dir ? readAppChoice(dir) : null);
+}
+
 function actionTranscript(events, startedAtMs, screens) {
   const map = displayToScreen(screens);
   const scr = (d) => (d == null ? 'screen ?' : map.has(d) ? `screen ${map.get(d)}` : `macOS display ${d}`);
@@ -356,6 +370,15 @@ app.post('/api/audio', express.raw({ type: () => true, limit: '200mb' }), (req, 
   }
 });
 
+// Passages de voix déjà transcrits (voice.json), à heure absolue ; liste vide s'il n'y en a pas.
+function readVoiceCache(dir) {
+  try {
+    const voice = JSON.parse(fs.readFileSync(path.join(dir, 'voice.json'), 'utf8'));
+    const base = voice.audio_started_at_ms / 1000;
+    return (voice.segments || []).map((s) => ({ type: 'voice', ts: base + s.start, until: base + s.end, text: s.text }));
+  } catch { return []; }
+}
+
 // Transcrit l'audio de la session (une seule fois : voice.json sert de cache) et renvoie des événements « voice »
 // à heure absolue (secondes), calés sur le même repère que le journal d'actions. Ne plante jamais l'analyse.
 async function transcribeSession(dir) {
@@ -384,9 +407,7 @@ async function transcribeSession(dir) {
       fs.rmSync(tmp, { force: true });
       console.log(`Transcription locale : ${out.segments.length} segment(s), ${out.audio_duration} s d'audio, ${out.elapsed} s de calcul`);
     }
-    const voice = JSON.parse(fs.readFileSync(voiceF, 'utf8'));
-    const base = voice.audio_started_at_ms / 1000;
-    const events = (voice.segments || []).map((s) => ({ type: 'voice', ts: base + s.start, until: base + s.end, text: s.text }));
+    const events = readVoiceCache(dir);
     return { events, info: { status: events.length ? 'ok' : 'empty', segments: events.length } };
   } catch (err) {
     console.warn(`⚠️ Voix non transcrite, l'analyse continue sans elle : ${err.message}`);
@@ -535,8 +556,11 @@ async function analyzeSessionDir(dir) {
   const { frames, startedAt, screens: shared } = loadSessionFrames(dir);
   if (!frames.length) throw new Error('Aucune image enregistrée pour cet enregistrement.');
   const voice = await transcribeSession(dir);
-  const events = mergeVoice(readActions(dir), voice.events);
-  const actionLog = actionTranscript(events, startedAt || Date.parse(frames[0]?.timestamp), shared);
+  const allEvents = mergeVoice(readActions(dir), voice.events);
+  const excluded = excludedApps(dir, allEvents);
+  const events = filterEvents(allEvents, excluded);
+  let actionLog = actionTranscript(events, startedAt || Date.parse(frames[0]?.timestamp), shared);
+  if (excluded.length) actionLog += `\n[NOTE: the user marked these apps as NOT part of the task (opened by mistake): ${excluded.join(', ')}. Ignore them in the screenshots too.]`;
   const t0 = Date.now();
   setPhase('ocr');
   const ocr = await runOcr(frames);
@@ -659,23 +683,24 @@ app.post('/api/improve', async (req, res) => {
 // L'enregistrement d'une tâche : celui noté dans la tâche ; à défaut (anciennes tâches), le dernier enregistrement.
 function sessionDirFor(wf) {
   if (wf?.session) {
-    const dir = path.join(SESSIONS_DIR, path.basename(String(wf.session)));
+    const id = String(wf.session);
+    if (!/^[0-9A-Za-z-]+$/.test(id)) return null; // jamais « .. », « . » ni un chemin : on reste dans un dossier de session
+    const dir = path.join(SESSIONS_DIR, id);
     return fs.existsSync(dir) ? dir : null; // enregistrement absent (autre Mac) : pas de mesures plutôt que de fausses
   }
   return latestSessionDir();
 }
 function taskContext(wf) {
   const dir = sessionDirFor(wf);
-  const events = dir ? readActions(dir) : [];
+  const allEvents = dir ? readActions(dir) : [];
+  const excluded = excludedApps(dir, allEvents);       // applis ouvertes par erreur : choix de l'employé, sinon suggestions automatiques
+  const events = filterEvents(allEvents, excluded);
   const last = fs.existsSync(LAST_RUN_PATH) ? JSON.parse(fs.readFileSync(LAST_RUN_PATH, 'utf8')) : {};
   const same = dir && last.meta?.session === path.basename(dir);
-  let actionLog = same ? last.action_log : '';
-  if (!actionLog && dir && events.length) {
-    let started = null;
-    try { started = JSON.parse(fs.readFileSync(path.join(dir, 'session.json'), 'utf8')).startedAt; } catch { /* rien */ }
-    try { actionLog = actionTranscript(events, started || events[0].ts * 1000, []); } catch { actionLog = ''; }
-  }
-  return { dir, events, actionLog: actionLog || '', ocr: same ? last.ocr_transcript || '' : '' };
+  // le journal gardé à la dernière analyse ne tient pas compte d'un choix fait depuis : avec des applis exclues, on le refait
+  let actionLog = same && !excluded.length ? last.action_log : '';
+  if (!actionLog && dir && events.length) { try { actionLog = sessionActionLog(dir, events); } catch { actionLog = ''; } }
+  return { dir, allEvents, events, excluded, actionLog: actionLog || '', ocr: same ? last.ocr_transcript || '' : '' };
 }
 
 function latestSessionDir() {
@@ -685,28 +710,66 @@ function latestSessionDir() {
   return dirs.length ? path.join(SESSIONS_DIR, dirs.at(-1)) : null;
 }
 
+// Journal d'actions texte d'une session, sans les applis exclues (même format que celui de l'analyse).
+function sessionActionLog(dir, events) {
+  const { frames, startedAt, screens } = loadSessionFrames(dir);
+  const t0 = startedAt || Date.parse(frames[0]?.timestamp) || (events[0]?.ts || 0) * 1000;
+  const voice = mergeVoice(events, readVoiceCache(dir));
+  return actionTranscript(voice, t0, screens);
+}
+
+// Événements du journal d'une session, sans ceux de la page elle-même.
+const sessionEvents = (dir) => readActions(dir).filter((e) => !IS_RECORDER(e));
+
+// Liste des applis vues dans le dernier enregistrement, avec le choix en cours (page : cases « fait partie de la tâche ? »).
+// `stale` : le choix a été fait après la dernière analyse, donc les étapes affichées n'en tiennent pas compte.
+// ?session=… : l'enregistrement de la tâche affichée (une tâche plus ancienne a ses propres applis) ; sans lui, le dernier.
+const appsDir = (id) => (id ? sessionDirFor({ session: id }) : latestSessionDir());
+app.get('/api/apps', (req, res) => {
+  const dir = appsDir(req.query.session);
+  if (!dir) return res.json({ apps: [] });
+  const events = sessionEvents(dir);
+  const mtime = (f) => { try { return fs.statSync(f).mtimeMs; } catch { return 0; } };
+  res.json({
+    excluded: effectiveExcluded(events, readAppChoice(dir)), apps: appReport(events),
+    stale: mtime(path.join(dir, APPS_FILE)) > mtime(CANDIDATES_PATH),
+  });
+});
+
+app.post('/api/apps', (req, res) => {
+  const dir = appsDir(req.body?.session);
+  if (!dir) return res.status(404).json({ error: 'Aucun enregistrement.' });
+  const seen = new Set(appReport(sessionEvents(dir)).map((a) => a.app));
+  const list = Array.isArray(req.body?.excluded) ? req.body.excluded : null;
+  if (!list) return res.status(400).json({ error: 'Liste « excluded » manquante.' });
+  const excluded = [...new Set(list.map(String).filter((a) => seen.has(a)))];
+  fs.writeFileSync(path.join(dir, APPS_FILE), JSON.stringify({ excluded }, null, 2) + '\n');
+  res.json({ excluded });
+});
+
 // Mesures objectives tirées du journal d'actions : durée, temps par appli, allers-retours, copier-coller, saisies.
-function processStats(events) {
+function processStats(allEvents, excluded = []) {
+  const events = filterEvents(allEvents, excluded);
   const ev = events.filter((e) => e?.type && !['start', 'stop', 'error'].includes(e.type) && !IS_RECORDER(e));
   if (!ev.length) return null;
-  const t0 = ev[0].ts, t1 = Math.max(...ev.map((e) => e.until || e.ts));
-  const perApp = {};
+  const all = allEvents.filter((e) => e?.type && !['start', 'stop', 'error'].includes(e.type) && !IS_RECORDER(e));
+  const t0 = all[0].ts, t1 = Math.max(...all.map((e) => e.until || e.ts));
+  // temps mesuré sur le journal complet, puis on ôte les applis exclues (voir excludedTime)
+  const perApp = { ...timePerApp(all).perApp };
+  for (const a of excluded) delete perApp[a];
   let switches = 0, prevApp = null;
-  for (let i = 0; i < ev.length; i++) {
-    const e = ev[i];
-    const end = i + 1 < ev.length ? ev[i + 1].ts : t1;
-    if (e.app) perApp[e.app] = (perApp[e.app] || 0) + Math.max(0, end - e.ts);
+  for (const e of ev) {
     if (e.app && prevApp && e.app !== prevApp) switches++;
     if (e.app) prevApp = e.app;
   }
   const count = (f) => ev.filter(f).length;
   return {
-    duration_s: Math.round(t1 - t0),
+    duration_s: Math.round(t1 - t0 - excludedTime(all, excluded)),
     time_per_app_s: Object.fromEntries(Object.entries(perApp).sort((a, b) => b[1] - a[1]).map(([k, v]) => [k, Math.round(v)])),
     app_switches: switches,
     clicks: count((e) => e.type === 'click'),
-    copies: count((e) => e.type === 'shortcut' && /C$/i.test(e.keys || '')),
-    pastes: count((e) => e.type === 'shortcut' && /V$/i.test(e.keys || '')),
+    copies: count(isCopy),
+    pastes: count(isPaste),
     typing_s: Math.round(ev.filter((e) => e.type === 'typing').reduce((n, e) => n + (e.until - e.ts), 0)),
     keystrokes: ev.filter((e) => e.type === 'typing').reduce((n, e) => n + (e.keys || 0), 0),
   };
@@ -733,12 +796,15 @@ app.post('/api/process-advice', async (req, res) => {
   try {
     const wf = req.body?.workflow || {};
     const ctx = taskContext(wf);
-    const stats = processStats(ctx.events);
+    const excluded = ctx.excluded; // applis ouvertes par erreur (choix de l'employé), déjà retirées du journal et des chiffres
+    const stats = processStats(ctx.allEvents, excluded);
     const last = { action_log: ctx.actionLog, ocr_transcript: ctx.ocr };
+    const actionLog = ctx.actionLog;
     const user = [
       `TASK\nName: ${wf.name || ''}\nSummary: ${wf.summary || ''}\nSteps:\n` + (wf.steps || []).map((st, i) => `${i + 1}. ${st}`).join('\n'),
       `MEASURES (from the action log)\n${stats ? JSON.stringify(stats, null, 1) : '(no action log)'}`,
-      `ACTION LOG\n${(last.action_log || '(none)').slice(0, 12000)}`,
+      `ACTION LOG\n${(actionLog || '(none)').slice(0, 12000)}`,
+      excluded.length ? `NOT PART OF THE TASK (opened by mistake, already removed from the measures and the log): ${excluded.join(', ')}` : '',
       `OCR TEXT\n${(last.ocr_transcript || '(none)').slice(0, 8000)}`,
       profileContext(),
     ].filter(Boolean).join('\n\n');
@@ -818,7 +884,8 @@ app.post('/api/verdict', async (req, res) => {
   try {
     const wf = req.body?.workflow || {};
     const ctx = taskContext(wf);
-    const stats = processStats(ctx.events);
+    const excluded = ctx.excluded;
+    const stats = processStats(ctx.allEvents, excluded);
     const tools = toolsUsed(ctx.events, ctx.ocr);
     const user = [
       `TASK\nName: ${wf.name || ''}\nSteps:\n` + (wf.steps || []).map((st, i) => `${i + 1}. ${st}`).join('\n'),

@@ -603,8 +603,10 @@ function renderWorkflows(workflows, { example = false, silent = false, autoReco 
   // silent : la dernière tâche, rechargée à l'ouverture de la page, sans changer d'écran
   if (workflows.length && !silent) setStep(Math.max(2, Number(document.body.dataset.view) || 2)); // ouvert depuis la Reco : on y reste
   resultsEl.innerHTML = '';
+  resultsEl.classList.remove('steps-stale');
   document.getElementById('example').hidden = true;
   workflows.forEach((wf) => resultsEl.appendChild(workflowCard(wf, example)));
+  if (!example) renderAppPicks();
   document.getElementById('noTask').hidden = resultsEl.children.length > 0 || Number(document.body.dataset.view) !== LAST_VIEW;
   if (!silent) setPrimary(resultsEl.querySelector('.btn-go-reco'));
   // Reco automatique : préparée dès la fin de l'analyse, prête quand l'employé ouvre la page Recommandation
@@ -612,9 +614,79 @@ function renderWorkflows(workflows, { example = false, silent = false, autoReco 
   if (Number(document.body.dataset.view) === LAST_VIEW) resultsEl.querySelectorAll('.workflow').forEach((c) => c._autoReco?.());
 }
 
+// Applis vues pendant l'enregistrement : les bulles d'applis de la tâche servent aussi de cases. L'employé clique sur une bulle pour
+// ignorer une appli ouverte par erreur (re-clic : elle revient). Twiin préremplit (applis très brèves, sans saisie ni
+// copier-coller) ; le choix est pris en compte par les chiffres, la recommandation, et par les étapes à la prochaine analyse.
+let appPicksToken = 0;
+let choiceVersion = 0; // +1 à chaque changement de bulle : une réponse partie avant le changement n'est plus affichée
+function renderAppPicks() {
+  const token = ++appPicksToken;
+  resultsEl.querySelectorAll('.workflow:not(.is-example)').forEach((card) => { card._picksReady = renderCardPicks(card, token); });
+}
+async function renderCardPicks(card, token) {
+  const session = card.dataset.session;
+  const q = session ? `?session=${encodeURIComponent(session)}` : '';
+  let data;
+  try { data = await (await fetch(`/api/apps${q}`)).json(); } catch { card._exclSig = null; return; } // choix inconnu : pas de cache de recommandation
+  if (token !== appPicksToken) return;
+  resultsEl.classList.toggle('steps-stale', !!data.stale);
+  card._exclSig = [...(data.excluded || [])].sort().join('|'); // fait partie de la clé de cache de la recommandation
+  const strip = card.querySelector('.apps-strip');
+  if (!strip || !data.apps || data.apps.length < 2) return; // une seule appli : rien à choisir, la bande d'origine reste
+  const off = new Set(data.excluded);
+  const fmt = (x) => (x >= 60 ? `${Math.floor(x / 60)} min ${x % 60} s` : `${x} s`);
+  strip.dataset.picks = '1'; // refreshIcons ne réécrit plus cette bande
+  strip.innerHTML = '';
+  const hint = document.createElement('span');
+  hint.className = 'apps-hint';
+  hint.textContent = 'Clique sur une appli pour l\'ignorer';
+  data.apps.forEach((a) => {
+    const pill = document.createElement('span');
+    pill.className = 'app-pill pick';
+    pill.setAttribute('role', 'checkbox');
+    pill.tabIndex = 0;
+    pill.innerHTML = `${iconsHtml(a.app, 1)}${escapeHtml(a.app)}<span class="t">${fmt(a.time_s)}</span>`;
+    const paint = () => {
+      pill.setAttribute('aria-checked', String(!off.has(a.app)));
+      pill.classList.toggle('off', off.has(a.app));
+      pill.title = off.has(a.app) ? `Ignorée${a.reason ? ` (${a.reason})` : ''}` : 'Fait partie de la tâche';
+    };
+    const toggle = async () => {
+      if (off.has(a.app)) off.delete(a.app); else off.add(a.app);
+      paint();
+      try {
+        const r = await fetch('/api/apps', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ excluded: [...off], session }) });
+        if (!r.ok) throw new Error((await r.json()).error || 'erreur');
+        // La recommandation affichée ne tient plus compte du choix : elle est recalculée. Les étapes, elles, attendent une
+        // nouvelle analyse (classe steps-stale, qui survit aux rechargements de boutons).
+        choiceVersion++;
+        resultsEl.classList.add('steps-stale');
+        resultsEl.querySelectorAll('.workflow').forEach((c) => {
+          if (c.dataset.session !== session) return;
+          c._exclSig = [...off].sort().join('|');
+          c._resetReco?.();
+        });
+        hint.textContent = 'Enregistré : chiffres et recommandation recalculés. Pour les étapes : « Réanalyser ».';
+      } catch (err) {
+        if (off.has(a.app)) off.delete(a.app); else off.add(a.app); // le choix n'est pas passé : on revient en arrière
+        paint();
+        hint.textContent = `Choix non enregistré : ${err.message}`;
+      }
+    };
+    pill.addEventListener('click', toggle);
+    pill.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggle(); } });
+    paint();
+    strip.appendChild(pill);
+  });
+  strip.appendChild(hint);
+}
+
 function workflowCard(wf, example = false) {
   const card = document.createElement('div');
-  card.className = 'workflow';
+  card.className = example ? 'workflow is-example' : 'workflow';
+  card.dataset.session = wf.session || ''; // enregistrement de CETTE tâche (applis à choisir, mesures)
+  card._picksReady = Promise.resolve(); // la recommandation attend que le choix d'applis soit connu (voir renderAppPicks)
+  card._exclSig = ''; // applis ignorées en une clé (cache de la recommandation) ; null = inconnu
   let original = { name: wf.name, summary: wf.summary, steps: [...(wf.steps || [])] };
   const nSteps = (wf.steps || []).length;
   card.innerHTML = `
@@ -661,7 +733,7 @@ function workflowCard(wf, example = false) {
       else if (last) { slot.innerHTML = iconImg(last); slot.classList.add('inherited'); }
       else slot.innerHTML = '';
     });
-    stripEl.innerHTML = appsStrip(texts);
+    if (!stripEl.dataset.picks) stripEl.innerHTML = appsStrip(texts); // bulles-cases : gérées par renderAppPicks
   };
   const setSteps = (steps) => {
     stepsEl.innerHTML = '';
@@ -705,6 +777,10 @@ function workflowCard(wf, example = false) {
   const origBtn = card.querySelector('.btn-original');
   const changesEl = card.querySelector('.changes');
   improveBtn.onclick = async () => {
+    if (resultsEl.classList.contains('steps-stale')) { // le choix d'applis a changé : les étapes attendent une nouvelle analyse
+      changesEl.hidden = false; changesEl.textContent = 'Le choix d\'applis a changé : clique sur « Réanalyser » pour mettre les étapes à jour.';
+      return;
+    }
     setStep(3);
     improveBtn.disabled = true;
     improveBtn.textContent = 'Précision des étapes…';
@@ -744,9 +820,14 @@ function workflowCard(wf, example = false) {
   const recoBtn = card.querySelector('.btn-reco');
   const recoEl = card.querySelector('.reco');
   let recoState = 'none'; // none | running | done
-  card._autoReco = () => { if (recoState === 'none') recoBtn.onclick(); };
+  card._autoReco = async () => { await card._picksReady; if (recoState === 'none') recoBtn.onclick(); };
+  card._resetReco = () => { // le choix d'applis a changé : la recommandation affichée n'est plus la bonne, elle est recalculée
+    recoState = 'none'; recoEl.hidden = true; recoEl.innerHTML = '';
+    if (Number(document.body.dataset.view) === LAST_VIEW) card._autoReco();
+  };
   card.querySelector('.btn-go-reco').onclick = () => { setStep(3); card._autoReco(); };
   recoBtn.onclick = async () => {
+    const version = choiceVersion;
     recoState = 'running';
     recoBtn.hidden = true;
     recoEl.hidden = false;
@@ -756,11 +837,12 @@ function workflowCard(wf, example = false) {
         .then((r) => r.json()).then((d) => { if (d.error) throw new Error(d.error); return d; });
       // Même tâche, mêmes étapes : la recommandation déjà calculée sur ce navigateur est reprise (pas de nouvel appel au modèle)
       const now = current();
-      const key = `twiin-reco-${now.session || ''}-${[...JSON.stringify([now.name, now.steps])].reduce((h, c) => (h * 31 + c.charCodeAt(0)) | 0, 0)}`;
+      const key = `twiin-reco-${now.session || ''}-${card._exclSig || ''}-${[...JSON.stringify([now.name, now.steps])].reduce((h, c) => (h * 31 + c.charCodeAt(0)) | 0, 0)}`;
       let cached = null;
-      try { cached = JSON.parse(localStorage.getItem(key)); } catch { /* rien */ }
+      if (card._exclSig !== null) try { cached = JSON.parse(localStorage.getItem(key)); } catch { /* rien */ }
       const [adv, ver] = cached || await Promise.all([post('/api/process-advice'), post('/api/verdict')]);
-      if (!cached) try { localStorage.setItem(key, JSON.stringify([adv, ver])); } catch { /* stockage plein ou bloqué */ }
+      if (version !== choiceVersion) return; // le choix d'applis a changé pendant le calcul : cette réponse ne vaut plus
+      if (!cached && card._exclSig !== null) try { localStorage.setItem(key, JSON.stringify([adv, ver])); } catch { /* stockage plein ou bloqué */ }
       const auto = /automat/i.test(ver.verdict || '');
       // la recommandation est gardée (Supabase), rattachée à la tâche
       if (!cached) fetch('/api/recommendations', { method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -795,6 +877,7 @@ function workflowCard(wf, example = false) {
       recoEl.querySelector('.btn-n8n').onclick = () => createN8n(current(), ver, branch);
       recoState = 'done';
     } catch (e) {
+      if (version !== choiceVersion) return; // réponse périmée : un nouveau calcul est en cours
       recoEl.innerHTML = `<div class="verdict-card"><h3>Recommandation impossible</h3><p class="meta">${escapeHtml(e.message)}</p></div>`;
       recoBtn.hidden = false;
       recoState = 'none';
@@ -813,6 +896,7 @@ function workflowCard(wf, example = false) {
   const replayBtn = card.querySelector('.btn-replay');
   const replayEl = card.querySelector('.replay');
   replayBtn.onclick = async () => {
+    if (resultsEl.classList.contains('steps-stale')) return;
     const wfNow = current();
     if (!wfNow.steps.length) return alert('Aucune étape à rejouer.');
     const todo = wfNow.steps.map((x, i) => (/à compléter/i.test(x) ? i + 1 : null)).filter(Boolean);
