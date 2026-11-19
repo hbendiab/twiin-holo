@@ -558,16 +558,13 @@
   <div class="controls rec-controls">
     <button id="startBtn">Enregistrer ma tâche</button>
     <button id="addBtn" disabled>+ Ajouter un écran</button>
-    <label id="voiceToggle" class="voice-toggle" title="Enregistre ta voix pendant la tâche (explique ce que tu fais et pourquoi). Elle est transcrite sur ton Mac (ou dans le cloud, selon le réglage de ton entreprise) : seul le texte est envoyé au modèle d'analyse.">
+    <label id="voiceToggle" class="voice-toggle" title="Enregistre ta voix pendant la tâche (explique ce que tu fais et pourquoi). Elle est transcrite sur ton Mac : seul le texte est envoyé au modèle d'analyse.">
       <input type="checkbox" id="voiceSwitch" role="switch"><span class="track"></span><span>🎤 Capture vocale</span>
     </label>
     <span id="voiceNote" class="voice-note" role="status" hidden></span>
-    <div id="voiceEngineBox" class="voice-engine" hidden>
-      <span>Transcription :</span>
-      <label><input type="radio" name="voiceEngine" value="local"> Sur ton Mac</label>
-      <label><input type="radio" name="voiceEngine" value="cloud"> Cloud (ElevenLabs)</label>
-      <button type="button" id="voiceInstallBtn" class="quiet" hidden>Installer la transcription locale</button>
+    <div id="voiceInstallBox" class="voice-engine" hidden>
       <span id="voiceInstallInfo" class="voice-note" role="status" hidden></span>
+      <button type="button" id="voiceInstallBtn" class="quiet" hidden>Réessayer l'installation</button>
     </div>
     <button id="stopBtn" disabled>Terminer et analyser</button>
     <button id="reBtn" class="quiet" title="Refaire l'analyse du dernier enregistrement, sans le refaire">Réanalyser</button>

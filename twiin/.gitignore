@@ -56,5 +56,4 @@ workflows/automations-programmees.json
 desktop/node_modules/
 tuto/video/public/pitch/
 
-workflows/voice_settings.json
 workflows/voice-venv/

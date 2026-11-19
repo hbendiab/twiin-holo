@@ -233,37 +233,31 @@ voiceSwitch.addEventListener('change', () => {
 });
 // La voix ne peut pas marcher partout (faster-whisper à installer, modèle à télécharger) : le serveur le dit, la page grise
 // l'interrupteur avec la raison, au lieu de laisser l'employé croire que sa voix sera prise en compte.
-let voiceUnavailable = false, voiceNeedsDownload = false;
+let voiceUnavailable = false;
 const voiceNoteEl = document.getElementById('voiceNote');
-const engineBox = document.getElementById('voiceEngineBox');
+const installBox = document.getElementById('voiceInstallBox');
 const installBtn = document.getElementById('voiceInstallBtn');
 const installInfo = document.getElementById('voiceInstallInfo');
 let voiceStatus = null, installMsg = '', installPoll = null;
-// Moteur de transcription (local = Whisper sur ce Mac, cloud = ElevenLabs) : le serveur le garde, la page l'affiche et le change.
-// Le choix revient à la DSI de l'entreprise ; en attendant les rôles, n'importe quel utilisateur de cette page peut le changer.
+// La transcription est 100 % locale (Whisper sur ce Mac). Si elle n'est pas installée, le serveur l'installe seul au
+// lancement : la page montre l'avancement, et propose « Réessayer » seulement si l'installation a échoué.
 function refreshVoiceNote() {
   const st = voiceStatus;
   let text = '';
   if (voiceUnavailable) text = `Voix indisponible : ${voiceUnavailable}.`;
-  else if (st?.engine === 'cloud') text = 'Ta voix est envoyée à ElevenLabs (service cloud) pour être transcrite.';
-  else if (st && voiceSwitch.checked) text = voiceNeedsDownload ? 'Premier usage : le modèle de transcription (~460 Mo) se télécharge, il faut du réseau.' : 'Ta voix est transcrite sur ton Mac : elle n\'en sort pas.';
+  else if (st && voiceSwitch.checked) text = 'Ta voix est transcrite sur ton Mac : elle n\'en sort pas.';
   voiceNoteEl.textContent = text;
   voiceNoteEl.hidden = !text;
   if (!st) return;
-  const localOk = st.local?.ready && !st.local?.needsDownload;
   const running = st.install?.state === 'running';
-  engineBox.hidden = !(voiceSwitch.checked || voiceUnavailable || running);
-  for (const r of engineBox.querySelectorAll('input[name=voiceEngine]')) { r.checked = r.value === st.engine; r.disabled = !st.canChange || recording; }
-  installBtn.hidden = !!localOk || !st.canChange;
-  installBtn.disabled = running;
-  installBtn.textContent = st.install?.state === 'error' ? 'Réessayer l\'installation' : 'Installer la transcription locale';
+  installBox.hidden = st.ready;                                   // rien à montrer quand tout est installé
+  installBtn.hidden = st.ready || running || !st.canChange;       // « Réessayer » : seulement après un échec (ou si l'installation auto est coupée)
   installInfo.textContent = installMsg;
   installInfo.hidden = !installMsg;
 }
 function applyVoiceStatus(st) {
   voiceStatus = st;
   voiceUnavailable = st.ready ? false : (st.reason || 'non disponible sur cet ordinateur'); // texte de la raison (faux = disponible)
-  voiceNeedsDownload = !!st.needsDownload;
   if (voiceUnavailable && !recording) voiceSwitch.checked = false;  // le choix mémorisé n'est pas modifié ; jamais en plein enregistrement
   if (!recording) voiceSwitch.disabled = !!voiceUnavailable;
   const i = st.install;
@@ -299,14 +293,6 @@ installBtn.addEventListener('click', async () => {
     installMsg = `L'installation n'a pas pu démarrer (${e.message}).`;
   }
   refreshVoiceNote();
-});
-engineBox.addEventListener('change', async (ev) => {
-  if (ev.target.name !== 'voiceEngine') return;
-  try {
-    const r = await fetch('/api/audio/engine', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ engine: ev.target.value }) });
-    if (!r.ok) throw new Error((await r.json()).error || 'refusé');
-  } catch (e) { installMsg = `Le moteur n'a pas pu être changé (${e.message}).`; }
-  await loadVoiceStatus();
 });
 loadVoiceStatus();
 voiceSwitch.addEventListener('change', refreshVoiceNote);

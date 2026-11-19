@@ -10,7 +10,6 @@ import crypto from 'crypto';
 import os from 'os';
 import { AsyncLocalStorage } from 'async_hooks';
 import { mergeVoice } from './voice.js';
-import { readEngine, writeEngine, scribeToVoice } from './voice_engine.js';
 import { appReport, effectiveExcluded, excludedTime, filterEvents, isCopy, isPaste, timePerApp } from './apps_filter.js';
 
 // recorder/ sits one level below the repo root, alongside the twiin/ Python package
@@ -373,10 +372,8 @@ app.post('/api/audio', express.raw({ type: () => true, limit: '200mb' }), (req, 
   }
 });
 
-// --- Moteur de transcription : « local » (Whisper sur ce poste) ou « cloud » (ElevenLabs Scribe) -------------------
-// Le choix revient à la DSI de l'entreprise (voir le README). Il est gardé côté serveur : workflows/voice_settings.json
-// (gitignoré, écrit par la page) prime sur VOICE_ENGINE du .env ; défaut « local ».
-const VOICE_SETTINGS = path.join(REPO_ROOT, 'workflows', 'voice_settings.json');
+// --- Transcription de la voix : 100 % locale (Whisper sur ce poste, l'audio ne le quitte pas) ----------------------
+// Au lancement du serveur, si faster-whisper ou le modèle manquent, ils s'installent seuls en arrière-plan (voir plus bas).
 const VOICE_VENV = path.join(REPO_ROOT, 'workflows', 'voice-venv'); // créé par le bouton d'installation si le projet n'a pas de .venv
 const venvPy = (dir) => path.join(dir, 'bin', 'python');
 // Python de la transcription locale, relu à chaque appel (l'installation à la volée peut le créer). On ne touche pas à
@@ -385,7 +382,6 @@ function voicePython() {
   for (const d of [path.join(REPO_ROOT, '.venv'), VOICE_VENV]) if (fs.existsSync(venvPy(d))) return venvPy(d);
   return 'python3';
 }
-const voiceEngine = () => readEngine(VOICE_SETTINGS, process.env.VOICE_ENGINE);
 const hfHub = () => path.join(process.env.HF_HOME || path.join(os.homedir(), '.cache', 'huggingface'), 'hub');
 const modelDir = () => path.join(hfHub(), 'models--Systran--faster-whisper-small');
 // Le modèle est « là » seulement si model.bin existe (un dossier à moitié téléchargé ne compte pas).
@@ -406,33 +402,11 @@ function dirSize(dir) {
   return n;
 }
 
-// Transcription cloud : ElevenLabs Scribe, mêmes passages horodatés que le local (voir voice_engine.js).
-const AUDIO_MIME = { webm: 'audio/webm', m4a: 'audio/mp4', ogg: 'audio/ogg' };
-async function transcribeCloud(file) {
-  const key = process.env.ELEVENLABS_API_KEY;
-  if (!key) throw new Error('clé ElevenLabs manquante (ELEVENLABS_API_KEY)');
-  const form = new FormData();
-  form.append('model_id', ELEVEN_STT_MODEL);
-  form.append('language_code', 'fra');
-  form.append('tag_audio_events', 'false');
-  form.append('timestamps_granularity', 'word');
-  form.append('file', new Blob([fs.readFileSync(file)], { type: AUDIO_MIME[path.extname(file).slice(1)] || 'audio/webm' }), path.basename(file));
-  const r = await fetch('https://api.elevenlabs.io/v1/speech-to-text', { method: 'POST', headers: { 'xi-api-key': key }, body: form, signal: AbortSignal.timeout(WHISPER_TIMEOUT_MS) });
-  const d = await r.json().catch(() => ({}));
-  if (!r.ok) throw new Error(`ElevenLabs (transcription) : ${r.status} ${JSON.stringify(d).slice(0, 200)}`);
-  return { ...scribeToVoice(d), model: ELEVEN_STT_MODEL, language: 'fr' };
-}
-
 // Raison d'un échec de transcription, en une courte phrase pour l'employé (le détail technique reste dans `error` et la console).
 function voiceReason(msg) {
   const m = String(msg || '');
   if (/faster-whisper n'est pas installé|No module named 'faster_whisper'/.test(m)) return 'faster-whisper n\'est pas installé sur cet ordinateur';
-  if (/clé ElevenLabs manquante/.test(m)) return 'la clé ElevenLabs est absente (ELEVENLABS_API_KEY dans .env)';
-  if (/ElevenLabs.*: (401|403)/.test(m)) return 'ElevenLabs a refusé la clé';
-  if (/ElevenLabs.*: 429/.test(m)) return 'la limite d\'utilisation ElevenLabs est atteinte';
-  if (/ElevenLabs/.test(m)) return 'ElevenLabs a renvoyé une erreur';
-  if (/trop longue|timeout|aborted/i.test(m)) return 'la transcription a pris trop de temps (' + (voiceEngine() === 'cloud' ? 'pas de réseau ?' : 'modèle non téléchargé ou pas de réseau ?') + ')';
-  if (/fetch failed|ENOTFOUND|ECONN|EAI_AGAIN/.test(m)) return 'le service cloud est injoignable (pas de réseau ?)';
+  if (/trop longue/.test(m)) return 'la transcription a pris trop de temps (modèle non téléchargé ou pas de réseau ?)';
   if (/EOF|Invalid data|av\.error|Errno/.test(m)) return 'l\'audio n\'a pas pu être lu';
   return 'erreur de transcription';
 }
@@ -452,23 +426,23 @@ function localVoiceStatus(fresh = false) {
     py.on('error', () => { clearTimeout(timer); done({ ready: false, reason: 'Python introuvable' }); });
     py.on('close', (code) => {
       clearTimeout(timer);
-      if (code !== 0) return done({ ready: false, reason: 'faster-whisper n\'est pas installé (bouton « Installer la transcription locale »)' });
+      if (code !== 0) return done({ ready: false, reason: 'la transcription locale n\'est pas encore installée' });
       if (parseInt(out, 10) >= 16) return done({ ready: false, reason: 'la bibliothèque « av » est trop récente (il faut une version < 16)' });
       done({ ready: true });
     });
   });
 }
-const cloudVoiceStatus = () => (process.env.ELEVENLABS_API_KEY ? { ready: true } : { ready: false, reason: 'la clé ElevenLabs (ELEVENLABS_API_KEY) manque dans .env' });
 
-// État de chaque moteur pour la page. `ready` / `reason` / `needsDownload` = ceux du moteur choisi.
+// État de la transcription locale pour la page (+ l'installation automatique en cours, s'il y en a une).
 app.get('/api/audio/status', async (req, res) => {
-  const engine = voiceEngine();
-  const [local, cloud] = [await localVoiceStatus(), cloudVoiceStatus()];
-  const active = engine === 'cloud' ? cloud : local;
-  res.json({ engine, ready: active.ready, reason: active.reason, needsDownload: engine === 'local' && !!local.needsDownload, local, cloud, install: installView(), canChange: ownPageOnly(req) });
+  const local = await localVoiceStatus();
+  // Prête = faster-whisper ET le modèle sont là ; un modèle à télécharger rend la voix indisponible le temps de l'installation.
+  const ready = local.ready && !local.needsDownload;
+  const reason = ready ? undefined : local.reason || (install.state === 'running' ? 'le modèle de transcription (~460 Mo) est en cours d\'installation' : 'le modèle de transcription n\'est pas encore téléchargé');
+  res.json({ ready, reason, install: installView(), canChange: ownPageOnly(req) });
 });
 
-// Réglage et installation : cet ordinateur ET une page de Twiin elle-même (pas une autre page web ouverte dans le navigateur,
+// Installation : cet ordinateur ET une page de Twiin elle-même (pas une autre page web ouverte dans le navigateur,
 // qui pourrait envoyer la requête sans autorisation, ni un nom de domaine détourné vers 127.0.0.1).
 const LOCAL_HOSTS = ['localhost', '127.0.0.1', '[::1]'];
 const hostName = (h) => { try { return new URL(`http://${h}`).hostname; } catch { return ''; } };
@@ -479,20 +453,7 @@ function ownPageOnly(req) {
   try { return LOCAL_HOSTS.includes(new URL(origin).hostname); } catch { return false; }
 }
 
-// Choix du moteur : réservé à cet ordinateur (en attendant les rôles : à terme, seule la DSI changera ce réglage).
-app.get('/api/audio/engine', (req, res) => res.json({ engine: voiceEngine() }));
-app.post('/api/audio/engine', (req, res) => {
-  if (!ownPageOnly(req)) return res.status(403).json({ error: 'réservé à cet ordinateur' });
-  try {
-    const engine = writeEngine(VOICE_SETTINGS, req.body?.engine);
-    console.log(`Moteur de transcription : ${engine}`);
-    res.json({ engine });
-  } catch (err) {
-    res.status(400).json({ error: err.message });
-  }
-});
-
-// Installation de la transcription locale (bouton de la page) : un seul travail à la fois, suivi par la page.
+// Installation de la transcription locale (automatique au lancement ; le bouton « Réessayer » de la page la relance) : un seul travail à la fois, suivi par la page.
 //   1. un .venv (ou workflows/voice-venv s'il n'y en a pas) ; 2. faster-whisper + av < 16 ; 3. le modèle « small » (~460 Mo).
 const MODEL_MB = 460;
 let install = { state: 'idle' };
@@ -565,49 +526,36 @@ function readVoiceCache(dir) {
   } catch { return []; }
 }
 
-// Transcrit l'audio de la session avec le moteur choisi (une seule fois par moteur : voice.json sert de cache et note le
-// moteur ; changer de moteur retranscrit) et renvoie des événements « voice » à heure absolue (secondes), calés sur le même
-// repère que le journal d'actions. Ne plante jamais l'analyse.
+// Transcrit l'audio de la session en local (une seule fois : voice.json sert de cache) et renvoie des événements « voice »
+// à heure absolue (secondes), calés sur le même repère que le journal d'actions. Ne plante jamais l'analyse.
 async function transcribeSession(dir) {
   const info = { status: 'none', segments: 0 };
   try {
     const audio = fs.readdirSync(dir).find((f) => AUDIO_RE.test(f));
     if (!audio) return { events: [], info };
     const voiceF = path.join(dir, 'voice.json');
-    const engine = voiceEngine();
-    let cachedEngine = null;
-    try { cachedEngine = JSON.parse(fs.readFileSync(voiceF, 'utf8')).engine || 'local'; } catch { /* pas de cache */ }
-    if (cachedEngine !== engine) {
-      fs.rmSync(voiceF, { force: true }); // cache d'un autre moteur : on le retire, une panne ne doit pas laisser l'ancien texte
+    if (!fs.existsSync(voiceF)) {
       setPhase('transcription');
       const meta = JSON.parse(fs.readFileSync(path.join(dir, 'audio.json'), 'utf8'));
-      const t0 = Date.now();
-      let out;
-      if (engine === 'cloud') {
-        out = await transcribeCloud(path.join(dir, audio));
-        out.elapsed = Math.round((Date.now() - t0) / 100) / 10;
-      } else {
-        const script = path.join(path.dirname(fileURLToPath(import.meta.url)), 'transcribe.py');
-        const tmp = voiceF + '.tmp';
-        await new Promise((resolve, reject) => {
-          const py = spawn(voicePython(), [script, '--audio', path.join(dir, audio), '--out', tmp]);
-          let err = '';
-          // Garde-fou : premier usage sans réseau (téléchargement du modèle) ou audio énorme → on abandonne, l'analyse continue sans voix
-          const timer = setTimeout(() => { py.kill('SIGKILL'); reject(new Error(`transcription trop longue (plus de ${Math.round(WHISPER_TIMEOUT_MS / 60000)} min)`)); }, WHISPER_TIMEOUT_MS);
-          py.stderr.on('data', (d) => (err += d));
-          py.on('error', (e) => { clearTimeout(timer); reject(e); });
-          py.on('close', (code) => { clearTimeout(timer); if (code === 0) resolve(); else reject(new Error(err.trim().split('\n').slice(-2).join(' ').slice(0, 400) || `code ${code}`)); });
-        });
-        out = JSON.parse(fs.readFileSync(tmp, 'utf8'));
-        fs.rmSync(tmp, { force: true });
-      }
-      out.engine = engine;
+      const script = path.join(path.dirname(fileURLToPath(import.meta.url)), 'transcribe.py');
+      const tmp = voiceF + '.tmp';
+      await new Promise((resolve, reject) => {
+        const py = spawn(voicePython(), [script, '--audio', path.join(dir, audio), '--out', tmp]);
+        let err = '';
+        // Garde-fou : premier usage sans réseau (téléchargement du modèle) ou audio énorme → on abandonne, l'analyse continue sans voix
+        const timer = setTimeout(() => { py.kill('SIGKILL'); reject(new Error(`transcription trop longue (plus de ${Math.round(WHISPER_TIMEOUT_MS / 60000)} min)`)); }, WHISPER_TIMEOUT_MS);
+        py.stderr.on('data', (d) => (err += d));
+        py.on('error', (e) => { clearTimeout(timer); reject(e); });
+        py.on('close', (code) => { clearTimeout(timer); if (code === 0) resolve(); else reject(new Error(err.trim().split('\n').slice(-2).join(' ').slice(0, 400) || `code ${code}`)); });
+      });
+      const out = JSON.parse(fs.readFileSync(tmp, 'utf8'));
       out.audio_started_at_ms = meta.startedAt;
       fs.writeFileSync(voiceF, JSON.stringify(out, null, 2));
-      console.log(`Transcription ${engine === 'cloud' ? 'cloud (ElevenLabs)' : 'locale'} : ${out.segments.length} segment(s), ${out.audio_duration} s d'audio, ${out.elapsed} s de calcul`);
+      fs.rmSync(tmp, { force: true });
+      console.log(`Transcription locale : ${out.segments.length} segment(s), ${out.audio_duration} s d'audio, ${out.elapsed} s de calcul`);
     }
     const events = readVoiceCache(dir);
-    return { events, info: { status: events.length ? 'ok' : 'empty', segments: events.length, engine } };
+    return { events, info: { status: events.length ? 'ok' : 'empty', segments: events.length } };
   } catch (err) {
     console.warn(`⚠️ Voix non transcrite, l'analyse continue sans elle : ${err.message}`);
     return { events: [], info: { status: 'failed', segments: 0, reason: voiceReason(err.message), error: String(err.message).slice(0, 200) } };
@@ -2068,4 +2016,16 @@ app.get('/api/audit/resultat', async (req, res) => {
   }
 });
 
-app.listen(PORT, () => console.log(`workflow-recorder (Hugging Face) running at http://localhost:${PORT}`));
+app.listen(PORT, () => {
+  console.log(`workflow-recorder (Hugging Face) running at http://localhost:${PORT}`);
+  // Transcription locale : si faster-whisper ou le modèle manquent, installation automatique en arrière-plan (un seul essai
+  // par lancement ; la page montre l'avancement et propose « Réessayer » en cas d'échec). VOICE_AUTO_INSTALL=0 la désactive.
+  if (process.env.VOICE_AUTO_INSTALL !== '0') {
+    localVoiceStatus(true).then((st) => {
+      if ((st.ready && !st.needsDownload) || install.state === 'running') return;
+      console.log('Transcription locale absente : installation automatique…');
+      install = { state: 'running', step: 'python', message: 'Vérification de Python…', startedAt: Date.now() };
+      installVoice();
+    }).catch(() => {});
+  }
+});
