@@ -1,37 +1,50 @@
 // Découverte de la tâche, vue de l'employé : un écran de chargement par étapes, UNE question
-// (« Ai-je bien compris votre problème ? »), puis la solution retenue. Le jumeau et les essais restent côté serveur.
+// (« Ai-je bien compris ton problème ? »), puis la solution retenue. Le jumeau et les essais restent côté serveur.
 (() => {
   const css = document.createElement('style');
   css.textContent = `
-  #discovery { position: fixed; inset: 0; z-index: 50; display: flex; align-items: center; justify-content: center;
-    background: rgba(15, 18, 24, .45); padding: 16px; }
+  /* Au style du thème Twiin : carte opaque, au-dessus de tout (sidebar comprise), voile flouté, texte lisible */
+  #discovery { position: fixed; inset: 0; z-index: 2000; display: flex; align-items: center; justify-content: center;
+    background: rgba(18, 20, 24, .38); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); padding: 24px; }
   #discovery[hidden] { display: none; }
-  #discovery.dc-mini { inset: auto 16px 16px auto; background: none; padding: 0; pointer-events: none; }
-  #discovery.dc-mini .dc-card { width: min(380px, calc(100vw - 32px)); pointer-events: auto; padding: 14px 16px 12px; }
-  #discovery.dc-mini h3 { font-size: 15px; }
-  #discovery .dc-card { width: min(520px, 100%); max-height: calc(100vh - 32px); overflow: auto;
-    background: var(--panel, #fff); border: 1px solid var(--panel-border, #dadce0); border-radius: 16px;
-    box-shadow: 0 16px 40px rgba(0,0,0,.25); padding: 22px 22px 18px; font-size: 14px; color: var(--text, #1f1f1f); }
-  #discovery h3 { margin: 0 0 10px; font-size: 18px; }
-  #discovery p { margin: 6px 0; color: var(--text-dim, #5f6368); }
-  #discovery ol, #discovery ul { margin: 6px 0 8px 18px; padding: 0; }
-  #discovery .dc-steps { list-style: none; margin: 4px 0 0; padding: 0; }
-  #discovery .dc-steps li { display: flex; align-items: center; gap: 10px; padding: 7px 0; color: var(--text-dim, #5f6368); }
-  #discovery .dc-steps li.done { color: var(--text, #1f1f1f); }
-  #discovery .dc-steps li.active { color: var(--text, #1f1f1f); font-weight: 600; }
-  #discovery .dc-steps i { width: 18px; height: 18px; border-radius: 50%; border: 2px solid var(--panel-border, #c4c7c5); flex: none;
-    display: grid; place-items: center; font-style: normal; font-size: 11px; }
-  #discovery .dc-steps li.done i { background: var(--ok, #188038); border-color: var(--ok, #188038); color: #fff; }
+  #discovery.dc-mini { inset: auto 20px 20px auto; background: none; backdrop-filter: none; -webkit-backdrop-filter: none; padding: 0; pointer-events: none; }
+  #discovery.dc-mini .dc-card { width: min(380px, calc(100vw - 40px)); pointer-events: auto; padding: 18px 20px 16px; }
+  #discovery .dc-card { width: min(640px, 100%); max-height: calc(100vh - 48px); overflow: auto;
+    background: var(--panel-solid, #f7f8fa) !important; border: 1px solid var(--panel-border, #e3e6ec); border-radius: 28px;
+    box-shadow: 0 40px 90px -30px rgba(20, 30, 60, .55); padding: 30px 32px 26px; font-size: 15.5px; line-height: 1.5; color: var(--text, #16181d);
+    animation: dcIn .22s ease-out; }
+  @keyframes dcIn { from { opacity: 0; transform: translateY(8px) scale(.985); } }
+  #discovery h3 { margin: 0 0 12px; font-size: 24px; font-weight: 800; letter-spacing: -.025em; line-height: 1.2; }
+  #discovery p { margin: 8px 0; color: var(--text-dim, #6b7180); }
+  #discovery p b { color: var(--text, #16181d); }
+  #discovery .dc-pb { color: var(--text, #16181d); font-size: 16.5px; }
+  #discovery ol, #discovery ul { margin: 8px 0 10px; padding-left: 22px; }
+  #discovery ol li { margin: 4px 0; }
+  #discovery .dc-steps { list-style: none; margin: 6px 0 0; padding: 0; }
+  #discovery .dc-steps li { display: flex; align-items: center; gap: 12px; padding: 8px 0; color: var(--text-dim, #6b7180); }
+  #discovery .dc-steps li.done, #discovery .dc-steps li.active { color: var(--text, #16181d); }
+  #discovery .dc-steps li.active { font-weight: 600; }
+  #discovery .dc-steps i { width: 22px; height: 22px; border-radius: 50%; border: 2px solid var(--line, #d7dae0); flex: none;
+    display: grid; place-items: center; font-style: normal; font-size: 12px; }
+  #discovery .dc-steps li.done i { background: var(--accent, #121418); border-color: var(--accent, #121418); color: var(--accent-ink, #fff); }
   #discovery .dc-steps li.done i::after { content: '✓'; }
-  #discovery .dc-steps li.active i { border-color: var(--accent, #0b57d0); border-top-color: transparent; animation: dcspin .9s linear infinite; }
+  #discovery .dc-steps li.active i { border-color: var(--blue, #7d9be3); border-top-color: transparent; animation: dcspin .9s linear infinite; }
   @keyframes dcspin { to { transform: rotate(360deg); } }
-  @media (prefers-reduced-motion: reduce) { #discovery .dc-steps li.active i { animation: none; } }
-  #discovery .dc-bar { height: 6px; border-radius: 3px; background: var(--accent-soft, #e8f0fe); overflow: hidden; margin: 4px 0 0 28px; }
-  #discovery .dc-bar span { display: block; height: 100%; background: var(--accent, #0b57d0); transition: width .4s; }
-  #discovery .dc-row { display: flex; gap: 8px; margin-top: 14px; flex-wrap: wrap; }
-  #discovery textarea { width: 100%; min-height: 70px; margin-top: 8px; font: inherit; padding: 8px;
-    border-radius: 8px; border: 1px solid var(--panel-border, #dadce0); background: transparent; color: inherit; box-sizing: border-box; }
-  #discovery .dc-doubt { font-size: 13px; }`;
+  @media (prefers-reduced-motion: reduce) { #discovery .dc-steps li.active i, #discovery .dc-card { animation: none; } }
+  #discovery .dc-bar { height: 6px; border-radius: 3px; background: var(--accent-soft, #e8ecf7); overflow: hidden; margin: 2px 0 6px 34px; }
+  #discovery .dc-bar span { display: block; height: 100%; background: linear-gradient(90deg, var(--blue, #7d9be3), var(--coral, #e56b6b)); transition: width .4s; }
+  #discovery .dc-row { display: flex; gap: 10px; margin-top: 20px; flex-wrap: wrap; }
+  #discovery .dc-row button { padding: 12px 20px !important; font-size: 15px !important; }
+  /* bouton principal de la popup (la page retire « primary » aux boutons qu'elle ne gère pas) */
+  .dc-primary { background: var(--accent, #121418) !important; color: var(--accent-ink, #fff) !important; border-color: var(--accent, #121418) !important;
+    font-weight: 600 !important; box-shadow: 0 10px 22px -10px rgba(18, 20, 24, .55) !important; }
+  #discovery .dc-table { overflow-x: auto; margin: 8px 0; border-radius: 14px; border: 1px solid var(--line, #e3e6ec); background: var(--panel-2, #fff); }
+  #discovery .dc-table table { border-collapse: collapse; font-size: 14px; width: 100%; display: table !important; }
+  #discovery .dc-table th { text-align: left; padding: 8px 12px; color: var(--text-dim, #6b7180); font-weight: 600; border-bottom: 1px solid var(--line, #e3e6ec); }
+  #discovery .dc-table td { padding: 8px 12px; border-bottom: 1px solid var(--line, #eef0f3); }
+  #discovery textarea { width: 100%; min-height: 90px; margin-top: 12px; font: inherit; padding: 12px 14px;
+    border-radius: 16px; border: 1px solid var(--panel-border, #e3e6ec); background: var(--panel-2, #fff); color: inherit; box-sizing: border-box; }
+  #discovery .dc-doubt { font-size: 14px; padding: 10px 14px; border-radius: 14px; background: var(--warn-soft, #fdf3dc); color: var(--text, #16181d); }`;
   document.head.appendChild(css);
 
   const box = document.createElement('section');
@@ -50,7 +63,7 @@
   const BEFORE = [
     ['Enregistrement reçu', []],
     ['Envoi de la tâche', ['upload']],
-    ['Compréhension de votre problème', ['cadrage']],
+    ['Compréhension de ton problème', ['cadrage']],
   ];
   const AFTER = [
     ['Problème confirmé', []],
@@ -86,8 +99,8 @@
       <li class="${i < cur ? 'done' : i === cur ? 'active' : ''}"><i></i>${esc(label)}${
         i === cur && pct != null ? ` (${progress.done}/${progress.total})` : ''}</li>${
         i === cur && pct != null ? `<div class="dc-bar"><span style="width:${pct}%"></span></div>` : ''}`).join('')}</ul>
-      <p>${steps === AFTER ? 'Votre recommandation s’affiche sur la page. Twiin vous prévient quand les tests sont finis.'
-                           : 'Vous pouvez continuer à utiliser la page, Twiin vous préviendra.'}</p>
+      <p>${steps === AFTER ? 'Ta recommandation s’affiche sur la page. Twiin te prévient quand les tests sont finis.'
+                           : 'Tu peux continuer à utiliser la page : Twiin te préviendra.'}</p>
       <div class="dc-row"><button class="dc-hide">Masquer</button></div>`;
     card.querySelector('.dc-hide').onclick = () => { box.hidden = true; view = 'hidden'; };
     if (view !== 'hidden') box.hidden = false;
@@ -105,7 +118,7 @@
       }
       if (ok) { view = 'loading-2'; loading('Merci ! Twiin cherche la meilleure solution', AFTER, 'answered'); }
       else {
-        card.innerHTML = '<h3>Merci pour la précision</h3><p>Twiin reprend son analyse avec votre correction.</p>';
+        card.innerHTML = '<h3>Merci pour la précision</h3><p>Twiin reprend son analyse avec ta correction.</p>';
         view = 'closed';
         setTimeout(() => { box.hidden = true; }, 5000);
       }
@@ -119,25 +132,25 @@
     view = 'question';
     box.classList.remove('dc-mini');
     card.innerHTML = `
-      <h3>${esc(q.titre || 'Ai-je bien compris votre problème ?')}</h3>
-      <p>${esc(q.probleme)}</p>
+      <h3>${esc(q.titre || 'Ai-je bien compris ton problème ?')}</h3>
+      <p class="dc-pb">${esc(q.probleme)}</p>
       ${q.etapes?.length ? `<ol>${q.etapes.map((e) => `<li>${esc(e)}</li>`).join('')}</ol>` : ''}
       ${q.outils?.length ? `<p><b>Outils :</b> ${q.outils.map(esc).join(', ')}</p>` : ''}
       ${q.objectif ? `<p><b>Objectif :</b> ${esc(q.objectif)}</p>` : ''}
       ${q.resultat?.lignes?.length ? `<p><b>Résultat attendu :</b> ${esc(q.resultat.description || '')}</p>
-        <div style="overflow-x:auto"><table style="border-collapse:collapse;font-size:13px;width:100%">
-          <tr>${(q.resultat.colonnes || Object.keys(q.resultat.lignes[0])).map((c) => `<th style="text-align:left;padding:4px 8px 4px 0;border-bottom:1px solid var(--panel-border)">${esc(c)}</th>`).join('')}</tr>
-          ${q.resultat.lignes.map((r) => `<tr>${(q.resultat.colonnes || Object.keys(r)).map((c) => `<td style="padding:4px 8px 4px 0">${esc(r[c] ?? '')}</td>`).join('')}</tr>`).join('')}
+        <div class="dc-table"><table>
+          <tr>${(q.resultat.colonnes || Object.keys(q.resultat.lignes[0])).map((c) => `<th>${esc(c)}</th>`).join('')}</tr>
+          ${q.resultat.lignes.map((r) => `<tr>${(q.resultat.colonnes || Object.keys(r)).map((c) => `<td>${esc(r[c] ?? '')}</td>`).join('')}</tr>`).join('')}
         </table></div>` : ''}
       ${q.doutes?.length ? `<p class="dc-doubt"><b>À confirmer :</b> ${q.doutes.map(esc).join(' · ')}</p>` : ''}
       <div class="dc-row">
-        <button class="primary dc-yes">Oui, c'est bien ça</button>
+        <button class="dc-primary dc-yes">Oui, c'est bien ça</button>
         <button class="dc-no">Non, je précise</button>
       </div>`;
     card.querySelector('.dc-yes').onclick = () => send(true, '');
     card.querySelector('.dc-no').onclick = () => {
       card.querySelector('.dc-row').outerHTML = `<textarea placeholder="Qu'est-ce qui ne correspond pas ?"></textarea>
-        <div class="dc-row"><button class="primary dc-send">Envoyer</button></div>`;
+        <div class="dc-row"><button class="dc-primary dc-send">Envoyer</button></div>`;
       card.querySelector('.dc-send').onclick = () => send(false, card.querySelector('textarea').value);
     };
     box.hidden = false;
@@ -174,8 +187,8 @@
       <p>${esc(s.texte)}</p>
       ${(s.raisons || []).length ? `<details><summary>Pourquoi</summary><ul>${s.raisons.map((r) => `<li>${esc(r)}</li>`).join('')}</ul></details>` : ''}
       <p class="dc-msg"></p>
-      <div class="dc-row">${s.kind === 'automate' ? '<button class="primary dc-create">Créer cette automatisation</button>' : ''}
-        <button class="${s.kind === 'automate' ? '' : 'primary '}dc-ok">${s.kind === 'automate' ? 'Plus tard' : 'Compris'}</button></div>`;
+      <div class="dc-row">${s.kind === 'automate' ? '<button class="dc-primary dc-create">Créer cette automatisation</button>' : ''}
+        <button class="${s.kind === 'automate' ? '' : 'dc-primary '}dc-ok">${s.kind === 'automate' ? 'Plus tard' : 'Compris'}</button></div>`;
     const create = card.querySelector('.dc-create');
     if (create) create.onclick = async () => {
       const msg = card.querySelector('.dc-msg');
@@ -197,12 +210,12 @@
     try {
       const d = await (await fetch('/api/discovery')).json();
       const ph = d.phase;
-      if (['upload', 'cadrage'].includes(ph) && view !== 'hidden') loading('Twiin étudie votre tâche', BEFORE, ph);
+      if (['upload', 'cadrage'].includes(ph) && view !== 'hidden') loading('Twiin étudie ta tâche', BEFORE, ph);
       else if (ph === 'awaiting_confirmation' && d.question && view !== 'question') question(d.question);
       else if (['answered', 'casse'].includes(ph) && view !== 'hidden') loading('Twiin cherche la meilleure solution', AFTER, ph, d.progress);
       else if (ph === 'done' && d.solution && view !== 'solution' && closedFor !== JSON.stringify(d.solution)) solution(d.solution);
       else if (ph === 'error' && view && view !== 'closed') {
-        card.innerHTML = '<h3>Twiin n\'a pas pu terminer l\'étude</h3><p>Réessayez avec « Réanalyser le dernier enregistrement ».</p>' +
+        card.innerHTML = '<h3>Twiin n\'a pas pu terminer l\'étude</h3><p>Réessaie avec « Réanalyser ».</p>' +
           '<div class="dc-row"><button class="dc-hide">Fermer</button></div>';
         card.querySelector('.dc-hide').onclick = () => { box.hidden = true; };
         view = 'closed';
