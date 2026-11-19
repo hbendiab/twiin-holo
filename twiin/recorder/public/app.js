@@ -136,12 +136,15 @@ if (REDUCED_MOTION) { drawLogo(0.45); drawAnalysis(0.3); } else requestAnimation
 // --- Attente de l'analyse : étapes réelles, cochées au fil de l'eau (le serveur dit où il en est) -------------------
 const analysisEl = document.getElementById('analysis');
 const phasesEl = document.getElementById('phases');
-const PHASES = [
+const PHASES_BASE = [
   ['upload', 'Envoi des dernières images'],
   ['ocr', 'Lecture du texte de l\'écran, sur ton Mac'],
   ['model', 'Découpage en étapes par le modèle'],
   ['parse', 'Mise en forme du résultat'],
 ];
+// avec la voix : une étape de plus, juste après l'envoi
+const PHASES_VOICE = [PHASES_BASE[0], ['transcription', 'Transcription de ta voix, sur ton Mac'], ...PHASES_BASE.slice(1)];
+let PHASES = PHASES_BASE;
 let phaseTimer = null, phaseStart = 0, phaseCurrent = null;
 function showPhase(phase) {
   if (phase !== phaseCurrent) { phaseCurrent = phase; phaseStart = Date.now(); }
@@ -222,6 +225,60 @@ function renderScreens() {
     .join('');
 }
 
+// --- Capture vocale : interrupteur (désactivé par défaut, choix mémorisé), micro du navigateur, envoi à la fin ------
+const voiceSwitch = document.getElementById('voiceSwitch');
+try { voiceSwitch.checked = localStorage.getItem('twiin.voice') === '1'; } catch { /* stockage indisponible : désactivé */ }
+voiceSwitch.addEventListener('change', () => {
+  try { localStorage.setItem('twiin.voice', voiceSwitch.checked ? '1' : '0'); } catch { /* rien */ }
+});
+let voice = null; // { rec, stream, chunks, startedAt, stopped: Promise }
+let voiceWarning = ''; // problème de micro / d'envoi : reste affiché (la ligne d'état est réécrite chaque seconde)
+
+// Demande le micro (avant de démarrer les horloges, car la fenêtre d'autorisation peut prendre du temps).
+async function openMic() {
+  if (!voiceSwitch.checked) return null;
+  try {
+    return await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } });
+  } catch (e) {
+    voiceWarning = `⚠️ Micro non disponible (${e.name || e.message}) : enregistrement sans la voix.`;
+    console.warn(voiceWarning);
+    statusEl.textContent = voiceWarning;
+    return null;
+  }
+}
+
+function startVoice(stream) {
+  if (!stream) return;
+  const mime = ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4'].find((m) => MediaRecorder.isTypeSupported(m));
+  const rec = new MediaRecorder(stream, mime ? { mimeType: mime } : undefined);
+  const v = { rec, stream, chunks: [], startedAt: 0, stopped: null };
+  rec.addEventListener('dataavailable', (e) => { if (e.data.size) v.chunks.push(e.data); });
+  rec.addEventListener('start', () => { v.startedAt = Date.now(); }); // heure réelle du premier échantillon, même horloge que les images
+  v.stopped = new Promise((resolve) => rec.addEventListener('stop', resolve));
+  rec.start(1000);
+  voice = v;
+}
+
+// Arrête le micro et envoie l'audio au serveur. Ne bloque jamais l'analyse : renvoie true si l'audio est bien parti.
+async function stopVoice(session) {
+  const v = voice;
+  voice = null;
+  if (!v) return false;
+  try {
+    if (v.rec.state !== 'inactive') v.rec.stop();
+    await v.stopped;
+    v.stream.getTracks().forEach((t) => t.stop());
+    if (!session || !v.chunks.length || !v.startedAt) return false;
+    const blob = new Blob(v.chunks, { type: v.rec.mimeType || 'audio/webm' });
+    const r = await fetch(`/api/audio?session=${encodeURIComponent(session)}&startedAt=${v.startedAt}`,
+      { method: 'POST', headers: { 'Content-Type': blob.type }, body: blob });
+    return r.ok;
+  } catch (e) {
+    console.warn('Audio non envoyé :', e);
+    return false;
+  }
+}
+
 async function startRecording() {
   frames = [];
   framesEl.innerHTML = '';
@@ -235,6 +292,9 @@ async function startRecording() {
     statusEl.textContent = '';
     return;
   }
+  voiceWarning = '';
+  const micStream = await openMic();
+  voiceSwitch.disabled = true;
   recording = true;
   document.body.classList.add('recording');
   setStep(2);
@@ -244,6 +304,7 @@ async function startRecording() {
   ticks = 0;
   startedAt = Date.now();
   uploads = []; uploadErrors = 0;
+  startVoice(micStream);
   await startJournal(); // crée le dossier de l'enregistrement côté serveur avant la première image
   startBtn.disabled = true;
   addBtn.disabled = false;
@@ -370,7 +431,7 @@ function tick() {
   ticks++;
   const now = Date.now();
   for (const scr of screens) observe(scr, now);
-  statusEl.textContent = `● Enregistrement en cours · ${fmtDur((Date.now() - startedAt) / 1000)}${screens.length > 1 ? ` · ${screens.length} écrans` : ''}`;
+  statusEl.textContent = `● Enregistrement en cours · ${fmtDur((Date.now() - startedAt) / 1000)}${screens.length > 1 ? ` · ${screens.length} écrans` : ''}${voiceWarning ? ` · ${voiceWarning}` : ''}`;
 }
 
 function keepFrame(scr, thumb, now) {
@@ -413,6 +474,9 @@ async function stopRecording() {
   stopBtn.disabled = true;
   addBtn.disabled = true;
   statusEl.textContent = '';
+  const hadVoice = !!voice;
+  const sid = sessionId; // le micro s'arrête tout de suite (l'audio finit au clic), l'envoi se fait en parallèle
+  const voiceSent = stopVoice(sid);
   await stopJournal();               // lit les dernières actions (et force les dernières images)
   await new Promise((r) => setTimeout(r, 900));
   for (const scr of screens) if (scr.video?.videoWidth) keepFrame(scr, thumbnail(scr.video), Date.now()); // état final
@@ -426,21 +490,30 @@ async function stopRecording() {
   startBtn.disabled = false;
   addBtn.disabled = true;
   stopBtn.disabled = true;
+  voiceSwitch.disabled = false;
 
   setPrimary(startBtn);
   if (!frames.length) {
+    await voiceSent;
     statusEl.textContent = 'Aucune image gardée.';
     return;
   }
 
   statusEl.textContent = '';
+  PHASES = hadVoice ? PHASES_VOICE : PHASES_BASE;
   startAnalysisPanel('upload');
 
   if (sessionId) {
-    await Promise.allSettled(uploads);
+    await Promise.allSettled([...uploads, voiceSent]);
+    if (hadVoice && !(await voiceSent)) {
+      voiceWarning = '⚠️ La voix n\'a pas pu être enregistrée côté serveur (enregistrement trop court ?) : analyse sans elle.';
+      console.warn(voiceWarning);
+      statusEl.textContent = voiceWarning;
+    }
     if (uploadErrors) statusEl.textContent = `⚠️ ${uploadErrors} image(s) non enregistrée(s) côté serveur. Analyse quand même…`;
     await analyzeRequest('/api/generate-workflows', { session: sessionId, startedAt, screens: sharedScreens }, null, nScreens);
   } else {
+    if (hadVoice) { voiceWarning = '⚠️ La voix n\'a pas pu être enregistrée (pas de dossier côté serveur) : analyse sans elle.'; await voiceSent; }
     await analyzeRequest('/api/generate-workflows', { frames, startedAt, screens: sharedScreens }, null, nScreens);
   }
 }
@@ -448,6 +521,7 @@ async function stopRecording() {
 async function analyzeRequest(url, body, message, nScreens) {
   if (message) statusEl.textContent = message;
   reBtn.disabled = true;
+  if (url.includes('reanalyze')) PHASES = PHASES_BASE;
   if (analysisEl.hidden || phaseCurrent === null) startAnalysisPanel(url.includes('reanalyze') ? 'ocr' : 'upload');
   try {
     const res = await fetch(url, {
@@ -461,7 +535,7 @@ async function analyzeRequest(url, body, message, nScreens) {
     const m = data._meta || {};
     const n = data.workflows?.length ?? 0;
     endAnalysisPanel(true, `${n} tâche${n > 1 ? 's' : ''} trouvée${n > 1 ? 's' : ''}. Relis les étapes ci-dessous.`);
-    statusEl.textContent = ''; // le détail technique (modèle, jetons, coût) est dans le Back
+    statusEl.textContent = voiceWarning; // seulement l'avertissement micro/voix ; le détail technique (modèle, jetons, coût) est dans le Back
   } catch (err) {
     statusEl.textContent = `Erreur : ${err.message}`;
     endAnalysisPanel(false, `${err.message} Tu peux cliquer sur « Réanalyser le dernier enregistrement ».`);

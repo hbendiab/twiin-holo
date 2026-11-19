@@ -11,6 +11,8 @@ dependencies = [
     "pillow>=10",                    # taille des captures des tutos
     "mutagen>=1.47",                 # durée des voix off ElevenLabs
     "json-repair>=0.30",             # réparation des réponses JSON du modèle
+    "faster-whisper>=1.1",           # transcription locale de la voix (capture vocale)
+    "av<16",                         # faster-whisper lit l'audio avec av ; la v16+ casse faster-whisper (metadata_errors)
     "pyobjc-framework-Vision>=10; sys_platform == 'darwin'",
     "pyobjc-framework-Quartz>=10; sys_platform == 'darwin'",
     "pyyaml>=6",                     # brique Audit v2 : bibliothèque de tâches (audit/data/taches_par_role.yaml)
