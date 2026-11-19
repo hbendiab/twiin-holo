@@ -1,13 +1,24 @@
 import dotenv from 'dotenv';
+import os from 'node:os';
 import express from 'express';
 import OpenAI from 'openai';
 import { jsonrepair } from 'jsonrepair';                // réparation locale des JSON mal formés               // <-- remplace @anthropic-ai/sdk (Hugging Face est compatible OpenAI)
 import fs from 'fs';
 import path from 'path';
-import { spawn } from 'child_process';
+import { spawn as spawnRaw } from 'child_process';
+// Windows : aucun programme lancé par Twiin n'ouvre de fenêtre (console Python, PowerShell…)
+const spawn = (cmd, args, opts = {}) => spawnRaw(cmd, args, { windowsHide: true, ...opts });
+// Arrête un programme et tous ceux qu'il a lancés (Holo, navigateur…). Sous Windows, kill() ne suffit pas.
+function killTree(proc) {
+  if (!proc || proc.exitCode !== null) return;
+  if (process.platform === 'win32') spawnRaw('taskkill', ['/PID', String(proc.pid), '/T', '/F'], { windowsHide: true });
+  else { try { process.kill(-proc.pid, 'SIGTERM'); } catch { proc.kill('SIGTERM'); } }
+}
+// Holo plus rapide pour les rejeux et les blocs Holo de n8n : holo4 (pas de limite de 10 requêtes/minute du modèle gratuit).
+process.env.HOLO_MODEL ||= 'holo4-35b-a3b';
+const spawnMac = (args) => { try { const c = spawnMac(args); c.on('error', () => {}); return c; } catch { return null; } }; // Windows : osascript absent
 import { fileURLToPath } from 'url';
 import crypto from 'crypto';
-import os from 'os';
 import { AsyncLocalStorage } from 'async_hooks';
 
 // recorder/ sits one level below the repo root, alongside the twiin/ Python package
@@ -16,6 +27,23 @@ const CANDIDATES_PATH = path.join(REPO_ROOT, 'workflows', 'candidates.json');
 
 // project-wide .env lives at the repo root, same file Holo's pieces read
 dotenv.config({ path: path.join(REPO_ROOT, '.env') });
+// n8n local : sans clé dans le .env, on reprend celles de n8ncli (n8ncli envs edit LOCAL …), comme les scripts Python.
+try {
+  const l = JSON.parse(fs.readFileSync(path.join(os.homedir(), '.n8ncli-global.json'), 'utf8')).environments?.LOCAL || {};
+  process.env.N8N_LOCAL_URL ||= l.instanceUrl || '';
+  process.env.N8N_LOCAL_API_KEY ||= l.apiKey || '';
+  process.env.N8N_LOCAL_MCP_TOKEN ||= l.accessToken || '';
+} catch { /* pas de n8ncli : clés du .env seulement */ }
+if (!process.env.N8N_LOCAL_URL) delete process.env.N8N_LOCAL_URL;
+// Jeton du pont n8n → Holo : généré une fois et gardé sur le poste (dossier ignoré par git) s'il n'est pas dans le .env
+if (!process.env.TWIIN_LOCAL_TOKEN) {
+  const f = path.join(REPO_ROOT, 'workflows', 'runs', '.twiin_local_token');
+  try { process.env.TWIIN_LOCAL_TOKEN = fs.readFileSync(f, 'utf8').trim(); } catch {
+    fs.mkdirSync(path.dirname(f), { recursive: true });
+    process.env.TWIIN_LOCAL_TOKEN = crypto.randomBytes(24).toString('base64url');
+    fs.writeFileSync(f, process.env.TWIIN_LOCAL_TOKEN);
+  }
+}
 
 const app = express();
 app.use(express.json({ limit: '200mb' }));
@@ -43,7 +71,7 @@ async function sbUserFromToken(token) {
   const r = await fetch(`${SB_URL}/auth/v1/user`, { headers: { apikey: SB_ANON, Authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(8000) });
   if (!r.ok) return null;
   const u = await r.json();
-  const user = { id: u.id, email: u.email, token };
+  const user = { id: u.id, email: u.email, token, company_id: u.app_metadata?.company_id || null };
   tokenCache.set(token, { user, until: Date.now() + 5 * 60 * 1000 });
   return user;
 }
@@ -72,7 +100,7 @@ const keepUser = (fn) => { const u = als.getStore(); return (...a) => (u ? als.r
 app.get('/api/config', (req, res) => res.json({ supabase: SB_ON ? { url: SB_URL, anonKey: SB_ANON } : null }));
 // Toutes les routes /api demandent un employé connecté, sauf : la config, la voix (balise <audio>), le pont n8n → Holo
 // (il a son propre jeton) et les fichiers servis.
-const OPEN_API = ['/config', '/voice/say', '/holo/run'];
+const OPEN_API = ['/config', '/voice/say', '/holo/run', '/holo/web', '/excel/write']; // ponts n8n : jeton Twiin propre
 app.use('/api', async (req, res, next) => {
   if (!SB_ON || OPEN_API.some((p) => req.path.startsWith(p))) return next();
   const token = (req.headers.authorization || '').replace(/^Bearer\s+/i, '');
@@ -91,8 +119,16 @@ const HF_MODEL = process.env.HF_MODEL || 'Qwen/Qwen3.8-27B'; // généraliste vi
 const MAX_FRAMES = parseInt(process.env.HF_MAX_FRAMES || '24', 10);      // images envoyées au modèle (coût)
 const OCR_MAX_CHARS = parseInt(process.env.OCR_MAX_CHARS || '40000', 10); // texte OCR envoyé au modèle, au plus
 const OCR_MIN_CONF = 0.5;                                                  // lignes OCR moins sûres : ignorées
-const PYTHON = fs.existsSync(path.join(REPO_ROOT, '.venv', 'bin', 'python'))
-  ? path.join(REPO_ROOT, '.venv', 'bin', 'python') : 'python3';
+// Python : premier venv trouvé (twiin/.venv ou .venv à la racine du dépôt), sous macOS/Linux (bin/) ou Windows (Scripts/).
+const IS_WIN = process.platform === 'win32';
+const PYTHON = [path.join(REPO_ROOT, '.venv'), path.join(REPO_ROOT, '..', '.venv')]
+  .map((v) => path.join(v, IS_WIN ? 'Scripts' : 'bin', IS_WIN ? 'python.exe' : 'python'))
+  .find((p) => fs.existsSync(p)) || (IS_WIN ? 'python' : 'python3');
+process.env.PYTHONUTF8 = '1';          // Windows : les scripts Python lisent et écrivent en UTF-8 (accents, « »)
+process.env.PYTHONIOENCODING = 'utf-8';
+// Scripts propres au système : macOS (Vision, Quartz) ou Windows (Windows.Media.Ocr, UI Automation)
+const OCR_SCRIPT = IS_WIN ? 'ocr_win.py' : 'ocr.py';
+const ACTIONS_SCRIPT = IS_WIN ? 'actions_win.py' : 'actions.py';
 const LAST_RUN_PATH = path.join(REPO_ROOT, 'workflows', 'last_run.json'); // OCR + usage du dernier enregistrement (local)
 
 // Prix du modèle par fournisseur ($ / million de tokens), lus une fois au démarrage pour estimer le coût.
@@ -108,10 +144,12 @@ fetch('https://router.huggingface.co/v1/models', { headers: { Authorization: `Be
 // OCR local (framework Vision de macOS) sur toutes les images gardées : rien ne sort du Mac.
 function runOcr(frames) {
   return new Promise((resolve) => {
-    const py = spawn(PYTHON, [path.join(path.dirname(fileURLToPath(import.meta.url)), 'ocr.py')]);
+    const py = spawn(PYTHON, [path.join(path.dirname(fileURLToPath(import.meta.url)), OCR_SCRIPT)]);
     let out = '', err = '';
     py.stdout.on('data', (d) => (out += d));
     py.stderr.on('data', (d) => (err += d));
+    py.on('error', (e) => { console.error('OCR indisponible :', e.message); resolve([]); });
+    py.stdin.on('error', () => {});
     py.on('close', (code) => {
       if (code !== 0) { console.error('OCR échoué :', err.slice(0, 500)); return resolve([]); }
       try { resolve(JSON.parse(out)); } catch { resolve([]); }
@@ -164,8 +202,8 @@ one app to another, say which values go where.
 Segment the session into distinct candidate workflows.
 
 You also receive an ACTION LOG recorded on the computer during the session: the exact time of every click,
-typing burst (keys are never recorded, only that typing happened and where), keyboard shortcut (⌘C copy, ⌘V paste,
-⌘S save…), structure key (Enter, Tab, Escape: they move between fields, e.g. Enter leaves a page title) and app switch, with the screen, the app, the window title and the label of the clicked element.
+typing burst (keys are never recorded, only that typing happened and where), keyboard shortcut (⌘C / Ctrl+C copy, ⌘V / Ctrl+V paste,
+⌘S / Ctrl+S save… ; ⌃ means Ctrl on Windows), structure key (Enter, Tab, Escape: they move between fields, e.g. Enter leaves a page title) and app switch, with the screen, the app, the window title and the label of the clicked element.
 The ACTION LOG is authoritative for the ORDER of actions, the SCREEN and APP used, and WHERE the user clicked or
 typed. Match each typing burst with the next frame of that screen to read WHAT was typed (from the OCR text).
 You also receive an OCR TRANSCRIPT: the exact text read on every kept frame by a local OCR engine
@@ -366,7 +404,9 @@ app.post('/api/actions/start', (req, res) => {
   try {
     if (recorderSession?.proc) recorderSession.proc.kill('SIGTERM');
     const { id, dir } = newSessionDir();
-    const proc = spawn(PYTHON, [path.join(path.dirname(fileURLToPath(import.meta.url)), 'actions.py'), '--out', path.join(dir, 'actions.jsonl')]);
+    const proc = spawn(PYTHON, [path.join(path.dirname(fileURLToPath(import.meta.url)), ACTIONS_SCRIPT), '--out', path.join(dir, 'actions.jsonl')]);
+    proc.on('error', (e) => console.warn('[journal] indisponible :', e.message));
+    proc.stdin.on('error', () => {});
     proc.stderr.on('data', (d) => console.warn('[journal]', String(d).trim().slice(0, 300)));
     proc.on('close', (code) => console.log(`Journal d'actions arrêté (code ${code})`));
     recorderSession = { id, dir, proc, startedAt: req.body?.startedAt || Date.now() };
@@ -444,10 +484,16 @@ async function analyze({ frames, transcript, actionLog = '', ocrLines = 0, scree
   meta.session = session;
   for (const w of result.workflows || []) w.session = session; // la tâche garde le lien vers SON enregistrement
   if (sbUser()) {
-    const rows = await sb('tasks', { method: 'POST', prefer: 'return=representation', body: (result.workflows || []).map((w) => ({
-      name: w.name || 'Tâche', summary: w.summary || null, why: w.why_daily || null, steps: w.steps || [], session, source: 'analyse',
-      meta: { model: HF_MODEL, provider, tokens_in: usage.prompt_tokens, tokens_out: usage.completion_tokens, cost_usd,
-              images_sent: used.length, ocr_lines: ocrLines, screens } })) });
+    // Table d'équipe « taches » (fusion validée par Hanine) : une ligne par tâche, rattachée à l'entreprise de l'employé.
+    // Plusieurs tâches dans un même enregistrement : source_session_id suffixé (#2, #3…) car il est unique par entreprise.
+    const company = sbUser()?.company_id;
+    const rows = company ? await sb('taches?on_conflict=company_id,source_session_id', {
+      method: 'POST', prefer: 'resolution=merge-duplicates,return=representation',
+      body: (result.workflows || []).map((w, i) => ({
+        company_id: company, title: w.name || 'Tâche', summary: w.summary || null, why: w.why_daily || null,
+        steps: w.steps || [], source_session_id: i ? `${session}#${i + 1}` : session, source: 'analyse', status: 'analysed',
+        meta: { model: HF_MODEL, provider, tokens_in: usage.prompt_tokens, tokens_out: usage.completion_tokens, cost_usd,
+                images_sent: used.length, ocr_lines: ocrLines, screens } })) }) : null;
     (rows || []).forEach((row, i) => { if (result.workflows[i]) result.workflows[i].task_id = row.id; });
   }
   if (!Array.isArray(result.workflows) || !result.workflows.length) {
@@ -489,7 +535,8 @@ app.post('/api/generate-workflows', async (req, res) => {
       fs.writeFileSync(path.join(dir, 'frames.json'), JSON.stringify({ frames, startedAt, screens: shared || [] }));
     }
     if (!dir) return res.status(400).json({ error: 'Enregistrement introuvable.' });
-    res.json(await analyzeSessionDir(dir));
+    const result = await analyzeSessionDir(dir);
+    res.json({ ...result, _discovery: startDiscovery(dir) });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: err.message });
@@ -499,14 +546,84 @@ app.post('/api/generate-workflows', async (req, res) => {
 });
 
 // Relance l'analyse du dernier enregistrement : avec ses images si elles ont été gardées, sinon avec son texte OCR seul.
+
+// --- Découverte de la tâche + environnement de test interne (côté serveur uniquement) -------------------------
+// À la fin de l'analyse, un worker Python (discovery/) envoie la tâche dans Supabase, construit un JUMEAU interne,
+// le teste avec Holo, puis pose UNE question à l'employé : « Ai-je bien compris votre problème ? ».
+// Le jumeau, les essais et la casse ne sont jamais montrés sur la page. Toujours active : seule l'absence des clés
+// (Supabase, Holo) la saute, et la page affiche alors directement les étapes, comme avant.
+let discovery = { dir: null, proc: null };
+const discoveryState = (dir) => {
+  try { return JSON.parse(fs.readFileSync(path.join(dir, 'discovery.json'), 'utf8')); } catch { return null; }
+};
+function runDiscovery(cmd, dir) {
+  // Worker détaché, journal dans <session>/discovery.log : un redémarrage du serveur ne l'interrompt pas.
+  const log = fs.openSync(path.join(dir, 'discovery.log'), 'a');
+  const proc = spawn(PYTHON, ['-u', '-m', 'discovery.discovery', cmd, dir],
+                     // Windows : pas « detached » (sinon une console s'ouvre malgré windowsHide) ; le journal en fichier suffit
+                     // à ce que le worker survive à un redémarrage du serveur.
+                     { cwd: REPO_ROOT, env: { ...process.env, PYTHONUTF8: '1' }, detached: !IS_WIN, stdio: ['ignore', log, log] });
+  proc.on('error', (e) => console.warn('[découverte] impossible de lancer le worker :', e.message));
+  proc.on('close', (code) => { console.log(`[découverte] ${cmd} terminé (code ${code})`); if (discovery.proc === proc) discovery.proc = null; });
+  proc.unref();
+  console.log(`[découverte] ${cmd} lancé (journal : ${path.join(dir, 'discovery.log')})`);
+  discovery = { dir, proc };
+}
+// Un worker tourne-t-il encore pour ce dossier ? (survit aux redémarrages du serveur : on lit l'état écrit par le worker)
+const workerBusy = (st) => !!st && (['upload', 'cadrage', 'answered', 'casse'].includes(st.phase)
+  || (st.phase === 'awaiting_confirmation' && st.work !== 'ready'))
+  && Date.now() - Date.parse(st.updated_at || 0) < 15 * 60 * 1000;
+function startDiscovery(dir) {
+  // Interrupteur TEMPORAIRE, pendant la phase de test seulement (À SUPPRIMER pour le rendu final) : DISCOVERY=off
+  if ((process.env.DISCOVERY || 'on') === 'off') return false;
+  const missing = ['SUPABASE_URL', 'SUPABASE_PUBLISHABLE_KEY', 'SUPABASE_EMAIL', 'SUPABASE_PASSWORD', 'HAI_API_KEY'].filter((k) => !process.env[k]);
+  if (missing.length) { console.warn(`[découverte] désactivée, variables manquantes : ${missing.join(', ')}`); return false; }
+  const st = discoveryState(dir);
+  if (workerBusy(st)) { console.log(`[découverte] déjà en cours pour ${path.basename(dir)} (${st.phase})`); discovery.dir = dir; return true; }
+  try { fs.rmSync(path.join(dir, 'discovery.json'), { force: true }); } catch {}
+  runDiscovery('discover', dir);
+  return true;
+}
+// Au démarrage : si une découverte tourne encore (serveur relancé pendant la casse), on la reprend pour la page.
+setTimeout(() => { try { const d = latestSessionDir(); if (d && workerBusy(discoveryState(d))) discovery.dir = d; } catch { /* rien */ } }, 0);
+// La page ne reçoit que l'avancement et la question, jamais le détail interne.
+app.get('/api/discovery', (req, res) => {
+  const dir = discovery.dir; // seulement la découverte lancée depuis ce serveur (jamais un ancien résultat)
+  const st = dir ? discoveryState(dir) : null;
+  if (!st) return res.json({ phase: 'idle' });
+  res.json({ phase: st.phase, question: st.phase === 'awaiting_confirmation' ? st.question : null,
+             progress: st.phase === 'casse' ? st.progress || null : null,
+             solution: st.phase === 'done' ? st.solution || null : null });
+});
+app.post('/api/discovery/answer', (req, res) => {
+  const dir = discovery.dir || latestSessionDir();
+  const st = dir ? discoveryState(dir) : null;
+  if (!st || st.phase !== 'awaiting_confirmation') return res.status(409).json({ error: 'Aucune question en attente.' });
+  st.answer = { ok: !!req.body?.ok, correction: String(req.body?.correction || '').slice(0, 2000) };
+  st.phase = 'answered';
+  fs.writeFileSync(path.join(dir, 'discovery.json'), JSON.stringify(st, null, 1));
+  // Jumeau encore en construction : le worker lira la réponse à la fin. Sinon on lance la suite tout de suite.
+  if (st.work === 'ready') runDiscovery('answer', dir);
+  res.json({ ok: true });
+});
+// Détail interne (équipe Twiin seulement, non relié à la page) : jumeau, test dev, casse.
+app.get('/api/discovery/internal', (req, res) => {
+  const dir = discovery.dir || latestSessionDir();
+  res.json(dir ? discoveryState(dir) || {} : {});
+});
+
 app.post('/api/reanalyze', async (req, res) => {
   try {
     const hasFrames = (d) => ['frames.jsonl', 'frames.json'].some((f) => fs.existsSync(path.join(SESSIONS_DIR, d, f)));
-    const dirs = fs.existsSync(SESSIONS_DIR) ? fs.readdirSync(SESSIONS_DIR).filter(hasFrames).sort() : [];
+    let dirs = fs.existsSync(SESSIONS_DIR) ? fs.readdirSync(SESSIONS_DIR).filter(hasFrames).sort() : [];
+    const wanted = String(req.body?.session || '').split('#')[0].replace(/[^0-9A-Za-z-]/g, '');
+    if (wanted && dirs.includes(wanted)) dirs = [...dirs.filter((d) => d !== wanted), wanted]; // « Réanalyser » une tâche précise
+    else if (wanted) return res.status(404).json({ error: 'Cet enregistrement n\'est plus sur ce poste (images supprimées).' });
     if (dirs.length) {
       if (recorderSession?.proc && recorderSession.id === dirs.at(-1)) recorderSession.proc.kill('SIGTERM');
       console.log(`Relance sur ${dirs.at(-1)}`);
-      return res.json(await analyzeSessionDir(path.join(SESSIONS_DIR, dirs.at(-1))));
+      const result = await analyzeSessionDir(path.join(SESSIONS_DIR, dirs.at(-1)));
+      return res.json({ ...result, _discovery: startDiscovery(path.join(SESSIONS_DIR, dirs.at(-1))) });
     }
     if (!fs.existsSync(LAST_RUN_PATH)) return res.status(404).json({ error: 'Aucun enregistrement à relancer.' });
     const last = JSON.parse(fs.readFileSync(LAST_RUN_PATH, 'utf8'));
@@ -524,7 +641,7 @@ app.post('/api/reanalyze', async (req, res) => {
 
 // --- Améliorer un workflow (fiabilité pour Holo + process optimisé), modifiable avant le rejeu ---------------
 const IMPROVE_PROMPT = `You improve a recorded computer workflow before an AI agent (Holo, a computer-use agent that sees the
-screen and uses mouse and keyboard on a Mac with several monitors) replays it. Improve it in TWO ways:
+screen and uses mouse and keyboard on the employee's computer, Mac or Windows, possibly with several monitors) replays it. Improve it in TWO ways:
 
 1. RELIABILITY for the agent:
    - group the steps by application and goal (typically 3 to 6 steps); each step must be self-contained;
@@ -552,8 +669,12 @@ Write the steps in English (the agent works best in English) and the "changes" i
 // Dernier workflow analysé (affiché au chargement de la page, pour l'améliorer ou le rejouer sans réenregistrer)
 app.get('/api/candidates', async (req, res) => {
   if (sbUser()) { // connecté : SES dernières tâches analysées
-    const rows = await sb('tasks?select=*&source=eq.analyse&order=created_at.desc&limit=5');
-    return res.json({ workflows: (rows || []).map((t) => ({ task_id: t.id, name: t.name, summary: t.summary, why_daily: t.why, steps: t.steps, session: t.session })) });
+    const me = sbUser()?.id;
+    const rows = await sb(`taches?select=*&source=eq.analyse&recorded_by=eq.${me}&order=created_at.desc&limit=20`);
+    return res.json({ workflows: (rows || []).map((t) => ({ task_id: t.id, name: t.title, summary: t.summary, why_daily: t.why,
+      created_at: t.created_at, status: t.status, has_images: fs.existsSync(path.join(SESSIONS_DIR, String(t.source_session_id || '').split('#')[0])),
+      steps: (t.steps || []).map((x) => (typeof x === 'string' ? x : x.instruction || '')),
+      session: String(t.source_session_id || '').split('#')[0] })) });
   }
   res.json(fs.existsSync(CANDIDATES_PATH) ? JSON.parse(fs.readFileSync(CANDIDATES_PATH, 'utf8')) : { workflows: [] });
 });
@@ -691,9 +812,13 @@ app.post('/api/process-advice', async (req, res) => {
 
 app.post('/api/recommendations', async (req, res) => {
   const { task_id, verdict: v = {}, advice: a = {} } = req.body || {};
+  if (!task_id) return res.json({ ok: false, id: null }); // la table d'équipe rattache toujours une recommandation à une tâche
+  const kind = /automat/i.test(v.verdict || '') ? 'automate' : 'accelerate';
+  const conf = ({ haute: 'high', high: 'high', moyenne: 'medium', medium: 'medium', faible: 'low', basse: 'low', low: 'low' })[
+    String(v.confidence || '').toLowerCase()] || null;
   const row = await sb('recommendations', { method: 'POST', prefer: 'return=representation', body: {
-    task_id: task_id || null, verdict: v.verdict || null, confidence: v.confidence || null, reasons: v.reasons || null,
-    frequency_hint: v.frequency_hint || null, time_saved: v.time_saved || null, plan: v.plan || null,
+    task_id, kind, verdict: v.verdict || null, confidence: conf, reasons: Array.isArray(v.reasons) ? v.reasons.map(String) : [],
+    frequency_hint: v.frequency_hint || null, time_saved: v.time_saved || null, plan: v.plan || [],
     advice: { headline: a.headline, recommendations: a.recommendations }, stats: a.stats || null } });
   res.json({ ok: !!row, id: row?.[0]?.id || null });
 });
@@ -781,7 +906,7 @@ let n8nRun = null; // { proc, events, running }
 
 const PLAN_PROMPT = `You design an n8n automation for a task an employee recorded. Tools WITH an API are handled by normal
 n8n nodes; tools WITHOUT an API (LinkedIn pages, OneNote, internal software such as comptarex) are handled by a Holo block
-(a computer-use agent that works on the employee's Mac). Use ONLY these block types, in order:
+(a computer-use agent that works on the employee's computer, Mac or Windows). Use ONLY these block types, in order:
 - {"type":"holo","name":"Holo — <verb> <tool>","env":"cloud|mac","steps":["one precise instruction in English"],"expect":{"key":"what to read"}}
    "env": "cloud" for a public website reachable on the internet (Holo uses H's own cloud browser: the employee keeps using
    their computer); "mac" for an installed desktop app (OneNote, Excel desktop…), a local site (127.0.0.1) or a page that
@@ -812,12 +937,16 @@ async function n8nUp() {
 }
 async function ensureN8n() {
   if (await n8nUp()) return;
-  if (!fs.existsSync(path.join(REPO_ROOT, 'automation', 'n8n-runtime', 'node_modules', '.bin', 'n8n'))) {
-    throw new Error('n8n n\'est pas installé sur ce Mac (voir « Automatisations n8n » dans le README).');
-  }
   console.log('n8n arrêté : Twiin le démarre…');
   const logFd = fs.openSync(path.join(WORKFLOWS_DIR, 'n8n.log'), 'a');
-  spawn('bash', [N8N_START], { cwd: path.dirname(N8N_START), detached: true, stdio: ['ignore', logFd, logFd] }).unref();
+  const opts = { cwd: path.dirname(N8N_START), detached: true, stdio: ['ignore', logFd, logFd] };
+  if (!IS_WIN && fs.existsSync(path.join(REPO_ROOT, 'automation', 'n8n-runtime', 'node_modules', '.bin', 'n8n'))) {
+    spawn('bash', [N8N_START], opts).unref();             // Mac : n8n isolé du projet (Node 24 copié)
+  } else {
+    // Windows (ou n8n isolé absent) : n8n installé globalement, sinon la version fixée via npx
+    spawn(IS_WIN ? 'cmd.exe' : 'sh', IS_WIN ? ['/c', 'n8n start || npx -y n8n@2.48.5 start'] : ['-c', 'n8n start || npx -y n8n@2.48.5 start'],
+          { ...opts, env: { ...process.env, N8N_SECURE_COOKIE: 'false' } }).unref();
+  }
   for (let i = 0; i < 60; i++) { // n8n met 10 à 30 s à démarrer
     await new Promise((r) => setTimeout(r, 1500));
     if (await n8nUp()) return console.log('n8n démarré.');
@@ -858,11 +987,23 @@ app.post('/api/n8n/create', async (req, res) => {
     fs.mkdirSync(path.dirname(events), { recursive: true });
     fs.writeFileSync(events, JSON.stringify({ type: 'plan', plan, cost_usd: resp.usage?.cost ?? null }) + '\n');
     const proc = spawn(PYTHON, ['-u', N8N_GEN, planFile, '--events', events], { cwd: REPO_ROOT });
-    proc.stderr.on('data', (d) => process.stderr.write(`[n8n] ${d}`));
+    let genErr = '';
+    proc.stderr.on('data', (d) => { genErr += d; process.stderr.write(`[n8n] ${d}`); });
+    // Si la création échoue avant la fin (ex. connexion Google Sheets absente), la page reçoit l'erreur au lieu d'attendre.
+    proc.on('close', () => {
+      const evs0 = readJsonl(events);
+      if (evs0.some((e) => e.type === 'imported')) forgetFailed(plan.id);
+      else rememberFailed({ id: plan.id, name: plan.name || wf.name, planFile, blocks: plan.blocks,
+                            error: (genErr.trim().split(/\r?\n/).filter(Boolean).at(-1) || 'création interrompue').replace(/^\[n8n\]\s*/, '') });
+      if (!evs0.some((e) => e.type === 'done')) {
+        const why = genErr.trim().split(/\r?\n/).filter(Boolean).at(-1) || 'création interrompue';
+        fs.appendFileSync(events, JSON.stringify({ type: 'done', ok: false, status: why.replace(/^\[n8n\]\s*/, '').slice(0, 300) }) + String.fromCharCode(10));
+      }
+    });
     n8nRun = { proc, events, running: true };
     proc.on('close', keepUser(async () => {
       n8nRun.running = false;
-      spawn('osascript', ['-e', 'tell application "Google Chrome" to activate']);
+      spawnMac(['-e', 'tell application "Google Chrome" to activate']);
       const evs = readJsonl(events);
       const imported = evs.find((e) => e.type === 'imported');
       if (imported) await sb('automations?on_conflict=user_id,n8n_id', { method: 'POST', prefer: 'resolution=merge-duplicates,return=minimal',
@@ -923,7 +1064,7 @@ app.post('/api/replay', (req, res) => {
     const events = path.join(dir, `${new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)}-events.jsonl`);
     fs.writeFileSync(events, '');
     // VS Code masqué pendant le rejeu (Holo ne doit pas lire la conversation ni s'y perdre)
-    spawn('osascript', ['-e', 'tell application "System Events" to set visible of process "Code" to false']);
+    spawnMac( ['-e', 'tell application "System Events" to set visible of process "Code" to false']);
     const proc = spawn(PYTHON, ['-u', RUN_LIVE, id, '--no-open', '--events', events], { cwd: REPO_ROOT });
     proc.stdout.on('data', (d) => process.stdout.write(`[rejeu] ${d}`));
     proc.stderr.on('data', (d) => process.stderr.write(`[rejeu] ${d}`));
@@ -931,7 +1072,7 @@ app.post('/api/replay', (req, res) => {
     proc.on('close', (code) => {
       replay.running = false;
       console.log(`Rejeu terminé (code ${code})`);
-      spawn('osascript', ['-e', 'tell application "Google Chrome" to activate']); // retour sur la page ImproveMe
+      spawnMac( ['-e', 'tell application "Google Chrome" to activate']); // retour sur la page ImproveMe
     });
     console.log(`Rejeu lancé : ${id} (${steps.length} étape(s))`);
     res.json({ id, steps: steps.length });
@@ -954,6 +1095,87 @@ function holoEnv(steps, asked) {
 
 // --- Pont n8n → Holo : n8n envoie des étapes, Holo les fait (cloud ou Mac), la réponse revient à n8n -------------
 // Appel SYNCHRONE (n8n attend la fin). Réservé aux appels locaux portant le jeton TWIIN_LOCAL_TOKEN.
+// --- Ponts n8n → Twiin « sans gêner l'employé » ------------------------------------------------------------------
+// /api/holo/web : Holo lit une page web dans un navigateur INVISIBLE (la souris et le clavier restent à l'employé).
+// /api/excel/write : ajoute des lignes dans un classeur Excel du poste, par le fichier, sans Holo.
+const localBridge = (req) => ['127.0.0.1', '::1', '::ffff:127.0.0.1'].includes(req.socket.remoteAddress)
+  && process.env.TWIIN_LOCAL_TOKEN && req.get('x-twiin-token') === process.env.TWIIN_LOCAL_TOKEN;
+const webRuns = new Set(); // lectures en cours (arrêtées par « Arrêter l'automatisation »)
+function runPyJson(mod, input, { timeout = 600000, track } = {}) {
+  return new Promise((resolve) => {
+    const proc = spawn(PYTHON, ['-u', '-m', mod], { cwd: REPO_ROOT, env: { ...process.env, PYTHONUTF8: '1' } });
+    track?.add(proc);
+    let out = '', err = '';
+    const timer = setTimeout(() => killTree(proc), timeout);
+    proc.stdout.on('data', (d) => (out += d));
+    proc.stderr.on('data', (d) => (err += d));
+    proc.on('close', () => {
+      clearTimeout(timer);
+      track?.delete(proc);
+      const line = out.trim().split('\n').filter((l) => l.startsWith('{')).at(-1);
+      try { resolve(JSON.parse(line)); } catch { resolve({ ok: false, error: (err.trim().split('\n').at(-1) || 'échec').slice(0, 300) }); }
+    });
+    proc.stdin.end(JSON.stringify(input));
+  });
+}
+app.post('/api/holo/web', async (req, res) => {
+  if (!localBridge(req)) return res.status(403).json({ error: 'Accès refusé (appel local avec jeton Twiin uniquement).' });
+  const { url, label, columns } = req.body || {};
+  console.log(`n8n → Holo (navigateur invisible) : ${label || url}`);
+  const r = await runPyJson('discovery.web_read', { url, label, columns }, { track: webRuns });
+  console.log(`   → ${r.ok ? 'lu' : 'échec'} en ${Math.round(r.seconds || 0)} s : ${JSON.stringify(r.data || r.error).slice(0, 160)}`);
+  res.json(r);
+});
+// /api/source/read : lit le document à saisir (PDF…) le plus récent d'un dossier du poste, sans Holo.
+// /api/holo/fill : Holo saisit dans un logiciel web sans API, navigateur INVISIBLE ; connexion par le coffre local.
+app.post('/api/source/read', async (req, res) => {
+  if (!localBridge(req)) return res.status(403).json({ error: 'Accès refusé (appel local avec jeton Twiin uniquement).' });
+  const r = await runPyJson('discovery.source_read', req.body || {}, { timeout: 120000 });
+  console.log(`n8n → document : ${r.file || r.info || r.error}`);
+  res.status(r.ok ? 200 : 409).json(r);
+});
+app.post('/api/holo/fill', async (req, res) => {
+  if (!localBridge(req)) return res.status(403).json({ error: 'Accès refusé (appel local avec jeton Twiin uniquement).' });
+  const { url, label, values } = req.body || {};
+  console.log(`n8n → Holo saisit (navigateur invisible) : ${label || url}`);
+  const r = await runPyJson('discovery.web_fill', { url, label, values }, { track: webRuns, timeout: 900000 });
+  console.log(`   → ${r.ok ? 'saisi et vérifié' : `échec : ${r.error || `manque ${(r.check?.missing || []).join(', ')}`}`}`);
+  res.status(r.ok ? 200 : 409).json(r);
+});
+app.post('/api/excel/write', async (req, res) => {
+  if (!localBridge(req)) return res.status(403).json({ error: 'Accès refusé (appel local avec jeton Twiin uniquement).' });
+  const r = await runPyJson('discovery.excel_write', req.body || {}, { timeout: 60000 });
+  console.log(`n8n → Excel : ${r.ok ? `${r.added} ligne(s) ajoutée(s) dans ${r.path}` : r.error}`);
+  res.status(r.ok ? 200 : 409).json(r);
+});
+
+// Créer l'automatisation à partir de la solution trouvée par la découverte (au lieu d'un plan réécrit de zéro).
+app.post('/api/automations/from-discovery', async (req, res) => {
+  const dir = discovery.dir || latestSessionDir();
+  if (!dir || !discoveryState(dir)?.solution) return res.status(409).json({ error: 'Pas encore de solution trouvée pour cette tâche.' });
+  try { await ensureN8n(); } catch (e) { return res.status(500).json({ error: e.message }); }
+  const build = await new Promise((resolve) => {
+    const p = spawn(PYTHON, ['-u', '-m', 'discovery.build_automation', dir], { cwd: REPO_ROOT, env: { ...process.env, PYTHONUTF8: '1' } });
+    let out = '', err = '';
+    p.stdout.on('data', (d) => (out += d)); p.stderr.on('data', (d) => (err += d));
+    p.on('close', (code) => resolve(code === 0 ? { plan: out.trim().split('\n').at(-1) } : { error: err.trim().split('\n').at(-1) }));
+  });
+  if (build.error) return res.status(500).json({ error: `Plan impossible : ${build.error}` });
+  const plan = JSON.parse(fs.readFileSync(build.plan, 'utf8'));
+  const imp = await new Promise((resolve) => {
+    const p = spawn(PYTHON, ['-u', N8N_GEN, build.plan, '--no-run'], { cwd: REPO_ROOT, env: { ...process.env, PYTHONUTF8: '1' } });
+    let out = '';
+    p.stdout.on('data', (d) => (out += d));
+    p.on('close', () => resolve(out.split('\n').map((l) => { try { return JSON.parse(l); } catch { return null; } }).find((e) => e?.type === 'imported')));
+  });
+  if (!imp) return res.status(500).json({ error: 'Import dans n8n impossible (voir le journal du serveur).' });
+  const st = discoveryState(dir);
+  await sb('automations?on_conflict=user_id,n8n_id', { method: 'POST', prefer: 'resolution=merge-duplicates,return=minimal',
+    body: { task_id: st?.task_id || null, n8n_id: imp.id, name: plan.name, blocks: plan.blocks, freq: 'manual', active: false } });
+  console.log(`Automatisation créée depuis la découverte : ${plan.name} (${plan.blocks.length} blocs, sans Holo à l'écran)`);
+  res.json({ ok: true, id: imp.id, name: plan.name, blocks: plan.blocks.map((b) => b.name) });
+});
+
 app.post('/api/holo/run', async (req, res) => {
   try {
     const local = ['127.0.0.1', '::1', '::ffff:127.0.0.1'].includes(req.socket.remoteAddress);
@@ -976,7 +1198,7 @@ app.post('/api/holo/run', async (req, res) => {
     fs.mkdirSync(dir, { recursive: true });
     const events = path.join(dir, `${new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)}-n8n-events.jsonl`);
     fs.writeFileSync(events, '');
-    if (env === 'mac') spawn('osascript', ['-e', 'tell application "System Events" to set visible of process "Code" to false']);
+    if (env === 'mac') spawnMac(['-e', 'tell application "System Events" to set visible of process "Code" to false']);
     const t0 = Date.now();
     const proc = spawn(PYTHON, ['-u', RUN_LIVE, id, '--no-open', '--events', events, ...(env === 'cloud' ? ['--remote'] : [])], { cwd: REPO_ROOT });
     proc.stdout.on('data', (d) => process.stdout.write(`[n8n→holo] ${d}`));
@@ -1012,7 +1234,7 @@ app.get('/api/replay/events', (req, res) => {
 });
 
 app.post('/api/replay/stop', (req, res) => {
-  if (replay?.running) replay.proc.kill('SIGTERM');
+  if (replay?.running) killTree(replay.proc);
   res.json({ ok: true });
 });
 
@@ -1355,19 +1577,38 @@ async function n8nApi(pathname, opts = {}) {
   if (!r.ok) throw new Error(`n8n : ${r.status} ${d.message || ''}`.trim());
   return d;
 }
-// Fréquence × heure. Les heures proposées sont des créneaux où le Mac est souvent libre (avant l'arrivée, déjeuner, soir).
-const FREQS = { manual: null, daily: '* * *', weekly: '* * 1', monthly: '1 * *' };   // jour du mois, mois, jour de semaine
-const FREQ_TXT = { manual: 'Manuelle', daily: 'Chaque jour', weekly: 'Chaque lundi', monthly: 'Le 1er du mois' };
-const HEURES = ['08:30', '09:00', '12:30', '18:30'];
-const cronOf = (freq, heure = '09:00') => { const [h, m] = heure.split(':').map(Number); return FREQS[freq] ? `${m} ${h} ${FREQS[freq]}` : null; };
-function freqOfCron(cron) {
-  const m = /^(\d+) (\d+) (.+)$/.exec(cron || '');
-  if (!m) return { freq: cron ? 'custom' : 'manual', heure: null };
-  const freq = Object.keys(FREQS).find((k) => FREQS[k] === m[3]) || 'custom';
-  return { freq, heure: `${m[2].padStart(2, '0')}:${m[1].padStart(2, '0')}` };
+const FREQS = { manual: null, daily: '0 9 * * *', weekly: '0 9 * * 1', monthly: '0 9 1 * *' };
+const FREQ_LABEL = { manual: 'Manuelle', daily: 'Chaque jour à 9 h', weekly: 'Chaque lundi à 9 h', monthly: 'Le 1er du mois à 9 h' };
+const DAYS = ['dimanche', 'lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi'];
+// Planification lisible <-> expression cron (minute heure jour-du-mois mois jour-de-semaine), heure de Paris.
+function scheduleToCron(sc) {
+  const m = [0, 15, 30, 45].includes(+sc.minute) ? +sc.minute : 0;
+  const h = Math.min(Math.max(parseInt(sc.hour, 10) || 0, 0), 23);
+  if (sc.type === 'daily') return `${m} ${h} * * *`;
+  if (sc.type === 'weekly') {
+    const days = [...new Set((sc.days || []).map(Number).filter((d) => d >= 0 && d <= 6))].sort();
+    if (!days.length) throw new Error('Choisis au moins un jour de la semaine.');
+    return `${m} ${h} * * ${days.join(',')}`;
+  }
+  if (sc.type === 'monthly') return `${m} ${h} ${Math.min(Math.max(parseInt(sc.monthday, 10) || 1, 1), 31)} * *`;
+  return null;
 }
-const heureTxt = (h) => (h ? h.replace(':', ' h ').replace(' h 00', ' h') : '');
-const freqLabel = (freq, heure) => (freq === 'manual' ? 'Manuelle' : freq === 'custom' ? 'Personnalisée' : `${FREQ_TXT[freq]} à ${heureTxt(heure)}`);
+function cronToSchedule(cron) {
+  const p = String(cron || '').trim().split(/\s+/);
+  if (p.length !== 5) return { type: 'manual' };
+  const [m, h, dom, , dow] = p;
+  const base = { minute: +m || 0, hour: +h || 0 };
+  if (dom !== '*') return { type: 'monthly', monthday: +dom, ...base };
+  if (dow !== '*') return { type: 'weekly', days: dow.split(',').map(Number), ...base };
+  return { type: 'daily', ...base };
+}
+function scheduleLabel(sc) {
+  if (!sc || sc.type === 'manual') return 'Manuelle';
+  const at = `à ${sc.hour} h${sc.minute ? String(sc.minute).padStart(2, '0') : ''}`;
+  if (sc.type === 'daily') return `Chaque jour ${at}`;
+  if (sc.type === 'weekly') return `Chaque ${sc.days.map((d) => DAYS[d]).join(', ')} ${at}`;
+  return `Le ${sc.monthday === 1 ? '1er' : sc.monthday} du mois ${at}` + (sc.monthday > 28 ? ' (seulement les mois qui ont ce jour)' : '');
+}
 const BLOCK_KIND = (n) => (/api\/holo\/run/.test(n.parameters?.url || '') ? 'holo' : n.type.endsWith('.googleSheets') ? 'sheets'
   : n.type.endsWith('.code') ? (/Vérification|rules/.test(n.parameters?.jsCode || '') ? 'verify' : 'code') : n.type.endsWith('.httpRequest') ? 'http' : 'other');
 let automationRun = null; // { id, proc, startedAt }
@@ -1375,7 +1616,8 @@ let automationRun = null; // { id, proc, startedAt }
 async function automationSummary(w) {
   const sched = w.nodes.find((n) => n.type.endsWith('.scheduleTrigger'));
   const cron = sched && !sched.disabled ? sched.parameters?.rule?.interval?.[0]?.expression : null;
-  const { freq, heure } = freqOfCron(cron);
+  const freq = Object.keys(FREQS).find((k) => FREQS[k] && FREQS[k] === cron) || (cron ? 'custom' : 'manual');
+  const schedule = cron ? cronToSchedule(cron) : { type: 'manual' };
   const sheetNode = w.nodes.find((n) => n.type.endsWith('.googleSheets'));
   const sheetId = sheetNode?.parameters?.documentId?.value;
   const gid = sheetNode?.parameters?.sheetName?.value;
@@ -1384,7 +1626,7 @@ async function automationSummary(w) {
   const done = execs.filter((e) => e.stoppedAt);
   const dur = done.map((e) => (new Date(e.stoppedAt) - new Date(e.startedAt)) / 1000);
   return {
-    id: w.id, name: w.name.replace(/^Twiin — /, ''), active: w.active, freq, heure, freq_label: freqLabel(freq, heure), cron,
+    id: w.id, name: w.name.replace(/^Twiin — /, ''), active: w.active, freq, freq_label: cron ? scheduleLabel(schedule) : 'Manuelle', cron, schedule,
     blocks: w.nodes.filter((n) => !/(webhook|scheduleTrigger|manualTrigger)$/i.test(n.type)).map((n) => {
       const kind = BLOCK_KIND(n);
       if (kind !== 'holo') return { name: n.name, kind };
@@ -1403,12 +1645,33 @@ async function automationSummary(w) {
   };
 }
 
+// Automatisations dont la création a échoué (ex. connexion n8n manquante) : gardées pour « Mes automatisations ».
+const FAILED_PATH = path.join(REPO_ROOT, 'workflows', 'runs', 'automations_failed.json');
+const readFailed = () => { try { return JSON.parse(fs.readFileSync(FAILED_PATH, 'utf8')); } catch { return []; } };
+function rememberFailed(f) {
+  const list = readFailed().filter((x) => x.id !== f.id);
+  list.unshift({ ...f, at: new Date().toISOString() });
+  fs.mkdirSync(path.dirname(FAILED_PATH), { recursive: true });
+  fs.writeFileSync(FAILED_PATH, JSON.stringify(list.slice(0, 50), null, 1));
+}
+function forgetFailed(id) {
+  const list = readFailed();
+  if (list.some((x) => x.id === id)) fs.writeFileSync(FAILED_PATH, JSON.stringify(list.filter((x) => x.id !== id), null, 1));
+}
+const failedSummary = (f) => ({
+  id: f.id, name: f.name, failed: true, error: f.error, active: false, running: false, freq: 'manual', freq_label: 'Pas créée',
+  blocks: (f.blocks || []).map((b) => ({ name: b.name, kind: b.type === 'holo' ? 'holo' : b.type === 'sheets_append' ? 'sheets' : 'other' })),
+  executions: [], stats: { total: 0, success: 0, avg_s: null, last: f.at }, updated: f.at,
+  fix_url: /google sheets|credential|connexion/i.test(f.error || '') ? `${N8N_URL}/home/credentials` : `${N8N_URL}/home/workflows`,
+});
+
 app.get('/api/automations', async (req, res) => {
   if (!(await n8nUp())) return res.json({ up: false, automations: [] });
   try {
     const all = (await n8nApi('/workflows?limit=100')).data || [];
     const mine = all.filter((w) => w.id.startsWith('twiin') && !/\(outil\)/.test(w.name));
     const list = await Promise.all(mine.map(automationSummary));
+    for (const f of readFailed()) if (!list.some((a) => a.id === f.id)) list.push(failedSummary(f)); // échecs de création
     const runs = list.flatMap((a) => a.executions.map((e) => ({ n8n_id: a.id, n8n_execution_id: String(e.id), status: e.status, mode: e.mode,
                                                                   started_at: e.startedAt, stopped_at: e.stoppedAt })));
     if (runs.length) sb('automation_runs?on_conflict=user_id,n8n_execution_id', { method: 'POST', prefer: 'resolution=merge-duplicates,return=minimal', body: runs });
@@ -1426,29 +1689,113 @@ app.get('/api/automations/:id', async (req, res, next) => {
 // Fréquence : on règle le déclencheur planifié du workflow, puis on l'active (ou on le met en pause si « manuelle »).
 app.post('/api/automations/:id/schedule', async (req, res) => {
   try {
-    const freq = req.body?.freq;
-    const heure = HEURES.includes(req.body?.heure) ? req.body.heure : '09:00';
-    if (!(freq in FREQS)) return res.status(400).json({ error: 'Fréquence inconnue.' });
+    // Nouveau format : { schedule: { type: manual|daily|weekly|monthly, days, monthday, hour, minute } } ; l'ancien « freq » reste accepté
+    const sc = req.body?.schedule || (req.body?.freq in FREQS ? cronToSchedule(FREQS[req.body.freq] || '') : null);
+    if (!sc) return res.status(400).json({ error: 'Planification inconnue.' });
+    const cron = sc.type === 'manual' ? null : scheduleToCron(sc);
     const id = encodeURIComponent(req.params.id);
     const w = await n8nApi(`/workflows/${id}`);
-    const sched = w.nodes.find((n) => n.type.endsWith('.scheduleTrigger'));
-    if (!sched && freq !== 'manual') throw new Error('Cette automatisation n\'a pas de déclencheur planifié.');
+    let sched = w.nodes.find((n) => n.type.endsWith('.scheduleTrigger'));
+    if (!sched && cron) { // pas de déclencheur planifié : on en ajoute un, branché comme le déclencheur manuel
+      const start = w.nodes.find((n) => /(webhook|manualTrigger)$/i.test(n.type));
+      sched = { id: crypto.randomUUID(), name: 'Planification', type: 'n8n-nodes-base.scheduleTrigger', typeVersion: 1.2,
+                position: [(start?.position?.[0] ?? 0), (start?.position?.[1] ?? 0) + 200], parameters: {} };
+      w.nodes.push(sched);
+      if (start && w.connections[start.name]) w.connections[sched.name] = JSON.parse(JSON.stringify(w.connections[start.name]));
+    }
     if (sched) {
-      sched.disabled = freq === 'manual';
-      if (FREQS[freq]) sched.parameters = { rule: { interval: [{ field: 'cronExpression', expression: cronOf(freq, heure) }] } };
+      sched.disabled = !cron;
+      if (cron) sched.parameters = { rule: { interval: [{ field: 'cronExpression', expression: cron }] } };
     }
     const keep = ['executionOrder', 'timezone', 'saveDataErrorExecution', 'saveDataSuccessExecution', 'saveManualExecutions',
                   'saveExecutionProgress', 'executionTimeout', 'errorWorkflow', 'callerPolicy'];
-    const settings = Object.fromEntries(Object.entries(w.settings || {}).filter(([k]) => keep.includes(k)));
+    const settings = { timezone: 'Europe/Paris', ...Object.fromEntries(Object.entries(w.settings || {}).filter(([k]) => keep.includes(k))) };
     await n8nApi(`/workflows/${id}`, { method: 'PUT', body: JSON.stringify({ name: w.name, nodes: w.nodes, connections: w.connections, settings }) });
-    await n8nApi(`/workflows/${id}/${freq === 'manual' ? 'deactivate' : 'activate'}`, { method: 'POST' });
-    console.log(`Automatisation ${w.id} : ${freqLabel(freq, heure)}`);
-    await sb(`automations?n8n_id=eq.${encodeURIComponent(w.id)}`, { method: 'PATCH', prefer: 'return=minimal', body: { freq, active: freq !== 'manual' } });
+    await n8nApi(`/workflows/${id}/${cron ? 'activate' : 'deactivate'}`, { method: 'POST' });
+    console.log(`Automatisation ${w.id} : ${scheduleLabel(sc)}`);
+    const freq = cron ? (Object.keys(FREQS).find((k) => FREQS[k] === cron) || 'custom') : 'manual';
+    await sb(`automations?n8n_id=eq.${encodeURIComponent(w.id)}`, { method: 'PATCH', prefer: 'return=minimal', body: { freq, active: !!cron } });
     res.json(await automationSummary(await n8nApi(`/workflows/${id}`)));
   } catch (e) {
     console.error(e.message);
     res.status(500).json({ error: e.message });
   }
+});
+
+// --- Mise en service (DSI) : les autorisations à donner UNE fois pour toute l'entreprise, déduites des audits des postes --
+const SETUP_FAMILIES = [
+  { key: 'microsoft', label: 'Microsoft 365', match: /microsoft 365|office|excel|word|outlook|onedrive|teams|sharepoint|microsoft-graph/i,
+    how: 'Une application dans Entra ID (annuaire Microsoft) + « consentement administrateur », une seule fois pour toute l\'entreprise.',
+    covers: 'Excel, Outlook, Teams, OneDrive, SharePoint', types: /^microsoft/i },
+  { key: 'google', label: 'Google Workspace', match: /google workspace|google drive|gmail|google sheets|google docs|google agenda|google-workspace/i,
+    how: 'Un compte de service avec « délégation à l\'échelle du domaine », autorisé une fois par l\'admin Google.',
+    covers: 'Sheets, Gmail, Drive, Agenda', types: /^google/i },
+];
+const NOT_BUSINESS = /chrome|edge|firefox|safari|navigateur|python|node\.js|visual studio|vs code|cursor|docker|sql server|odbc|ole db|driver|nvidia|mcafee|webadvisor|installer|launcher|compatibility|photos|steam|game|jeu/i;
+app.get('/api/setup', async (req, res) => {
+  try {
+    const dirs = fs.existsSync(AUDIT_DIR) ? fs.readdirSync(AUDIT_DIR).sort() : [];
+    const audit = dirs.length ? readJson(path.join(AUDIT_DIR, dirs.at(-1), 'audit_poste.json')) : null;
+    if (!audit) return res.json({ audit: null });
+    let creds = [];
+    try { creds = (await n8nApi('/credentials?limit=100')).data || []; } catch { /* n8n arrêté */ }
+    const tools = audit.tools.map((t) => ({ name: t.app, connector: t.connector, api: t.api === 'oui', category: t.category,
+                                            label: `${t.app} ${t.connector || ''} ${(t.components || []).map((c) => c.name).join(' ')}` }));
+    const families = SETUP_FAMILIES.map((f) => {
+      const found = tools.filter((t) => f.match.test(t.label));
+      const ok = creds.filter((c) => f.types.test(c.type || ''));
+      return { key: f.key, label: f.label, how: f.how, covers: f.covers, tools: found.map((t) => t.name), connected: ok.length > 0,
+               credentials: ok.map((c) => c.name) };
+    }).filter((f) => f.tools.length);
+    const inFamily = (t) => SETUP_FAMILIES.some((f) => f.match.test(t.label));
+    const others = tools.filter((t) => t.api && t.connector && !inFamily(t) && !NOT_BUSINESS.test(t.label) && t.connector !== 'n8n')
+      .map((t) => ({ name: t.name, connector: t.connector, connected: creds.some((c) => (c.type || '').toLowerCase().includes(t.connector.split('-')[0])) }));
+    const screen = tools.filter((t) => !t.api && !inFamily(t) && !NOT_BUSINESS.test(t.label)).map((t) => t.name);
+    const total = families.reduce((n, f) => n + f.tools.length, 0) + others.length;
+    res.json({ audit: { at: audit.generated_at, outils: audit.summary.outils }, families, others, screen,
+               coverage: total ? Math.round((100 * families.reduce((n, f) => n + f.tools.length, 0)) / total) : 0,
+               n8n_credentials_url: `${N8N_URL}/home/credentials`, credentials: creds.map((c) => ({ name: c.name, type: c.type })) });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Réessayer la création d'une automatisation qui avait échoué (après avoir ajouté la connexion dans n8n, par exemple).
+app.post('/api/automations/:id/retry', async (req, res) => {
+  const f = readFailed().find((x) => x.id === req.params.id);
+  if (!f) return res.status(404).json({ error: 'Rien à réessayer.' });
+  try { await ensureN8n(); } catch (e) { return res.status(500).json({ error: e.message }); }
+  const r = await new Promise((resolve) => {
+    const p = spawn(PYTHON, ['-u', N8N_GEN, f.planFile, '--no-run'], { cwd: REPO_ROOT, env: { ...process.env, PYTHONUTF8: '1' } });
+    let out = '', err = '';
+    p.stdout.on('data', (d) => (out += d)); p.stderr.on('data', (d) => (err += d));
+    p.on('close', () => resolve({ ok: /"type": "imported"/.test(out), err: err.trim().split(/\r?\n/).filter(Boolean).at(-1) || '' }));
+  });
+  if (!r.ok) { rememberFailed({ ...f, error: r.err || f.error }); return res.status(500).json({ error: r.err || 'création impossible' }); }
+  forgetFailed(f.id);
+  await sb('automations?on_conflict=user_id,n8n_id', { method: 'POST', prefer: 'resolution=merge-duplicates,return=minimal',
+    body: { n8n_id: f.id, name: f.name, blocks: f.blocks, freq: 'manual', active: false } });
+  res.json({ ok: true, id: f.id });
+});
+
+// Arrêter : l'exécution en cours (Twiin), le rejeu Holo qu'elle a lancé (souris et clavier rendus) et l'exécution dans n8n.
+app.post('/api/automations/:id/stop', async (req, res) => {
+  const id = req.params.id;
+  const stopped = [];
+  if (automationRun) { automationRun.stopped = true; killTree(automationRun.proc); automationRun = null; stopped.push('lancement'); } // notification « arrêtée »
+  if (replay?.running) { killTree(replay.proc); replay.running = false; stopped.push('Holo'); }
+  for (const p of webRuns) { killTree(p); stopped.push('lecture web'); }
+  webRuns.clear();
+  try {
+    const execs = (await n8nApi(`/executions?workflowId=${encodeURIComponent(id)}&status=running&limit=20`)).data || [];
+    for (const e of execs) { try { await n8nApi(`/executions/${e.id}/stop`, { method: 'POST' }); stopped.push(`n8n #${e.id}`); } catch { /* déjà fini */ } }
+  } catch { /* n8n injoignable : Holo est quand même arrêté */ }
+  console.log(`Automatisation ${id} arrêtée : ${stopped.join(', ') || 'rien ne tournait'}`);
+  res.json({ ok: true, stopped });
+});
+// Arrêt d'urgence : tout ce qui pilote la souris et le clavier (rejeu Holo, automatisation lancée depuis Twiin).
+app.post('/api/stop-all', (req, res) => {
+  if (automationRun) { killTree(automationRun.proc); automationRun = null; }
+  if (replay?.running) { killTree(replay.proc); replay.running = false; }
+  res.json({ ok: true });
 });
 
 // Lancer maintenant (une exécution de test, comme à la création). Les blocs Holo prennent la souris du Mac.
@@ -1469,13 +1816,13 @@ async function lancerAutomatisation(id, origine = 'à la main') {
   const est = estimation(a);
   const proc = spawn(PYTHON, ['-u', N8N_GEN, '--run', id], { cwd: REPO_ROOT });
   proc.stderr.on('data', (d) => process.stderr.write(`[n8n] ${d}`));
-  automationRun = { id, name: a.name, proc, startedAt: Date.now(), estimate_s: est, sur_mac: surMac, stopped: false };
+  const me = automationRun = { id, name: a.name, proc, startedAt: Date.now(), estimate_s: est, sur_mac: surMac, stopped: false };
   notifier('Twiin', surMac
     ? `« ${a.name} » utilise ton Mac pendant environ ${Math.ceil(est / 60)} min. Ne touche à rien, double Échap pour arrêter.`
     : `« ${a.name} » tourne en arrière-plan : tu peux continuer à travailler.`);
   proc.on('close', (code) => {
-    const run = automationRun;
-    automationRun = null;
+    const run = me; // sa propre référence : l'arrêt (route de Lucas) a pu vider automationRun avant
+    if (automationRun === me) automationRun = null;
     const ok = code === 0 && !run?.stopped;
     console.log(`Automatisation ${id} (${origine}) : ${run?.stopped ? 'arrêtée' : ok ? 'succès' : 'échec'}`);
     backLog('automatisation', { id, origine, ok, arretee: !!run?.stopped, seconds: Math.round((Date.now() - (run?.startedAt || Date.now())) / 1000) });
@@ -1491,9 +1838,11 @@ app.post('/api/automations/:id/run', async (req, res) => {
 
 // Arrêter : Holo ET l'exécution n8n (sinon n8n relance le bloc suivant)
 async function arreterTout() {
-  if (automationRun) { automationRun.stopped = true; automationRun.proc.kill('SIGTERM'); }
-  if (n8nRun?.running) n8nRun.proc.kill('SIGTERM');
-  if (replay?.running) replay.proc.kill('SIGTERM');
+  if (automationRun) { automationRun.stopped = true; killTree(automationRun.proc); }
+  if (n8nRun?.running) killTree(n8nRun.proc);
+  if (replay?.running) killTree(replay.proc);
+  for (const p of webRuns) killTree(p); // Holo dans un navigateur invisible (découverte, lectures web)
+  webRuns.clear();
   let stoppees = 0;
   try {
     const en = (await n8nApi('/executions?status=running&limit=20')).data || [];

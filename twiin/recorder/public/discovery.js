@@ -1,0 +1,215 @@
+// Découverte de la tâche, vue de l'employé : un écran de chargement par étapes, UNE question
+// (« Ai-je bien compris votre problème ? »), puis la solution retenue. Le jumeau et les essais restent côté serveur.
+(() => {
+  const css = document.createElement('style');
+  css.textContent = `
+  #discovery { position: fixed; inset: 0; z-index: 50; display: flex; align-items: center; justify-content: center;
+    background: rgba(15, 18, 24, .45); padding: 16px; }
+  #discovery[hidden] { display: none; }
+  #discovery.dc-mini { inset: auto 16px 16px auto; background: none; padding: 0; pointer-events: none; }
+  #discovery.dc-mini .dc-card { width: min(380px, calc(100vw - 32px)); pointer-events: auto; padding: 14px 16px 12px; }
+  #discovery.dc-mini h3 { font-size: 15px; }
+  #discovery .dc-card { width: min(520px, 100%); max-height: calc(100vh - 32px); overflow: auto;
+    background: var(--panel, #fff); border: 1px solid var(--panel-border, #dadce0); border-radius: 16px;
+    box-shadow: 0 16px 40px rgba(0,0,0,.25); padding: 22px 22px 18px; font-size: 14px; color: var(--text, #1f1f1f); }
+  #discovery h3 { margin: 0 0 10px; font-size: 18px; }
+  #discovery p { margin: 6px 0; color: var(--text-dim, #5f6368); }
+  #discovery ol, #discovery ul { margin: 6px 0 8px 18px; padding: 0; }
+  #discovery .dc-steps { list-style: none; margin: 4px 0 0; padding: 0; }
+  #discovery .dc-steps li { display: flex; align-items: center; gap: 10px; padding: 7px 0; color: var(--text-dim, #5f6368); }
+  #discovery .dc-steps li.done { color: var(--text, #1f1f1f); }
+  #discovery .dc-steps li.active { color: var(--text, #1f1f1f); font-weight: 600; }
+  #discovery .dc-steps i { width: 18px; height: 18px; border-radius: 50%; border: 2px solid var(--panel-border, #c4c7c5); flex: none;
+    display: grid; place-items: center; font-style: normal; font-size: 11px; }
+  #discovery .dc-steps li.done i { background: var(--ok, #188038); border-color: var(--ok, #188038); color: #fff; }
+  #discovery .dc-steps li.done i::after { content: '✓'; }
+  #discovery .dc-steps li.active i { border-color: var(--accent, #0b57d0); border-top-color: transparent; animation: dcspin .9s linear infinite; }
+  @keyframes dcspin { to { transform: rotate(360deg); } }
+  @media (prefers-reduced-motion: reduce) { #discovery .dc-steps li.active i { animation: none; } }
+  #discovery .dc-bar { height: 6px; border-radius: 3px; background: var(--accent-soft, #e8f0fe); overflow: hidden; margin: 4px 0 0 28px; }
+  #discovery .dc-bar span { display: block; height: 100%; background: var(--accent, #0b57d0); transition: width .4s; }
+  #discovery .dc-row { display: flex; gap: 8px; margin-top: 14px; flex-wrap: wrap; }
+  #discovery textarea { width: 100%; min-height: 70px; margin-top: 8px; font: inherit; padding: 8px;
+    border-radius: 8px; border: 1px solid var(--panel-border, #dadce0); background: transparent; color: inherit; box-sizing: border-box; }
+  #discovery .dc-doubt { font-size: 13px; }`;
+  document.head.appendChild(css);
+
+  const box = document.createElement('section');
+  box.id = 'discovery';
+  box.hidden = true;
+  box.setAttribute('aria-live', 'polite');
+  box.innerHTML = '<div class="dc-card"></div>';
+  document.body.appendChild(box);
+  const card = box.querySelector('.dc-card');
+  const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  let view = null;       // ce qui est affiché : 'loading-1', 'question', 'loading-2', 'solution', 'closed'
+  let closedFor = null;  // ne pas rouvrir une solution déjà fermée (même après rechargement)
+  try { closedFor = localStorage.getItem('twiin-solution-vue'); } catch { /* stockage bloqué */ }
+
+  // Étapes de chargement : [libellé, phases pendant lesquelles l'étape est en cours]
+  const BEFORE = [
+    ['Enregistrement reçu', []],
+    ['Envoi de la tâche', ['upload']],
+    ['Compréhension de votre problème', ['cadrage']],
+  ];
+  const AFTER = [
+    ['Problème confirmé', []],
+    ['Twiin teste plusieurs solutions en toute sécurité', ['answered', 'casse']],
+    ['Choix de la meilleure solution', []],
+  ];
+
+  function inlineProgress(progress) {
+    // Après le « oui » : un bandeau dans l'étape Reco (pas une fenêtre), car la recommandation est déjà affichée
+    box.hidden = true;
+    let host = document.getElementById('dcProgress');
+    if (!host) {
+      host = document.createElement('section');
+      host.id = 'dcProgress';
+      host.className = 'panel view';
+      host.dataset.view = '3';
+      host.style.cssText = 'margin:14px 0;padding:12px 16px;border-radius:12px;display:flex;gap:10px;align-items:center';
+      const results = document.getElementById('results');
+      (results?.parentNode || document.body).insertBefore(host, results || null);
+    }
+    const n = progress?.total ? ` (${progress.done}/${progress.total} essais)` : '';
+    host.innerHTML = `<span aria-hidden="true">🔬</span><span><b>Twiin vérifie cette recommandation</b> en la testant dans un
+      environnement isolé${esc(n)}. Le résultat s'affichera ici.</span>`;
+  }
+
+  function loading(title, steps, phase, progress) {
+    if (steps === AFTER) return inlineProgress(progress);
+    box.classList.remove('dc-mini');
+    const idx = steps.findIndex(([, ph]) => ph.includes(phase));
+    const cur = idx < 0 ? steps.length - 1 : idx;
+    const pct = progress?.total ? Math.round((progress.done / progress.total) * 100) : null;
+    card.innerHTML = `<h3>${esc(title)}</h3><ul class="dc-steps">${steps.map(([label], i) => `
+      <li class="${i < cur ? 'done' : i === cur ? 'active' : ''}"><i></i>${esc(label)}${
+        i === cur && pct != null ? ` (${progress.done}/${progress.total})` : ''}</li>${
+        i === cur && pct != null ? `<div class="dc-bar"><span style="width:${pct}%"></span></div>` : ''}`).join('')}</ul>
+      <p>${steps === AFTER ? 'Votre recommandation s’affiche sur la page. Twiin vous prévient quand les tests sont finis.'
+                           : 'Vous pouvez continuer à utiliser la page, Twiin vous préviendra.'}</p>
+      <div class="dc-row"><button class="dc-hide">Masquer</button></div>`;
+    card.querySelector('.dc-hide').onclick = () => { box.hidden = true; view = 'hidden'; };
+    if (view !== 'hidden') box.hidden = false;
+  }
+
+  async function send(ok, correction) {
+    card.querySelectorAll('button').forEach((b) => (b.disabled = true));
+    try {
+      const r = await fetch('/api/discovery/answer', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+                                                       body: JSON.stringify({ ok, correction }) });
+      if (!r.ok) throw new Error((await r.json()).error || r.statusText);
+      if (ok && window.twiinShowResults) {
+        await window.twiinShowResults();
+        window.twiinGoReco?.(); // directement à l'étape Reco, la recommandation se calcule
+      }
+      if (ok) { view = 'loading-2'; loading('Merci ! Twiin cherche la meilleure solution', AFTER, 'answered'); }
+      else {
+        card.innerHTML = '<h3>Merci pour la précision</h3><p>Twiin reprend son analyse avec votre correction.</p>';
+        view = 'closed';
+        setTimeout(() => { box.hidden = true; }, 5000);
+      }
+    } catch (e) {
+      card.querySelectorAll('button').forEach((b) => (b.disabled = false));
+      alert('Envoi impossible : ' + e.message);
+    }
+  }
+
+  function question(q) {
+    view = 'question';
+    box.classList.remove('dc-mini');
+    card.innerHTML = `
+      <h3>${esc(q.titre || 'Ai-je bien compris votre problème ?')}</h3>
+      <p>${esc(q.probleme)}</p>
+      ${q.etapes?.length ? `<ol>${q.etapes.map((e) => `<li>${esc(e)}</li>`).join('')}</ol>` : ''}
+      ${q.outils?.length ? `<p><b>Outils :</b> ${q.outils.map(esc).join(', ')}</p>` : ''}
+      ${q.objectif ? `<p><b>Objectif :</b> ${esc(q.objectif)}</p>` : ''}
+      ${q.resultat?.lignes?.length ? `<p><b>Résultat attendu :</b> ${esc(q.resultat.description || '')}</p>
+        <div style="overflow-x:auto"><table style="border-collapse:collapse;font-size:13px;width:100%">
+          <tr>${(q.resultat.colonnes || Object.keys(q.resultat.lignes[0])).map((c) => `<th style="text-align:left;padding:4px 8px 4px 0;border-bottom:1px solid var(--panel-border)">${esc(c)}</th>`).join('')}</tr>
+          ${q.resultat.lignes.map((r) => `<tr>${(q.resultat.colonnes || Object.keys(r)).map((c) => `<td style="padding:4px 8px 4px 0">${esc(r[c] ?? '')}</td>`).join('')}</tr>`).join('')}
+        </table></div>` : ''}
+      ${q.doutes?.length ? `<p class="dc-doubt"><b>À confirmer :</b> ${q.doutes.map(esc).join(' · ')}</p>` : ''}
+      <div class="dc-row">
+        <button class="primary dc-yes">Oui, c'est bien ça</button>
+        <button class="dc-no">Non, je précise</button>
+      </div>`;
+    card.querySelector('.dc-yes').onclick = () => send(true, '');
+    card.querySelector('.dc-no').onclick = () => {
+      card.querySelector('.dc-row').outerHTML = `<textarea placeholder="Qu'est-ce qui ne correspond pas ?"></textarea>
+        <div class="dc-row"><button class="primary dc-send">Envoyer</button></div>`;
+      card.querySelector('.dc-send').onclick = () => send(false, card.querySelector('textarea').value);
+    };
+    box.hidden = false;
+  }
+
+  function solution(s) {
+    view = 'solution';
+    box.hidden = true;
+    document.getElementById('dcProgress')?.remove();
+    // Encart dans la page (en haut des résultats de l'étape Reco), pas une fenêtre par-dessus
+    let host = document.getElementById('dcSolution');
+    if (!host) {
+      host = document.createElement('section');
+      host.id = 'dcSolution';
+      host.className = 'panel';
+      host.style.cssText = 'margin:14px 0;padding:16px 18px;border-radius:14px;border:1px solid var(--accent, #0b57d0)';
+      const results = document.getElementById('results');
+      (results?.parentNode || document.body).insertBefore(host, results || null);
+    }
+    // « Accélérer » = conseils seulement : on masque l'option et le bouton d'automatisation de l'étape Reco
+    if (!document.getElementById('twiinAccStyle')) {
+      const st = document.createElement('style');
+      st.id = 'twiinAccStyle';
+      st.textContent = 'body.twiin-accelerer [data-opt="automatiser"], body.twiin-accelerer .btn-n8n { display: none !important; }';
+      document.head.appendChild(st);
+    }
+    document.body.classList.toggle('twiin-accelerer', s.kind !== 'automate');
+    host.dataset.view = '3';
+    host.classList.add('view');
+    const card = host;
+    card.innerHTML = `
+      <p class="eyebrow-small">Recommandation vérifiée${s.essais ? ` par ${esc(s.essais)} essais` : ' par des essais'}</p>
+      <h3>${s.kind === 'automate' ? '⚡ Twiin peut automatiser cette tâche' : '💡 Après vérification : accélère cette tâche toi-même'}</h3>
+      <p>${esc(s.texte)}</p>
+      ${(s.raisons || []).length ? `<details><summary>Pourquoi</summary><ul>${s.raisons.map((r) => `<li>${esc(r)}</li>`).join('')}</ul></details>` : ''}
+      <p class="dc-msg"></p>
+      <div class="dc-row">${s.kind === 'automate' ? '<button class="primary dc-create">Créer cette automatisation</button>' : ''}
+        <button class="${s.kind === 'automate' ? '' : 'primary '}dc-ok">${s.kind === 'automate' ? 'Plus tard' : 'Compris'}</button></div>`;
+    const create = card.querySelector('.dc-create');
+    if (create) create.onclick = async () => {
+      const msg = card.querySelector('.dc-msg');
+      create.disabled = true;
+      msg.textContent = 'Création dans n8n… (Holo lira les sites en arrière-plan, sans prendre ton écran)';
+      try {
+        const d = await (await fetch('/api/automations/from-discovery', { method: 'POST' })).json();
+        if (d.error) throw new Error(d.error);
+        msg.innerHTML = `Créée : <b>${esc(d.name)}</b> (${d.blocks.length} blocs). <a href="automatisations.html">Ouvrir Mes automatisations</a>`;
+        try { localStorage.setItem('twiin-solution-vue', JSON.stringify(s)); } catch { /* stockage bloqué */ }
+        closedFor = JSON.stringify(s);
+      } catch (e) { msg.textContent = `Création impossible : ${e.message}`; create.disabled = false; }
+    };
+    card.querySelector('.dc-ok').onclick = () => { host.remove(); view = 'closed'; closedFor = JSON.stringify(s);
+      try { localStorage.setItem('twiin-solution-vue', closedFor); } catch { /* stockage bloqué */ } };
+  }
+
+  async function poll() {
+    try {
+      const d = await (await fetch('/api/discovery')).json();
+      const ph = d.phase;
+      if (['upload', 'cadrage'].includes(ph) && view !== 'hidden') loading('Twiin étudie votre tâche', BEFORE, ph);
+      else if (ph === 'awaiting_confirmation' && d.question && view !== 'question') question(d.question);
+      else if (['answered', 'casse'].includes(ph) && view !== 'hidden') loading('Twiin cherche la meilleure solution', AFTER, ph, d.progress);
+      else if (ph === 'done' && d.solution && view !== 'solution' && closedFor !== JSON.stringify(d.solution)) solution(d.solution);
+      else if (ph === 'error' && view && view !== 'closed') {
+        card.innerHTML = '<h3>Twiin n\'a pas pu terminer l\'étude</h3><p>Réessayez avec « Réanalyser le dernier enregistrement ».</p>' +
+          '<div class="dc-row"><button class="dc-hide">Fermer</button></div>';
+        card.querySelector('.dc-hide').onclick = () => { box.hidden = true; };
+        view = 'closed';
+        box.hidden = false;
+      }
+    } catch { /* serveur indisponible : on réessaie */ }
+    setTimeout(poll, 2000);
+  }
+  poll();
+})();

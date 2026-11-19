@@ -232,8 +232,8 @@ function renderAutos() {
         <div class="row"><input type="time" id="t-${esc(a.id)}" value="17:00" aria-label="Autre heure"><button class="b" data-act="plan" data-id="${esc(a.id)}" data-other="1" type="button">Programmer</button>
           ${a.plan ? `<button class="link" data-act="unplan" data-id="${esc(a.id)}" type="button">Annuler la programmation</button>` : ''}</div>
         <div class="row"><select id="f-${esc(a.id)}" aria-label="Fréquence">${[['manual', 'Manuelle (en pause)'], ['daily', 'Chaque jour'], ['weekly', 'Chaque lundi'], ['monthly', 'Le 1er du mois']]
-          .map(([k, l]) => `<option value="${k}" ${a.freq === k ? 'selected' : ''}>${l}</option>`).join('')}</select>
-          <select id="h-${esc(a.id)}" aria-label="Heure">${['08:30', '09:00', '12:30', '18:30'].map((x) => `<option ${(a.heure || (mac ? '12:30' : '09:00')) === x ? 'selected' : ''}>${x}</option>`).join('')}</select>
+          .map(([k, l]) => `<option value="${k}" ${(a.schedule?.type || 'manual') === k ? 'selected' : ''}>${l}</option>`).join('')}</select>
+          <select id="h-${esc(a.id)}" aria-label="Heure">${['08:30', '09:00', '12:30', '18:30'].map((x) => `<option ${(a.schedule && a.schedule.type !== 'manual' ? `${String(a.schedule.hour).padStart(2, '0')}:${String(a.schedule.minute || 0).padStart(2, '0')}` : (mac ? '12:30' : '09:00')) === x ? 'selected' : ''}>${x}</option>`).join('')}</select>
           <button class="b" data-act="freq" data-id="${esc(a.id)}" type="button">Régler</button></div>
         <div class="row">${a.sheet ? `<button class="link" data-act="url" data-url="${esc(a.sheet.url)}" type="button">Ouvrir le résultat</button>` : ''}
           <button class="link" data-act="page" data-page="automatisations.html#${encodeURIComponent(a.id)}" type="button">Historique</button></div>
@@ -334,7 +334,8 @@ document.addEventListener('click', async (ev) => {
   if (act === 'freq') {
     el.textContent = '…';
     const r = await api(`/api/automations/${encodeURIComponent(id)}/schedule`, { method: 'POST',
-      body: { freq: $(`#f-${CSS.escape(id)}`).value, heure: $(`#h-${CSS.escape(id)}`).value } });
+      // format de planification du serveur : { type, hour, minute, days, monthday } (chaque lundi, le 1er du mois)
+      body: { schedule: (([hh, mm]) => ({ type: $(`#f-${CSS.escape(id)}`).value, hour: +hh, minute: +mm, days: [1], monthday: 1 }))($(`#h-${CSS.escape(id)}`).value.split(':')) } });
     say(id, r.error || `Réglée : ${r.freq_label}.`, !!r.error);
   }
   await load();

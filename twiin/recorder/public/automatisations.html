@@ -51,7 +51,7 @@
 <body>
   <header class="topbar">
     <a class="brand" href="/"><span id="logoCells"></span><span>Tw<b>ii</b>n</span></a>
-    <nav class="nav"><a href="/">Analyser une tâche</a><a href="/videos.html">Mes vidéos</a><a href="/automatisations.html" aria-current="page">Mes automatisations</a><a href="/back.html" class="nav-back">Back</a></nav>
+    <nav class="nav"><a href="/#enregistrer">Analyser une tâche</a><a href="/videos.html">Mes vidéos</a><a href="/automatisations.html" aria-current="page">Mes automatisations</a><a href="/back.html" class="nav-back">Back</a></nav>
     <button id="themeBtn" type="button">Thème sombre</button>
   </header>
 
@@ -63,7 +63,7 @@
     <section class="panel dash" id="dash"></section>
   </div>
   <div class="panel empty" id="empty" hidden><b>Aucune automatisation pour l'instant</b>Analyse une tâche, puis choisis « Créer l'automatisation n8n » à l'étape 4.
-    <p><a class="btn primary" href="/">Analyser une tâche</a></p></div>
+    <p><a class="btn primary" href="/#enregistrer">Analyser une tâche</a></p></div>
 
 <script src="/vendor/supabase/supabase.js"></script>
   <script src="shell.js" defer></script>
@@ -90,7 +90,7 @@ function quand(iso) {
   return d.toDateString() === now.toDateString() ? `aujourd'hui à ${h}` : d.toDateString() === demain.toDateString() ? `demain à ${h}` : `le ${fmtDate(iso)}`;
 }
 
-const statusPill = (a) => a.running ? '<span class="pill run">En cours</span>'
+const statusPill = (a) => a.failed ? '<span class="pill bad">Pas créée</span>' : a.running ? '<span class="pill run">En cours</span>'
   : a.active ? '<span class="pill on">Active</span>' : '<span class="pill">En pause</span>';
 const execPill = (e) => e.status === 'success' ? '<span class="pill on">Réussie</span>'
   : ['running', 'new', 'waiting'].includes(e.status) ? '<span class="pill run">En cours</span>'
@@ -131,7 +131,7 @@ function renderList() {
       <span class="row">${a.blocks.map(blockIcon).join('')}</span>
       <b>${escapeHtml(a.name)}</b>
       <span class="row">${statusPill(a)}<span class="meta">${escapeHtml(a.freq_label)}</span></span>
-      <span class="meta">Dernière exécution : ${fmtAgo(a.stats.last)} · ${a.stats.total ? `${Math.round((100 * a.stats.success) / a.stats.total)} % réussies` : 'jamais lancée'}</span>
+      <span class="meta">${a.failed ? `Création échouée ${fmtAgo(a.stats.last)}` : `Dernière exécution : ${fmtAgo(a.stats.last)} · ${a.stats.total ? `${Math.round((100 * a.stats.success) / a.stats.total)} % réussies` : 'jamais lancée'}`}</span>
     </button>`).join('');
   document.querySelectorAll('.item').forEach((b) => b.addEventListener('click', () => select(b.dataset.id)));
 }
@@ -142,14 +142,37 @@ function select(id) {
   if (!a) return;
   history.replaceState(null, '', `#${id}`);
   document.querySelectorAll('.item').forEach((b) => b.classList.toggle('on', b.dataset.id === id));
+  if (a.failed) { // création échouée : la cause, de quoi la corriger, et réessayer
+    document.getElementById('dash').innerHTML = `
+      <h2>${escapeHtml(a.name)}</h2>
+      <div class="pills"><span class="pill bad">Pas créée</span></div>
+      <p class="note warn"><b>Cause :</b> ${escapeHtml(a.error || 'inconnue')}</p>
+      <p class="meta">${/google sheets|credential|connexion/i.test(a.error || '')
+        ? 'Il manque une connexion dans n8n : ajoute-la une fois (Credentials → New), elle servira ensuite à toutes les automatisations.'
+        : 'Ouvre n8n pour voir le détail, puis réessaie.'}</p>
+      <div class="flow">${a.blocks.map((b, i) => `${i ? '<span class="arrow">→</span>' : ''}<span class="blk ${b.kind}">${escapeHtml(b.name)}</span>`).join('')}</div>
+      <div class="actions">
+        <a class="btn primary" href="${a.fix_url}" target="_blank" rel="noopener">${iconsHtml('n8n', 1)}Configurer dans n8n</a>
+        <button id="retryBtn" type="button">Réessayer la création</button>
+      </div>
+      <div class="msg" id="msg"></div>`;
+    document.getElementById('retryBtn').onclick = async (ev) => {
+      ev.target.disabled = true;
+      document.getElementById('msg').textContent = 'Création dans n8n…';
+      const d = await (await fetch(`/api/automations/${encodeURIComponent(id)}/retry`, { method: 'POST' })).json().catch(() => ({}));
+      if (d.error) { document.getElementById('msg').textContent = `Toujours impossible : ${d.error}`; ev.target.disabled = false; return; }
+      load(id);
+    };
+    return;
+  }
   const holo = a.blocks.filter((b) => b.kind === 'holo').length;
   const holoMac = a.blocks.filter((b) => b.kind === 'holo' && b.env !== 'cloud').length;
   const est = a.stats.avg_s || Math.max(60, holo * 150);
   const rate = a.stats.total ? `${Math.round((100 * a.stats.success) / a.stats.total)} %` : '—';
   document.getElementById('dash').innerHTML = `
     <h2>${escapeHtml(a.name)}</h2>
-    <div class="pills">${statusPill(a)}<span class="pill">${escapeHtml(a.freq_label)}</span>${holoMac ? '<span class="pill warn">Utilise ton Mac</span>' : ''}</div>
-    <div class="flow">${a.blocks.map((b, i) => `${i ? '<span class="arrow">→</span>' : ''}<span class="blk ${b.kind}${b.env === 'cloud' ? ' cloud' : ''}" title="${escapeHtml(b.kind === 'holo' ? (b.env === 'cloud' ? 'Holo dans le navigateur cloud de H : ne touche pas ton Mac' : 'Holo sur ton Mac : prend la souris') : KIND[b.kind])}">${blockIcon(b)}${escapeHtml(b.name)}</span>`).join('')}</div>
+    <div class="pills">${statusPill(a)}<span class="pill">${escapeHtml(a.freq_label)}</span>${holoMac ? '<span class="pill warn">Utilise ton ordinateur</span>' : ''}</div>
+    <div class="flow">${a.blocks.map((b, i) => `${i ? '<span class="arrow">→</span>' : ''}<span class="blk ${b.kind}${b.env === 'cloud' ? ' cloud' : ''}" title="${escapeHtml(b.kind === 'holo' ? (b.env === 'cloud' ? 'Holo dans le navigateur cloud de H : ne touche pas ton ordinateur' : 'Holo sur ton ordinateur : prend la souris') : KIND[b.kind])}">${blockIcon(b)}${escapeHtml(b.name)}</span>`).join('')}</div>
     <div class="kpis">
       <div class="kpi"><span>Exécutions</span><b>${a.stats.total}</b></div>
       <div class="kpi"><span>Réussite</span><b>${rate}</b></div>
@@ -158,12 +181,13 @@ function select(id) {
     </div>
     <div class="actions">
       <button class="primary" id="runBtn" type="button" ${a.running ? 'disabled' : ''}>${a.running ? 'En cours…' : holoMac ? 'Lancer…' : 'Lancer maintenant'}</button>
+      <button class="danger" id="stopBtn" type="button" ${a.running ? '' : 'hidden'}>Arrêter l'automatisation</button>
       ${a.sheet ? `<a class="btn" href="${a.sheet.url}" target="_blank" rel="noopener">${iconsHtml('Google Sheets', 1)}Ouvrir le résultat</a>` : ''}
     </div>
-    ${holoMac ? '<p class="note warn">Elle utilise ton Mac pendant qu\'elle tourne : ne touche à rien.</p>' : ''}
+    ${holoMac ? '<p class="note warn">Elle utilise ton ordinateur pendant qu\'elle tourne : ne touche à rien.</p>' : ''}
     ${a.plan ? `<p class="planned">Lancement programmé <b>${escapeHtml(quand(a.plan))}</b>. Tu seras prévenu 2 min avant. <a href="#" id="unplan">Annuler</a></p>` : ''}
     <div class="choice" id="runChoice" hidden>
-      <p><b>Elle a besoin de ton Mac pendant environ ${Math.ceil(est / 60)} min</b> (souris et clavier). Quand veux-tu la lancer ?</p>
+      <p><b>Elle a besoin de ton ordinateur pendant environ ${Math.ceil(est / 60)} min</b> (souris et clavier). Quand veux-tu la lancer ?</p>
       <div class="actions">
         <button type="button" data-when="now" class="primary">Maintenant</button>
         ${CRENEAUX.map(([k, l]) => `<button type="button" data-when="${k}">${l}</button>`).join('')}
@@ -175,12 +199,20 @@ function select(id) {
 
     <div class="section"><h3>Quand elle tourne</h3>
       <div class="freq">
-        <select id="freq">${[['manual', 'Manuellement (en pause)'], ['daily', 'Chaque jour'], ['weekly', 'Chaque lundi'], ['monthly', 'Le 1er du mois']]
-          .map(([k, l]) => `<option value="${k}" ${a.freq === k ? 'selected' : ''}>${l}</option>`).join('')}</select>
-        <select id="heure" ${a.freq === 'manual' ? 'disabled' : ''}>${HEURES.map(([k, l]) => `<option value="${k}" ${(a.heure || (holoMac ? '12:30' : '09:00')) === k ? 'selected' : ''}>${l}</option>`).join('')}</select>
+        <select id="sType" aria-label="Type de planification">
+          ${[['manual', 'Manuellement (en pause)'], ['daily', 'Chaque jour'], ['weekly', 'Certains jours de la semaine'], ['monthly', 'Un jour précis du mois']]
+            .map(([k, l]) => `<option value="${k}" ${(a.schedule?.type || 'manual') === k ? 'selected' : ''}>${l}</option>`).join('')}
+        </select>
+        <span id="sDays" class="freq">${[[1, 'Lun'], [2, 'Mar'], [3, 'Mer'], [4, 'Jeu'], [5, 'Ven'], [6, 'Sam'], [0, 'Dim']]
+          .map(([d, l]) => `<label class="meta"><input type="checkbox" value="${d}" ${(a.schedule?.days || [1]).includes(d) ? 'checked' : ''}> ${l}</label>`).join(' ')}</span>
+        <label class="meta" id="sDom">le <select id="sMonthday">${Array.from({ length: 31 }, (_, i) => i + 1)
+          .map((d) => `<option value="${d}" ${(a.schedule?.monthday || 1) === d ? 'selected' : ''}>${d === 1 ? '1er' : d}</option>`).join('')}</select></label>
+        <label class="meta" id="sAt">à <select id="sHour">${Array.from({ length: 24 }, (_, h) => h)
+          .map((h) => `<option value="${h}" ${(a.schedule?.hour ?? 9) === h ? 'selected' : ''}>${String(h).padStart(2, '0')} h</option>`).join('')}</select>
+          <select id="sMinute">${[0, 15, 30, 45].map((m) => `<option value="${m}" ${(a.schedule?.minute || 0) === m ? 'selected' : ''}>${String(m).padStart(2, '0')}</option>`).join('')}</select></label>
         <button id="saveFreq" type="button">Enregistrer</button>
       </div>
-      ${holoMac ? '<p class="note">Choisis un moment où tu n\'utilises pas ton Mac (allumé, sans veille).</p>' : ''}
+      ${holoMac ? '<p class="note">Choisis un moment où tu n\'utilises pas ton ordinateur (allumé, sans veille).</p>' : ''}
     </div>
 
     <div class="section"><h3>Historique</h3>
@@ -197,6 +229,8 @@ function select(id) {
     if (d.error) { msg.textContent = d.error; return; }
     msg.textContent = holoMac ? 'Lancée. Ton Mac est utilisé : un bandeau en bas de l\'écran indique le temps restant.' : 'Lancée. Tu peux continuer à travailler.';
     document.getElementById('runChoice').hidden = true;
+    document.getElementById('runBtn').disabled = true;
+    document.getElementById('stopBtn').hidden = false;
     watch(id);
   };
   // Une automatisation qui utilise le Mac : on choisit le moment (maintenant ou un créneau où le Mac est libre)
@@ -215,12 +249,30 @@ function select(id) {
     await fetch(`/api/automations/${encodeURIComponent(id)}/plan`, { method: 'DELETE' });
     a.plan = null; select(id);
   });
-  document.getElementById('freq').onchange = (e) => { document.getElementById('heure').disabled = e.target.value === 'manual'; };
+  const sType = document.getElementById('sType');
+  const showSched = () => {
+    const t = sType.value;
+    document.getElementById('sDays').hidden = t !== 'weekly';
+    document.getElementById('sDom').hidden = t !== 'monthly';
+    document.getElementById('sAt').hidden = t === 'manual';
+  };
+  sType.onchange = showSched;
+  showSched();
+  document.getElementById('stopBtn').onclick = async (ev) => {
+    ev.target.disabled = true;
+    const d = await (await fetch(`/api/automations/${encodeURIComponent(id)}/stop`, { method: 'POST' })).json().catch(() => ({}));
+    document.getElementById('msg').textContent = `Arrêtée${d.stopped?.length ? ` (${d.stopped.join(', ')})` : ''}. Tu as repris la main.`;
+    clearInterval(poll);
+    setTimeout(() => select(id), 1500);
+  };
   document.getElementById('saveFreq').onclick = async (ev) => {
     const msg = document.getElementById('msg');
     ev.target.disabled = true;
+    const schedule = { type: sType.value, hour: +document.getElementById('sHour').value, minute: +document.getElementById('sMinute').value,
+                       monthday: +document.getElementById('sMonthday').value,
+                       days: [...document.querySelectorAll('#sDays input:checked')].map((c) => +c.value) };
     const r = await fetch(`/api/automations/${encodeURIComponent(id)}/schedule`, { method: 'POST', headers: { 'Content-Type': 'application/json' },
-                                                                         body: JSON.stringify({ freq: document.getElementById('freq').value, heure: document.getElementById('heure').value }) });
+                                                                         body: JSON.stringify({ schedule }) });
     const d = await r.json();
     ev.target.disabled = false;
     if (d.error) { msg.textContent = `Réglage impossible : ${d.error}`; return; }

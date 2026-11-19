@@ -33,6 +33,23 @@ from dotenv import dotenv_values
 
 ROOT = Path(__file__).resolve().parents[1]
 ENV = dotenv_values(ROOT / ".env")
+for _k in ("N8N_LOCAL_URL", "N8N_LOCAL_API_KEY", "N8N_LOCAL_MCP_TOKEN", "TWIIN_LOCAL_TOKEN"):  # variables du serveur
+    if not ENV.get(_k) and __import__("os").environ.get(_k):
+        ENV[_k] = __import__("os").environ[_k]
+try:  # sinon, l'environnement LOCAL de n8ncli (n8ncli envs edit LOCAL …) : même clé et même jeton
+    _l = json.loads((Path.home() / ".n8ncli-global.json").read_text(encoding="utf-8"))["environments"]["LOCAL"]
+    ENV.setdefault("N8N_LOCAL_URL", _l.get("instanceUrl"))
+    if not ENV.get("N8N_LOCAL_API_KEY"):
+        ENV["N8N_LOCAL_API_KEY"] = _l.get("apiKey")
+    if not ENV.get("N8N_LOCAL_MCP_TOKEN"):
+        ENV["N8N_LOCAL_MCP_TOKEN"] = _l.get("accessToken")
+except (OSError, KeyError, ValueError):
+    pass
+if not ENV.get("TWIIN_LOCAL_TOKEN"):  # même jeton que le serveur Twiin (créé par lui, gardé sur le poste)
+    try:
+        ENV["TWIIN_LOCAL_TOKEN"] = (ROOT / "workflows" / "runs" / ".twiin_local_token").read_text(encoding="utf-8").strip()
+    except OSError:
+        pass
 N8N_DB = Path.home() / ".n8n" / "database.sqlite"
 TWIIN_URL = "http://127.0.0.1:3000/api/holo/run"
 SHEETS = {"veille": ENV.get("N8N_SHEET_VEILLE_ID"), "factures": ENV.get("N8N_SHEET_FACTURES_ID")}
@@ -112,6 +129,45 @@ def compile_plan(plan):
                 "sendBody": True, "specifyBody": "json", "jsonBody": body,
                 "options": {"timeout": 1500000, "response": {"response": {"responseFormat": "json"}}},
             }, x))
+        elif t in ("holo_web", "excel_append"):
+            # Blocs « sans gêner l'employé » : Holo lit une page web dans un navigateur INVISIBLE ; l'écriture dans un
+            # classeur Excel du poste se fait par fichier, sans Holo. Les deux passent par le serveur Twiin local (jeton).
+            if t == "holo_web":
+                url = TWIIN_URL.replace("/api/holo/run", "/api/holo/web")
+                body = json.dumps({"url": b["url"], "label": b.get("label") or b["name"], "columns": b["columns"]}, ensure_ascii=False)
+            else:
+                url = TWIIN_URL.replace("/api/holo/run", "/api/excel/write")
+                body = ("={{ JSON.stringify({ path: " + json.dumps(b.get("path") or "", ensure_ascii=False) + ", name: "
+                        + json.dumps(b.get("workbook") or "", ensure_ascii=False) + ", rows: $json.rows }) }}")
+            nodes.append(node(b["name"], "n8n-nodes-base.httpRequest", 4.2, {
+                "method": "POST", "url": url,
+                "sendHeaders": True, "headerParameters": {"parameters": [{"name": "x-twiin-token", "value": token}]},
+                "sendBody": True, "specifyBody": "json", "jsonBody": body,
+                "options": {"timeout": 600000, "response": {"response": {"responseFormat": "json"}}},
+            }, x))
+        elif t in ("source_read", "holo_fill"):
+            # Saisie « document → logiciel web sans API » : lecture du document sur le poste, puis Holo saisit dans un
+            # navigateur INVISIBLE et le navigateur vérifie les valeurs à l'écran. S'il n'y a rien de nouveau, rien n'est saisi.
+            if t == "source_read":
+                url = TWIIN_URL.replace("/api/holo/run", "/api/source/read")
+                body = json.dumps({"columns": b["columns"], "line_columns": b.get("line_columns") or [], "folder": b.get("folder") or "", "pattern": b.get("pattern") or ""},
+                                  ensure_ascii=False)
+            else:
+                url = TWIIN_URL.replace("/api/holo/run", "/api/holo/fill")
+                body = ("={{ JSON.stringify({ url: " + json.dumps(b["url"]) + ", label: " + json.dumps(b.get("label") or "", ensure_ascii=False)
+                        + ", values: $json.data || {} }) }}")
+            nodes.append(node(b["name"], "n8n-nodes-base.httpRequest", 4.2, {
+                "method": "POST", "url": url,
+                "sendHeaders": True, "headerParameters": {"parameters": [{"name": "x-twiin-token", "value": token}]},
+                "sendBody": True, "specifyBody": "json", "jsonBody": body,
+                "options": {"timeout": 900000, "response": {"response": {"responseFormat": "json"}}},
+            }, x))
+        elif t == "rows_from":
+            src = ", ".join("$(" + json.dumps(n, ensure_ascii=False) + ").first().json.data || {}" for n in b["sources"])
+            code = (f"const rows = [{src}];\n"
+                    "return [{ json: { rows: rows.filter((r) => Object.values(r).some((v) => v && v !== '—')) } }];")
+            nodes.append(node(b["name"], "n8n-nodes-base.code", 2, {"jsCode": code}, x))
+            nodes[-1]["notes"] = "Rassemble les valeurs lues sur chaque page en lignes de tableau."
         elif t == "row":
             lines = ",\n  ".join(f"{json.dumps(k, ensure_ascii=False)}: {js_template(v)}" for k, v in b["fields"].items())
             nodes.append(node(b["name"], "n8n-nodes-base.code", 2, {"jsCode": f"return [{{ json: {{\n  {lines}\n}} }}];"}, x))
@@ -251,12 +307,14 @@ def ensure_header(sheet_key, column_letter, title):
 
 
 def run_cli(args, timeout=3600):
-    r = subprocess.run(["n8n", *args], capture_output=True, text=True, timeout=timeout)
+    import shutil
+    exe = shutil.which("n8n") or "n8n"  # Windows : n8n.cmd (npm global), introuvable sous le simple nom « n8n »
+    r = subprocess.run([exe, *args], capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=timeout)
     return r.returncode, r.stdout, r.stderr
 
 
 def import_workflow(wf):
-    with tempfile.NamedTemporaryFile("w", suffix=".json", delete=False) as f:
+    with tempfile.NamedTemporaryFile("w", suffix=".json", delete=False, encoding="utf-8") as f:
         json.dump(wf, f, ensure_ascii=False)
     code, out, err = run_cli(["import:workflow", f"--input={f.name}"])
     if code != 0:

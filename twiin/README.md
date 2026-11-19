@@ -50,3 +50,38 @@ automation/n8n-runtime/start.sh                    # n8n : http://localhost:5678
 ```
 
 Autorisations macOS pour VS Code ou le Terminal : Enregistrement de l'écran, Accessibilité, Surveillance de l'entrée.
+
+## Mac ou Windows : même code, détection automatique
+
+Le serveur détecte le système et choisit le bon script : OCR (`ocr.py` Vision macOS / `ocr_win.py` OCR intégré de
+Windows), journal d'actions (`actions.py` Quartz / `actions_win.py` UI Automation). Python est cherché dans `twiin/.venv`
+puis dans `.venv` à la racine, en `bin/` (Mac) ou `Scripts\` (Windows), et tourne toujours en UTF-8.
+
+```bash
+# Mac                                         # Windows (PowerShell)
+python3 -m venv .venv                         py -3.12 -m venv .venv
+.venv/bin/pip install -e .                    .venv\Scripts\pip install -e .
+.venv/bin/python -m playwright install chromium   .venv\Scripts\python -m playwright install chromium
+cp .env.example .env                          copy .env.example .env
+.venv/bin/python scripts/doctor.py            .venv\Scripts\python scripts\doctor.py
+```
+
+`scripts/doctor.py` vérifie tout (versions, modules, clés valides, Supabase, n8n) **sans afficher aucun secret** et dit
+quoi corriger. Toutes les clés vont dans `twiin/.env` (non versionné), y compris `SUPABASE_*`.
+
+Encore propre au Mac : le rejeu de Holo sur le **vrai poste** (`scripts/run_live.py`, `twiin/clients/holo/multiscreen.py`),
+`scripts/fetch_icons.py` et `automation/n8n-runtime/start.sh` (sous Windows : `npx n8n@2.48.5 start`).
+
+## Découverte de la tâche et environnement de test (`discovery/`)
+
+Après « Terminer et analyser », le serveur lance en arrière-plan `python -m discovery.discovery discover <session>` :
+1. la tâche et ses captures vont dans Supabase (`taches`, bucket `task-captures`) ;
+2. **question à l'employé en ~30 s** : « Ai-je bien compris votre problème ? » (seul élément visible ; étapes et
+   conseils restent cachés jusqu'à son « oui ») ;
+3. en parallèle, un **jumeau** (page web à données fictives) est construit, puis **3 parcours Holo** explorent la tâche en
+   même temps depuis le même point de départ, sans se copier (registre partagé ; le 1er suit le chemin de l'employé tiré
+   du journal d'actions) ;
+4. les outils sont classés (**API / page lisible / écran**) : **n8n natif** ou **n8n + Holo**, puis **2 itérations
+   d'automatisation** de ce mode dans le n8n local (workflow inactif, exécuté contre le jumeau, puis supprimé) ;
+5. après le « oui » : test popup + lenteur du meilleur parcours, puis **solution recommandée** (table `recommendations`).
+Chaque essai est écrit dans `tests` (modèle, durée, réussite vérifiée, faux « réussi »). Réglages : `.env.example`.

@@ -138,7 +138,7 @@ const analysisEl = document.getElementById('analysis');
 const phasesEl = document.getElementById('phases');
 const PHASES = [
   ['upload', 'Envoi des dernières images'],
-  ['ocr', 'Lecture du texte de l\'écran, sur ton Mac'],
+  ['ocr', 'Lecture du texte de l\'écran, sur ton ordinateur'],
   ['model', 'Découpage en étapes par le modèle'],
   ['parse', 'Mise en forme du résultat'],
 ];
@@ -457,6 +457,14 @@ async function analyzeRequest(url, body, message, nScreens) {
     });
     const data = await res.json();
     if (data.error) throw new Error(data.error);
+    if (data._discovery) {
+      // Les étapes et conseils restent cachés tant que l'employé n'a pas confirmé que Twiin a bien compris.
+      window.__pendingWorkflows = data.workflows || [];
+      resultsEl.innerHTML = '';
+      endAnalysisPanel(true, 'Twiin étudie ta tâche en détail pour bien la comprendre (quelques minutes). Il te posera une question juste après.');
+      statusEl.textContent = 'Twiin étudie ta tâche…';
+      return;
+    }
     renderWorkflows(data.workflows || [], { autoReco: true });
     const m = data._meta || {};
     const n = data.workflows?.length ?? 0;
@@ -471,7 +479,7 @@ async function analyzeRequest(url, body, message, nScreens) {
   }
 }
 
-// --- Workflow modifiable → « ✨ Améliorer » → « ▶ Rejouer sur mon Mac » (suivi en direct) ---------------------
+// --- Workflow modifiable → « ✨ Améliorer » → « ▶ Rejouer sur mon ordinateur » (suivi en direct) ---------------------
 // Barre du parcours : étapes faites (vert) et étape en cours (bleu)
 // Une page par étape : setStep(n) marque le parcours ET affiche la page de l'étape n (adresse /#audit, /#enregistrer…).
 // « Tester et casser » est sorti du parcours employé (il vit dans le Back, travail de Lucas) : 3 étapes.
@@ -520,10 +528,23 @@ function routeFromHash() {
   if (k >= 0) setStep(k + 1, { scroll: false });
 }
 window.addEventListener('hashchange', routeFromHash);
-{ // au chargement : la page demandée dans l'adresse (/#tester…), sinon l'audit
+{ // au chargement : la page demandée dans l'adresse (/#enregistrer…), sinon l'audit (page d'accueil)
   const k = hashView();
   setStep(k >= 0 ? k + 1 : 1, { scroll: false });
 }
+
+// Appelé par discovery.js quand l'employé confirme « Oui, c'est bien ça ».
+// Appelé par discovery.js après le « oui » : on passe directement à l'étape Reco et on lance la recommandation.
+window.twiinGoReco = () => {
+  setStep(3); // setStep lance la recommandation automatique de chaque tâche affichée
+};
+window.twiinShowResults = async () => {
+  let wfs = window.__pendingWorkflows;
+  if (!wfs) { try { wfs = (await (await fetch('/api/candidates')).json()).workflows || []; } catch { wfs = []; } }
+  window.__pendingWorkflows = null;
+  renderWorkflows(wfs, { autoReco: true });
+  statusEl.textContent = 'Voici les étapes comprises par Twiin.';
+};
 
 function renderWorkflows(workflows, { example = false, silent = false, autoReco = false } = {}) {
   // silent : la dernière tâche, rechargée à l'ouverture de la page, sans changer d'écran
@@ -556,10 +577,10 @@ function workflowCard(wf, example = false) {
 
     <section class="card-section part-test">
       <div class="card-step big"><span class="num-inline">3</span> Tester et casser</div>
-      <p class="card-help">Holo refait la tâche sur ton Mac pour vérifier que Twiin l'a bien comprise. Bientôt : plusieurs variantes
+      <p class="card-help">Holo refait la tâche sur ton ordinateur pour vérifier que Twiin l'a bien comprise. Bientôt : plusieurs variantes
         testées sur une copie de tes fichiers, et Twiin garde celle qui passe.</p>
       <div class="wf-actions">
-        <button class="btn-replay" title="Holo refait la tâche sur ton Mac pour vérifier que Twiin l'a bien comprise">Tester la tâche avec Holo</button>
+        <button class="btn-replay" title="Holo refait la tâche sur ton ordinateur pour vérifier que Twiin l'a bien comprise">Tester la tâche avec Holo</button>
         <button class="btn-improve" title="Rend les étapes plus précises pour Holo, sans changer la tâche">Préciser les étapes pour Holo</button>
         <button class="btn-original" hidden>Revenir aux étapes d'origine</button>
         <button class="btn-skip-test" title="Passer directement à la recommandation">Passer le test</button>
@@ -735,7 +756,7 @@ function workflowCard(wf, example = false) {
     origBtn.hidden = true;
   };
 
-  // ▶ Rejouer sur mon Mac
+  // ▶ Rejouer sur mon ordinateur
   const replayBtn = card.querySelector('.btn-replay');
   const replayEl = card.querySelector('.replay');
   replayBtn.onclick = async () => {
@@ -744,7 +765,7 @@ function workflowCard(wf, example = false) {
     const todo = wfNow.steps.map((x, i) => (/à compléter/i.test(x) ? i + 1 : null)).filter(Boolean);
     if (todo.length) return alert(`Complète d'abord les étapes ${todo.join(', ')} : elles contiennent une valeur « ⚠️ À compléter ». ` +
       `Sinon Holo inventerait la valeur.`);
-    const ok = confirm(`Holo va refaire « ${wfNow.name} » (${wfNow.steps.length} étape(s)) sur ton Mac.\n\n` +
+    const ok = confirm(`Holo va refaire « ${wfNow.name} » (${wfNow.steps.length} étape(s)) sur ton ordinateur.\n\n` +
       `• Il prend la souris et le clavier : ne touche à rien pendant le rejeu.\n` +
       `• VS Code sera masqué ; ferme ce qui est privé.\n` +
       `• Holo écrit exactement là où les étapes l'indiquent (cellules, pages) : vérifie que ce ne sont pas tes données d'origine.\n` +
@@ -872,7 +893,7 @@ const BLOCK_ICON = { holo: '🤖 Holo', row: '🧮 Code', verify: '✅ Vérifica
 
 async function createN8n(wf, verdict, el) {
   const ok = confirm(`Twiin va créer l'automatisation n8n de « ${wf.name} », l'importer dans ton n8n local et la TESTER une fois.\n\n` +
-    `Si elle contient des blocs Holo, Holo prendra la souris et le clavier de ton Mac pendant le test : ne touche à rien ` +
+    `Si elle contient des blocs Holo, Holo prendra la souris et le clavier de ton ordinateur pendant le test : ne touche à rien ` +
     `(double Échap pour l'arrêter). L'automatisation restera INACTIVE : c'est toi qui l'actives dans n8n.\n\nContinuer ?`);
   if (!ok) return;
   el.hidden = false;
@@ -908,7 +929,8 @@ async function createN8n(wf, verdict, el) {
           }
         } else if (e.type === 'imported') {
           st.textContent = 'Importé dans n8n. Test en cours…';
-          links.innerHTML = `<a href="${e.url}" target="_blank">Ouvrir le workflow dans n8n</a>`;
+          links.innerHTML = `<a class="link-btn" href="/automatisations.html#${encodeURIComponent(e.id || '')}">Voir mon automatisation</a> · `
+            + `<a href="${e.url}" target="_blank">Ouvrir le workflow dans n8n</a>`;
         } else if (e.type === 'executing') {
           links.innerHTML += ` · <a href="${e.url}" target="_blank">Voir l'exécution n° ${e.execution} dans n8n</a>`;
         } else if (e.type === 'node') {
@@ -929,13 +951,18 @@ async function createN8n(wf, verdict, el) {
           if (e.ok) setStep(4);
           if (e.ok) links.innerHTML = `<a class="link-btn" href="/automatisations.html#${encodeURIComponent(e.id || '')}">Régler et suivre dans Mes automatisations</a> · ` + links.innerHTML;
           st.textContent = e.ok ? '✅ Automatisation créée et testée avec succès. Elle est en pause : choisis quand elle tourne dans « Mes automatisations ».'
-                                : `❌ Le test a échoué (${e.status}). Ouvre l'exécution dans n8n pour voir le nœud en erreur.`;
+                                : (links.innerHTML ? `❌ Le test a échoué (${e.status}). Ouvre l'exécution dans n8n pour voir le nœud en erreur.`
+                                                   : `❌ Automatisation non créée : ${e.status}`);
+          if (!e.ok && !/workflow\//.test(links.innerHTML)) {
+            links.innerHTML = `<a class="link-btn" href="/automatisations.html#${encodeURIComponent(e.id || '')}">Voir dans Mes automatisations</a>`
+              + (/google sheets|credential|connexion/i.test(e.status || '') ? ` · <a href="http://localhost:5678/home/credentials" target="_blank">Ajouter la connexion dans n8n</a>` : '');
+          }
         }
       }
       const last = (hs || []).at(-1);
       holo.textContent = !(holoRunning && last) ? '' : holoEnv === 'cloud'
-        ? `☁ Holo travaille dans le navigateur cloud de H (tu peux continuer à utiliser ton Mac) : ${(last.step || last.answer || '').slice(0, 140)}…`
-        : `🤖 Holo travaille sur ton Mac, ne touche à rien : ${(last.step || last.answer || '').slice(0, 140)}…`;
+        ? `☁ Holo travaille dans le navigateur cloud de H (tu peux continuer à utiliser ton ordinateur) : ${(last.step || last.answer || '').slice(0, 140)}…`
+        : `🤖 Holo travaille sur ton ordinateur, ne touche à rien : ${(last.step || last.answer || '').slice(0, 140)}…`;
       if (!running && next > 0 && /terminé|succès|échoué|Erreur/.test(st.textContent)) clearInterval(timer);
     } catch { /* on réessaie */ }
   }, 1500);
@@ -987,13 +1014,36 @@ document.getElementById('lastBtn').addEventListener('click', () => {
   renderWorkflows(lastWorkflows);
   statusEl.textContent = 'Dernière tâche analysée : reprends à l\'étape 2.';
 });
-// À l'ouverture : la dernière tâche analysée revient toute seule (étapes à relire, Recommandation)
-fetch('/api/candidates').then((r) => r.json()).then(async (d) => {
-  if (!d.workflows?.length || resultsEl.children.length) return;
-  lastWorkflows = d.workflows;
-  await iconsReady;
-  if (!resultsEl.children.length && !recording) renderWorkflows(d.workflows, { silent: true });
-}).catch(() => {});
+// À l'ouverture : si Twiin étudie une tâche (découverte), on attend sa question « Ai-je bien compris ? » ;
+// sinon la dernière tâche analysée revient toute seule (étapes à relire, Recommandation). « Mes tâches » liste les autres.
+Promise.all([fetch('/api/candidates').then((r) => r.json()), fetch('/api/discovery').then((r) => r.json()).catch(() => ({ phase: 'idle' }))])
+  .then(async ([d, disc]) => {
+    const pending = ['upload', 'twin', 'dev_test', 'awaiting_confirmation'].includes(disc.phase);
+    if (pending) statusEl.textContent = 'Twiin étudie ta tâche… une question va bientôt apparaître.';
+    renderMyTasks(d.workflows || []);
+    if (pending || !d.workflows?.length || resultsEl.children.length) return;
+    lastWorkflows = [d.workflows[0]];
+    await iconsReady;
+    if (!resultsEl.children.length && !recording) renderWorkflows([d.workflows[0]], { silent: true });
+  }).catch(() => {});
+// « Mes tâches » : chaque tâche analysée, rouvrable, et réanalysable tant que ses images sont sur le poste.
+function renderMyTasks(list) {
+  const box = document.getElementById('myTasks'), ul = document.getElementById('myTasksList');
+  if (!box || !list.length) return;
+  box.hidden = false;
+  ul.innerHTML = list.map((w, i) => `<li style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;justify-content:space-between;
+      border:1px solid var(--panel-border);border-radius:10px;padding:10px 12px">
+    <span style="min-width:0"><b>${escapeHtml(w.name || 'Tâche')}</b><br><span class="meta">${w.created_at ? new Date(w.created_at)
+      .toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' }) : ''} · ${(w.steps || []).length} étape(s)</span></span>
+    <span style="display:flex;gap:8px"><button type="button" data-open="${i}">Rouvrir</button>
+      <button type="button" data-re="${i}" ${w.has_images === false ? 'disabled title="Images de cet enregistrement absentes de ce poste"' : ''}>Réanalyser</button></span></li>`).join('');
+  ul.querySelectorAll('[data-open]').forEach((b) => b.onclick = () => {
+    renderWorkflows([list[+b.dataset.open]]);
+    statusEl.textContent = 'Tâche rouverte : relis les étapes, puis passe à la Reco.';
+  });
+  ul.querySelectorAll('[data-re]').forEach((b) => b.onclick = () =>
+    analyzeRequest('/api/reanalyze', { session: list[+b.dataset.re].session }, `Nouvelle analyse de « ${list[+b.dataset.re].name} »…`));
+}
 
 function escapeHtml(str) {
   const div = document.createElement('div');

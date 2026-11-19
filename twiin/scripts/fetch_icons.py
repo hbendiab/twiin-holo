@@ -13,10 +13,12 @@ from __future__ import annotations
 import json
 import re
 import subprocess
+import sys
 from pathlib import Path
 
-from AppKit import NSBitmapImageRep, NSPNGFileType, NSWorkspace
-from Foundation import NSMakeRect, NSSize
+if sys.platform == "darwin":
+    from AppKit import NSBitmapImageRep, NSPNGFileType, NSWorkspace
+    from Foundation import NSMakeRect, NSSize
 
 ROOT = Path(__file__).resolve().parents[1]
 OUT = ROOT / "recorder" / "public" / "icons"
@@ -76,6 +78,39 @@ def save_app_icon(app: Path, dest: Path) -> bool:
     return bool(data and data.writeToFile_atomically_(str(dest), True))
 
 
+def windows_app_icons(out: Path) -> list[tuple[str, str]]:
+    """Windows : icône de chaque application installée (registre « Applications installées », champ DisplayIcon),
+    extraite par Windows lui-même (System.Drawing). Rien ne passe par Internet. Rend [(nom, fichier png)]."""
+    import winreg
+    apps = {}
+    for hive, path in [(winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall"),
+                       (winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall"),
+                       (winreg.HKEY_CURRENT_USER, r"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall")]:
+        try:
+            root = winreg.OpenKey(hive, path)
+        except OSError:
+            continue
+        for i in range(winreg.QueryInfoKey(root)[0]):
+            try:
+                k = winreg.OpenKey(root, winreg.EnumKey(root, i))
+                name = winreg.QueryValueEx(k, "DisplayName")[0].strip()
+                icon = str(winreg.QueryValueEx(k, "DisplayIcon")[0]).split(",")[0].strip('"')
+            except OSError:
+                continue
+            if name and icon.lower().endswith((".exe", ".ico")) and Path(icon).exists():
+                apps.setdefault(name, icon)
+    jobs = [(name, icon, out / f"{slug(name)}.png") for name, icon in apps.items()]
+    if not jobs:
+        return []
+    ps = "Add-Type -AssemblyName System.Drawing\n" + "\n".join(
+        f"try {{ [System.Drawing.Icon]::ExtractAssociatedIcon('{icon.replace(chr(39), chr(39) * 2)}').ToBitmap().Save("
+        f"'{str(dest).replace(chr(39), chr(39) * 2)}', [System.Drawing.Imaging.ImageFormat]::Png) }} catch {{}}"
+        for _n, icon, dest in jobs)
+    subprocess.run(["powershell", "-NoProfile", "-Command", ps], capture_output=True, timeout=300,
+                   creationflags=0x08000000)
+    return [(name, dest.name) for name, _i, dest in jobs if dest.exists()]
+
+
 def aliases_for(name: str) -> list[str]:
     names = [name]
     for v in VENDORS:
@@ -92,7 +127,13 @@ def main() -> None:
 
     # 1. Applications installées
     seen: set[str] = set()
-    for d in APP_DIRS:
+    if sys.platform == "win32":
+        for name, file in windows_app_icons(OUT):
+            key = slug(name)
+            if key not in seen:
+                seen.add(key)
+                entries.append({"key": key, "label": name, "aliases": aliases_for(name), "file": file, "kind": "app"})
+    for d in (APP_DIRS if sys.platform == "darwin" else []):
         if not d.exists():
             continue
         for app in sorted(d.glob("*.app")):
@@ -113,7 +154,7 @@ def main() -> None:
         dest = OUT / f"{key}.png"
         if not dest.exists():
             # curl utilise les certificats du Mac (le Python du projet n'a pas toujours les siens)
-            r = subprocess.run(["curl", "-sfL", "--max-time", "10", "-A", "twiin-icons/1.0", "-o", str(dest), url])
+            r = subprocess.run(["curl", "-sfL", "--max-time", "10", "-A", "twiin-icons/1.0", "-o", str(dest), url])  # curl existe aussi sous Windows 10+
             if r.returncode != 0 or not dest.exists() or dest.stat().st_size < 100:
                 dest.unlink(missing_ok=True)
                 print(f"  {label} : échec du téléchargement")  # pas de réseau : on garde la liste sans ce logo
@@ -125,7 +166,7 @@ def main() -> None:
 
     # 3. Alias de l'audit (identifiants d'application, ex. com.microsoft.Excel) vers l'icône déjà trouvée
     try:
-        tools = json.loads(REGISTRY.read_text())["tools"]
+        tools = json.loads(REGISTRY.read_text(encoding="utf-8"))["tools"]
         by_key = {e["key"]: e for e in entries}
         for t in tools:
             for a in t.get("apps", []):

@@ -52,7 +52,7 @@
       const pct = e.estimate_s ? Math.min(100, Math.round((100 * (e.elapsed_s || 0)) / e.estimate_s)) : null;
       el.className = `tw-banner${e.sur_mac ? ' mac' : ''}`;
       el.innerHTML = `<span class="tw-dot"></span><span class="tw-txt">
-          <b>${e.sur_mac ? 'Twiin utilise ton Mac' : 'Twiin travaille en arrière-plan'}</b> · ${esc(e.name)}
+          <b>${e.sur_mac ? 'Twiin utilise ton ordinateur' : 'Twiin travaille en arrière-plan'}</b> · ${esc(e.name)}
           <span class="tw-sub">${e.sur_mac ? 'Ne touche ni la souris ni le clavier. ' : 'Tu peux continuer à travailler. '}${reste != null
             ? (reste > 0 ? `Encore environ ${dur(reste)}.` : 'Presque fini…') : ''}</span>
           ${pct != null ? `<span class="tw-bar"><span style="width:${pct}%"></span></span>` : ''}</span>
@@ -66,7 +66,7 @@
     } else if (e.prochain) {
       el.className = 'tw-banner plan';
       el.innerHTML = `<span class="tw-dot"></span><span class="tw-txt"><b>Programmé ${esc(quand(e.prochain.at))}</b> · ${esc(e.prochain.name)}
-          <span class="tw-sub">Twiin utilisera ton Mac à ce moment-là. Tu seras prévenu 2 min avant.</span></span>
+          <span class="tw-sub">Twiin utilisera ton ordinateur à ce moment-là. Tu seras prévenu 2 min avant.</span></span>
         ${location.pathname.endsWith('automatisations.html') ? '' : `<a class="tw-btn" href="/automatisations.html#${encodeURIComponent(e.prochain.id)}">Voir</a>`}`;
       el.hidden = false;
     } else {

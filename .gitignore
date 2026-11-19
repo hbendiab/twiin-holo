@@ -31,3 +31,4 @@ archives/premier-test-holo/screenshots/
 # Retiré du dépôt le 18/11 : son Dockerfile/railway.json faisaient ouvrir comptarex au lieu de Twiin.
 # Il reste sur le Mac de Hanine pour la démo ; Twiin n'en a pas besoin pour fonctionner.
 comptarex/
+testbench/dico_out/

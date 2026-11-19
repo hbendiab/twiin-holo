@@ -3,6 +3,9 @@
 **Twiin observe une tâche que l'employé fait une fois sur son ordinateur, la comprend, puis lui propose soit de l'accélérer
 (conseils + tuto vidéo), soit de l'automatiser (n8n + agent Holo pour les logiciels sans API).**
 
+> **Branche `feat/decouverte-env-test`** : découverte de la tâche, jumeau de test, 5 itérations Holo / n8n, automatisations
+> sans gêner l'employé, Windows. Tout est expliqué dans [docs/README-decouverte.md](docs/README-decouverte.md).
+
 ```
  OBSERVER ─────────► ANALYSER ─────────────────► AGIR
  (enregistrement      (étapes fidèles, conseils,    🎬 tuto vidéo (Remotion + voix ElevenLabs)

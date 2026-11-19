@@ -502,7 +502,7 @@
 <body>
   <header class="topbar">
     <div class="brand" aria-label="Twiin"><span id="logoCells"></span><span>Tw<b>ii</b>n</span></div>
-    <nav class="nav"><a href="/" aria-current="page">Analyser une tâche</a><a href="/videos.html">Mes vidéos</a><a href="/automatisations.html">Mes automatisations</a><a href="/back.html" class="nav-back">Back</a></nav>
+    <nav class="nav"><a href="/#enregistrer" aria-current="page">Analyser une tâche</a><a href="/videos.html">Mes vidéos</a><a href="/automatisations.html">Mes automatisations</a><a href="/back.html" class="nav-back">Back</a></nav>
     <button id="themeBtn" type="button">Thème sombre</button>
   </header>
 
@@ -553,6 +553,11 @@
       <button id="lastBtn" type="button" hidden>Reprendre ma dernière tâche analysée</button>
     </div>
   </section>
+  <section class="view panel" data-view="2" id="myTasks" hidden>
+    <h3 style="margin:0 0 8px">Mes tâches déjà enregistrées</h3>
+    <p class="meta" style="margin:0 0 10px">Rouvre une tâche pour relire ses étapes et sa recommandation, ou réanalyse son enregistrement.</p>
+    <ul id="myTasksList" style="list-style:none;margin:0;padding:0;display:grid;gap:8px"></ul>
+  </section>
 
   <section id="analysis" hidden aria-live="polite">
     <div id="analysisCells"></div>
@@ -589,6 +594,7 @@
   <script src="banner.js"></script>
   <script src="ui/twiin-ui.js"></script>
   <script src="app.js"></script>
+  <script src="discovery.js"></script>
   <script src="audit2.js"></script>
 </body>
 </html>
