@@ -101,3 +101,11 @@ test('compte rendu du serveur : transcription échouée ou vide = message clair'
   Voice.report({ status: 'empty' });
   assert.match(Voice.state.warning, /Aucune parole/);
 });
+
+test('statut illisible (serveur injoignable) : interrupteur grisé avec une raison', async () => {
+  const { Voice } = setup({ ready: false });
+  globalThis.fetch = async () => { throw new Error('down'); };
+  await Voice.refresh();
+  assert.equal(Voice.state.ready, false);
+  assert.match(Voice.state.reason, /ne répond pas/);
+});

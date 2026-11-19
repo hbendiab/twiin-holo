@@ -25,8 +25,8 @@ const Voice = (() => {
       const c = await cfg();
       const r = await fetch(`${c.base}/api/audio/status`, { headers: auth(c) });
       const st = await r.json();
-      S.ready = !!st.ready; S.reason = st.ready ? '' : (st.reason || (r.ok ? 'non disponible sur cet ordinateur' : ''));
-    } catch { /* serveur injoignable : on ne bloque rien */ }
+      S.ready = !!st.ready; S.reason = st.ready ? '' : (st.reason || (r.ok ? 'non disponible sur cet ordinateur' : 'état de la voix inconnu (connecte-toi à Twiin)'));
+    } catch { if (!S.ready) S.reason = 'Twiin ne répond pas'; }
     paint();
   }
   function mount(slot) {

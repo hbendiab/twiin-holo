@@ -45,7 +45,7 @@ const Capture = (() => {
     addStream(stream);
     try { sessionId = (await (await post('/api/actions/start', { startedAt: S.startedAt })).json()).session || null; } catch { sessionId = null; }
     if (!sessionId) { S.error = 'Twiin ne répond pas sur ce Mac : enregistrement impossible.'; await stop({ cancel: true }); }
-    if (sessionId) globalThis.Voice?.start(mic); else mic?.getTracks().forEach((t) => t.stop()); // micro seulement si l'enregistrement a démarré
+    if (sessionId && S.recording) globalThis.Voice?.start(mic); else mic?.getTracks().forEach((t) => t.stop()); // micro seulement si l'enregistrement a démarré
     emit();
   }
   async function addScreen(opts) { addStream(await ask(opts)); }
