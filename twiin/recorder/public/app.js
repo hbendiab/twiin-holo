@@ -235,19 +235,80 @@ voiceSwitch.addEventListener('change', () => {
 // l'interrupteur avec la raison, au lieu de laisser l'employé croire que sa voix sera prise en compte.
 let voiceUnavailable = false, voiceNeedsDownload = false;
 const voiceNoteEl = document.getElementById('voiceNote');
+const engineBox = document.getElementById('voiceEngineBox');
+const installBtn = document.getElementById('voiceInstallBtn');
+const installInfo = document.getElementById('voiceInstallInfo');
+let voiceStatus = null, installMsg = '', installPoll = null;
+// Moteur de transcription (local = Whisper sur ce Mac, cloud = ElevenLabs) : le serveur le garde, la page l'affiche et le change.
+// Le choix revient à la DSI de l'entreprise ; en attendant les rôles, n'importe quel utilisateur de cette page peut le changer.
 function refreshVoiceNote() {
-  const text = voiceUnavailable ? `Voix indisponible : ${voiceUnavailable}.`
-    : voiceNeedsDownload && voiceSwitch.checked ? 'Premier usage : le modèle de transcription (~460 Mo) se télécharge, il faut du réseau.' : '';
+  const st = voiceStatus;
+  let text = '';
+  if (voiceUnavailable) text = `Voix indisponible : ${voiceUnavailable}.`;
+  else if (st?.engine === 'cloud') text = 'Ta voix est envoyée à ElevenLabs (service cloud) pour être transcrite.';
+  else if (st && voiceSwitch.checked) text = voiceNeedsDownload ? 'Premier usage : le modèle de transcription (~460 Mo) se télécharge, il faut du réseau.' : 'Ta voix est transcrite sur ton Mac : elle n\'en sort pas.';
   voiceNoteEl.textContent = text;
   voiceNoteEl.hidden = !text;
+  if (!st) return;
+  const localOk = st.local?.ready && !st.local?.needsDownload;
+  const running = st.install?.state === 'running';
+  engineBox.hidden = !(voiceSwitch.checked || voiceUnavailable || running);
+  for (const r of engineBox.querySelectorAll('input[name=voiceEngine]')) { r.checked = r.value === st.engine; r.disabled = !st.canChange || recording; }
+  installBtn.hidden = !!localOk || !st.canChange;
+  installBtn.disabled = running;
+  installBtn.textContent = st.install?.state === 'error' ? 'Réessayer l\'installation' : 'Installer la transcription locale';
+  installInfo.textContent = installMsg;
+  installInfo.hidden = !installMsg;
 }
-fetch('/api/audio/status').then((r) => r.json()).then((st) => {
-  if (!st.ready) {
-    voiceUnavailable = st.reason || 'non disponible sur cet ordinateur'; // texte de la raison (vrai = indisponible)
-    voiceSwitch.checked = false; voiceSwitch.disabled = true;           // le choix mémorisé n'est pas modifié
-  } else voiceNeedsDownload = !!st.needsDownload;
+function applyVoiceStatus(st) {
+  voiceStatus = st;
+  voiceUnavailable = st.ready ? false : (st.reason || 'non disponible sur cet ordinateur'); // texte de la raison (faux = disponible)
+  voiceNeedsDownload = !!st.needsDownload;
+  if (voiceUnavailable && !recording) voiceSwitch.checked = false;  // le choix mémorisé n'est pas modifié ; jamais en plein enregistrement
+  if (!recording) voiceSwitch.disabled = !!voiceUnavailable;
+  const i = st.install;
+  installMsg = i?.state === 'running' ? installProgress(i) : i?.state === 'error' ? `${i.message}.` : i?.state === 'done' ? i.message : '';
+  if (i?.state === 'running' && !installPoll) installPoll = setInterval(pollInstall, 1500);
   refreshVoiceNote();
-}).catch(() => { /* serveur injoignable : on ne bloque rien */ });
+}
+function installProgress(i) {
+  if (i.step === 'model' && i.modelBytes != null) return `Téléchargement du modèle : ${Math.round(i.modelBytes / 1e6)} / ~${i.modelTotalMb} Mo…`;
+  return i.message || 'Installation en cours…';
+}
+function loadVoiceStatus() {
+  return fetch('/api/audio/status').then((r) => r.json()).then(applyVoiceStatus).catch(() => { /* serveur injoignable : on ne bloque rien */ });
+}
+async function pollInstall() {
+  try {
+    const i = await (await fetch('/api/audio/install/status')).json();
+    if (i.state === 'running') { installMsg = installProgress(i); refreshVoiceNote(); return; }
+  } catch { return; } // coupure passagère : on réessaie au prochain tour
+  clearInterval(installPoll); installPoll = null;
+  await loadVoiceStatus(); // état final (installée / erreur expliquée), l'interrupteur se réactive si tout est prêt
+}
+installBtn.addEventListener('click', async () => {
+  installBtn.disabled = true;
+  installMsg = 'Installation en cours…'; refreshVoiceNote();
+  try {
+    const r = await fetch('/api/audio/install', { method: 'POST' });
+    const i = await r.json();
+    if (!r.ok) throw new Error(i.error || 'refusé');
+    if (i.state === 'running' && !installPoll) installPoll = setInterval(pollInstall, 1500);
+    else if (i.state !== 'running') await loadVoiceStatus();
+  } catch (e) {
+    installMsg = `L'installation n'a pas pu démarrer (${e.message}).`;
+  }
+  refreshVoiceNote();
+});
+engineBox.addEventListener('change', async (ev) => {
+  if (ev.target.name !== 'voiceEngine') return;
+  try {
+    const r = await fetch('/api/audio/engine', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ engine: ev.target.value }) });
+    if (!r.ok) throw new Error((await r.json()).error || 'refusé');
+  } catch (e) { installMsg = `Le moteur n'a pas pu être changé (${e.message}).`; }
+  await loadVoiceStatus();
+});
+loadVoiceStatus();
 voiceSwitch.addEventListener('change', refreshVoiceNote);
 let voice = null; // { rec, stream, chunks, startedAt, stopped: Promise }
 let voiceWarning = ''; // problème de micro / d'envoi : reste affiché (la ligne d'état est réécrite chaque seconde)
