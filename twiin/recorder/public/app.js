@@ -1090,7 +1090,8 @@ iconsReady.then(async () => {
       statusEl.textContent = 'Cet enregistrement n\'a pas encore été analysé. Lance l\'analyse depuis « Mes enregistrements ».';
       return;
     }
-    renderWorkflows(wfs.map((w, i) => ({ ...w, session: sid, _idx: i })));
+    // même affichage que juste après un enregistrement : la recommandation se prépare automatiquement
+    renderWorkflows(wfs.map((w, i) => ({ ...w, session: sid, _idx: i })), { autoReco: true });
     statusEl.textContent = `Enregistrement « ${d.titre} » ouvert. Tes modifications sont enregistrées automatiquement.`;
   } catch (e) {
     statusEl.textContent = `Ouverture impossible : ${e.message}`;
