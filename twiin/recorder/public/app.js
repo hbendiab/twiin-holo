@@ -27,6 +27,7 @@ let frames = [];
 let ticks = 0;
 let startedAt = 0;
 let recording = false;
+let ajouterA = null; // enregistrement à compléter (tâche oubliée) : pris en compte au prochain démarrage seulement
 let sessionId = null;        // dossier de l'enregistrement côté serveur (images + journal d'actions)
 let sharedScreens = [];      // { n, label } de tous les écrans partagés pendant l'enregistrement
 let journalNext = 0, journalTimer = null;
@@ -194,7 +195,50 @@ function endAnalysisPanel(ok, message) {
 startBtn.addEventListener('click', startRecording);
 addBtn.addEventListener('click', () => addScreen().catch((e) => (statusEl.textContent = `Écran non ajouté : ${e.message}`)));
 stopBtn.addEventListener('click', stopRecording);
+const pauseBtn = document.getElementById('pauseBtn');
+pauseBtn.addEventListener('click', async () => {
+  try {
+    const r = await fetch('/api/actions/pause', { method: 'POST' });
+    const d = await r.json();
+    if (d.error) throw new Error(d.error);
+    pauseBtn.textContent = d.paused ? 'Reprendre' : 'Pause';
+    // pendant la pause, l'interface n'observe plus l'écran : plus de captures côté navigateur non plus
+    if (recording) {
+      if (d.paused) clearInterval(intervalId);
+      else intervalId = setInterval(tick, TICK_MS);
+    }
+    statusEl.textContent = d.paused ? 'Enregistrement en pause : rien n\'est noté pendant la pause.' : 'Enregistrement repris.';
+  } catch (e) {
+    statusEl.textContent = `Pause impossible : ${e.message}`;
+  }
+});
 reBtn.addEventListener('click', () => analyzeRequest('/api/reanalyze', null, 'Nouvelle analyse du dernier enregistrement…'));
+
+// Changer de section (Audit, Recommandation…) pendant un enregistrement : on demande d'abord. Si l'employé
+// confirme, l'enregistrement est arrêté proprement (et analysé) ; sinon on reste sur la page d'enregistrement.
+window.addEventListener('hashchange', async () => {
+  if (!recording || location.hash === '#enregistrer') return;
+  if (!confirm('Un enregistrement est en cours. Changer de section l\'arrête. Continuer ?')) {
+    history.replaceState(null, '', '#enregistrer');
+    return;
+  }
+  await stopRecording();
+}, true);
+
+// Quitter la page pendant un enregistrement : on prévient, sinon l'enregistrement se perd.
+window.addEventListener('beforeunload', (e) => { if (recording) { e.preventDefault(); e.returnValue = ''; } });
+
+// Au chargement : si un journal d'actions tourne encore sur le serveur (page rechargée pendant un enregistrement),
+// on l'arrête. Sans l'interface, il continuerait à noter les clics en arrière-plan.
+(async () => {
+  try {
+    const s = await (await fetch('/api/actions/status')).json();
+    if (s.running && !recording) {
+      await fetch('/api/actions/stop', { method: 'POST' });
+      statusEl.textContent = 'Un enregistrement resté ouvert a été arrêté. Ses données sont gardées.';
+    }
+  } catch { /* serveur indisponible : rien à faire */ }
+})();
 
 async function addScreen() {
   statusEl.textContent = nextScreen > 1 ? 'Choisis l\'écran à ajouter…' : 'Choisis l\'écran à enregistrer…';
@@ -374,6 +418,8 @@ async function startRecording() {
   startBtn.disabled = true;
   addBtn.disabled = false;
   stopBtn.disabled = false;
+  pauseBtn.disabled = false;
+  pauseBtn.textContent = 'Pause';
 
   tick(); // premières images tout de suite
   intervalId = setInterval(tick, TICK_MS);
@@ -385,8 +431,9 @@ async function startJournal() {
   journalNext = 0;
   try {
     const r = await fetch('/api/actions/start', { method: 'POST', headers: { 'Content-Type': 'application/json' },
-                                                 body: JSON.stringify({ startedAt }) });
+                                                 body: JSON.stringify({ startedAt, ajouterA }) });
     sessionId = (await r.json()).session || null;
+    ajouterA = null; // ne vaut que pour cet enregistrement
   } catch { sessionId = null; }
   journalTimer = setInterval(pollJournal, 1000);
 }
@@ -556,6 +603,8 @@ async function stopRecording() {
   addBtn.disabled = true;
   stopBtn.disabled = true;
   voiceSwitch.disabled = !!voiceUnavailable;
+  pauseBtn.disabled = true;
+  pauseBtn.textContent = 'Pause';
 
   setPrimary(startBtn);
   if (!frames.length) {
@@ -660,6 +709,26 @@ async function analyzeRequest(url, body, message, nScreens) {
       return;
     }
     renderWorkflows(data.workflows || [], { autoReco: true });
+    if (data.ajout) {
+      // bandeau bien visible : les étapes ont été ajoutées à une autre tâche, avec un lien pour l'ouvrir
+      const a = data.ajout;
+      const bandeau = document.createElement('div');
+      bandeau.className = 'ajout-bandeau';
+      bandeau.style.cssText = 'margin:0 0 18px;padding:14px 18px;border-radius:14px;background:var(--accent-soft,rgba(120,160,255,.15));border:1px solid var(--accent,#7aa2ff);font-size:15px;line-height:1.4';
+      bandeau.innerHTML = `<b>✅ Étapes ajoutées à « ${escapeHtml(a.titre)} »</b><br>` +
+        `${a.etapes_ajoutees} étape(s) ajoutée(s) à la fin, soit ${a.etapes_total + a.etapes_ajoutees} au total. ` +
+        `<a href="/?session=${encodeURIComponent(a.cible)}#enregistrer" style="font-weight:600">Ouvrir la tâche complète →</a> · ` +
+        `<a href="/?session=${encodeURIComponent(a.cible)}&ajout=1#enregistrer" style="font-weight:600">Ajouter un enregistrement à cette tâche</a>`;
+      resultsEl.prepend(bandeau);
+    } else if (data.workflows?.[0]?.session) {
+      // enregistrement normal : on peut compléter cette tâche directement, sans passer par « Mes enregistrements »
+      const sid = data.workflows[0].session;
+      const barre = document.createElement('div');
+      barre.className = 'ajout-bandeau';
+      barre.style.cssText = 'margin:0 0 18px;padding:12px 16px;border-radius:14px;background:var(--panel-2,rgba(127,127,127,.08));border:1px solid var(--panel-border,rgba(127,127,127,.3));font-size:14px';
+      barre.innerHTML = `Un passage a été oublié ou a bugué ? <a href="/?session=${encodeURIComponent(sid)}&ajout=1#enregistrer" style="font-weight:600">Ajouter un enregistrement à cette tâche</a>`;
+      resultsEl.prepend(barre);
+    }
     const m = data._meta || {};
     const n = data.workflows?.length ?? 0;
     // la voix a été perdue ou n'a rien donné : on le dit clairement, sinon l'employé croirait qu'elle a servi
@@ -749,7 +818,8 @@ function renderWorkflows(workflows, { example = false, silent = false, autoReco 
   resultsEl.innerHTML = '';
   resultsEl.classList.remove('steps-stale');
   document.getElementById('example').hidden = true;
-  workflows.forEach((wf) => resultsEl.appendChild(workflowCard(wf, example)));
+  // silent = tâche d'un enregistrement précédent (rechargée à l'ouverture) : ses étapes sont repliées par défaut
+  workflows.forEach((wf) => resultsEl.appendChild(workflowCard(wf, example, silent)));
   if (!example) renderAppPicks();
   document.getElementById('noTask').hidden = resultsEl.children.length > 0 || Number(document.body.dataset.view) !== LAST_VIEW;
   if (!silent) setPrimary(resultsEl.querySelector('.btn-go-reco'));
@@ -825,12 +895,14 @@ async function renderCardPicks(card, token) {
   strip.appendChild(hint);
 }
 
-function workflowCard(wf, example = false) {
+function workflowCard(wf, example = false, collapsed = false) {
   const card = document.createElement('div');
   card.className = example ? 'workflow is-example' : 'workflow';
   card.dataset.session = wf.session || ''; // enregistrement de CETTE tâche (applis à choisir, mesures)
   card._picksReady = Promise.resolve(); // la recommandation attend que le choix d'applis soit connu (voir renderAppPicks)
   card._exclSig = ''; // applis ignorées en une clé (cache de la recommandation) ; null = inconnu
+  // tâche ouverte depuis « Mes enregistrements » : ses modifications sont enregistrées dans son enregistrement
+  if (wf._idx !== undefined && wf.session) { card.dataset.sid = wf.session; card.dataset.idx = String(wf._idx); }
   let original = { name: wf.name, summary: wf.summary, steps: [...(wf.steps || [])] };
   const nSteps = (wf.steps || []).length;
   card.innerHTML = `
@@ -838,7 +910,7 @@ function workflowCard(wf, example = false) {
     <div class="apps-strip"></div>
     <p class="wf-summary" hidden>${escapeHtml(wf.summary || '')}</p>
     <div class="part-relire">
-      <div class="card-step">${nSteps} étapes · corrige si besoin</div>
+      <div class="card-step steps-toggle" role="button" tabindex="0" style="cursor:pointer"></div>
       <ol class="steps"></ol>
       <div class="wf-actions relire-actions"><button class="icon-btn add-step">+ Ajouter une étape</button>
         <button class="btn-go-reco" type="button">Voir la recommandation →</button></div>
@@ -863,6 +935,16 @@ function workflowCard(wf, example = false) {
       <div class="wf-actions"><button class="btn-reco" hidden>Réessayer</button></div>
     </section>`;
   const stepsEl = card.querySelector('.steps');
+  // Menu déroulant : cliquer sur le titre replie ou déplie la liste des étapes (repliée pour une tâche précédente)
+  const toggleEl = card.querySelector('.steps-toggle');
+  const setStepsOpen = (open) => {
+    stepsEl.hidden = !open;
+    toggleEl.setAttribute('aria-expanded', String(open));
+    toggleEl.textContent = `${open ? '▾' : '▸'} ${nSteps} étapes · corrige si besoin`;
+  };
+  toggleEl.addEventListener('click', () => setStepsOpen(stepsEl.hidden));
+  toggleEl.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setStepsOpen(stepsEl.hidden); } });
+  setStepsOpen(!collapsed);
   const stripEl = card.querySelector('.apps-strip');
   // Logo de l'outil de chaque étape. Une étape qui ne cite aucun outil reprend celui de l'étape d'avant (logo pâle).
   const refreshIcons = () => {
@@ -912,6 +994,22 @@ function workflowCard(wf, example = false) {
     steps: [...stepsEl.querySelectorAll('textarea')].map((t) => t.value.trim()).filter(Boolean),
   });
   setSteps(original.steps);
+  // sauvegarde automatique (après une courte pause de frappe) quand la tâche vient d'un enregistrement précédent
+  if (card.dataset.sid) {
+    let minuteur = null;
+    const enregistrer = async () => {
+      const w = current();
+      try {
+        const r = await fetch(`/api/sessions/${encodeURIComponent(card.dataset.sid)}/analysis/workflows/${card.dataset.idx}`,
+          { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: w.name, summary: w.summary, steps: w.steps }) });
+        if (!r.ok) throw new Error((await r.json()).error || 'erreur');
+        statusEl.textContent = 'Modifications enregistrées dans cet enregistrement.';
+      } catch (e) {
+        statusEl.textContent = `Modifications non enregistrées : ${e.message}`;
+      }
+    };
+    card.addEventListener('input', () => { clearTimeout(minuteur); minuteur = setTimeout(enregistrer, 800); });
+  }
   card.querySelector('.add-step').onclick = () => addStep('').focus();
 
   // ✨ Améliorer : fiabilité pour Holo + process optimisé, avec la liste des changements
@@ -1212,6 +1310,9 @@ async function createN8n(wf, verdict, el) {
           st.textContent = 'Importé dans n8n. Test en cours…';
           links.innerHTML = `<a class="link-btn" href="/automatisations.html#${encodeURIComponent(e.id || '')}">Voir mon automatisation</a> · `
             + `<a href="${e.url}" target="_blank">Ouvrir le workflow dans n8n</a>`;
+        } else if (e.type === 'info') {
+          // la raison exacte d'un blocage (ex. n8n a refusé le lancement) est affichée sous le plan
+          links.insertAdjacentHTML('beforeend', `<p class="note warn">${escapeHtml(e.text)}</p>`);
         } else if (e.type === 'executing') {
           links.innerHTML += ` · <a href="${e.url}" target="_blank">Voir l'exécution n° ${e.execution} dans n8n</a>`;
         } else if (e.type === 'node') {
@@ -1237,6 +1338,23 @@ async function createN8n(wf, verdict, el) {
           if (!e.ok && !/workflow\//.test(links.innerHTML)) {
             links.innerHTML = `<a class="link-btn" href="/automatisations.html#${encodeURIComponent(e.id || '')}">Voir dans Mes automatisations</a>`
               + (/google sheets|credential|connexion/i.test(e.status || '') ? ` · <a href="http://localhost:5678/home/credentials" target="_blank">Ajouter la connexion dans n8n</a>` : '');
+          }
+          // Relancer l'étape échouée : n8n repart du nœud qui a planté, sans refaire les étapes réussies
+          if (!e.ok && e.id && e.execution) {
+            links.insertAdjacentHTML('beforeend', ` · <button type="button" class="btn-relance" data-wf="${escapeHtml(e.id)}">Relancer l'étape échouée</button>`);
+            links.querySelector('.btn-relance').onclick = async (ev) => {
+              const b = ev.currentTarget;
+              b.disabled = true; b.textContent = 'Relance…';
+              try {
+                const r = await fetch(`/api/automations/${encodeURIComponent(e.id)}/retry`, { method: 'POST' });
+                const d = await r.json();
+                if (d.error) throw new Error(d.error);
+                st.textContent = 'Relance lancée à partir de l\'étape qui a échoué. Suis-la dans n8n ou dans « Mes automatisations ».';
+              } catch (err) {
+                st.textContent = `Relance impossible : ${err.message}`;
+              }
+              b.disabled = false; b.textContent = 'Relancer l\'étape échouée';
+            };
           }
         }
       }
@@ -1302,10 +1420,22 @@ Promise.all([fetch('/api/candidates').then((r) => r.json()), fetch('/api/discove
     const pending = ['upload', 'twin', 'dev_test', 'awaiting_confirmation'].includes(disc.phase);
     if (pending) statusEl.textContent = 'Twiin étudie ta tâche… une question va bientôt apparaître.';
     renderMyTasks(d.workflows || []);
-    if (pending || !d.workflows?.length || resultsEl.children.length) return;
+    // une page ouverte avec ?session= (enregistrement choisi dans « Mes enregistrements ») n'est pas remplacée par la dernière analyse
+    if (pending || !d.workflows?.length || resultsEl.children.length || new URLSearchParams(location.search).get('session')) return;
     lastWorkflows = [d.workflows[0]];
     await iconsReady;
-    if (!resultsEl.children.length && !recording) renderWorkflows([d.workflows[0]], { silent: true });
+    if (!resultsEl.children.length && !recording) {
+      renderWorkflows([d.workflows[0]], { silent: true });
+      // même ligne « ajouter un enregistrement » que juste après une analyse (la dernière tâche rechargée à l'ouverture)
+      const sid = d.workflows[0]?.session;
+      if (sid) {
+        const barre = document.createElement('div');
+        barre.className = 'ajout-bandeau';
+        barre.style.cssText = 'margin:0 0 18px;padding:12px 16px;border-radius:14px;background:var(--panel-2,rgba(127,127,127,.08));border:1px solid var(--panel-border,rgba(127,127,127,.3));font-size:14px';
+        barre.innerHTML = `Un passage a été oublié ou a bugué ? <a href="/?session=${encodeURIComponent(sid)}&ajout=1#enregistrer" style="font-weight:600">Ajouter un enregistrement à cette tâche</a>`;
+        resultsEl.prepend(barre);
+      }
+    }
   }).catch(() => {});
 // « Mes tâches » : chaque tâche analysée, rouvrable, et réanalysable tant que ses images sont sur le poste.
 function renderMyTasks(list) {
@@ -1331,3 +1461,32 @@ function escapeHtml(str) {
   div.textContent = str ?? '';
   return div.innerHTML;
 }
+
+// Ouvert depuis « Mes enregistrements » (?session=ID) : le même écran que juste après un enregistrement,
+// avec les étapes modifiables et sauvegardées dans l'enregistrement.
+iconsReady.then(async () => {
+  const params = new URLSearchParams(location.search);
+  const sid = params.get('session');
+  if (!sid) return;
+  if (params.get('ajout')) {
+    // tâche oubliée : le prochain enregistrement complète celui-ci, sans rien afficher d'autre
+    ajouterA = sid;
+    const d = await (await fetch(`/api/sessions/${encodeURIComponent(sid)}`)).json().catch(() => ({}));
+    statusEl.textContent = `Tu ajoutes une tâche oubliée à « ${d.titre || 'cet enregistrement'} ». Clique sur « Enregistrer ma tâche » : à l'arrêt, ses étapes seront ajoutées à la fin.`;
+    return;
+  }
+  try {
+    const d = await (await fetch(`/api/sessions/${encodeURIComponent(sid)}`)).json();
+    if (d.error) throw new Error(d.error);
+    const wfs = d.analyse_complete?.result?.workflows || [];
+    if (!wfs.length) {
+      statusEl.textContent = 'Cet enregistrement n\'a pas encore été analysé. Lance l\'analyse depuis « Mes enregistrements ».';
+      return;
+    }
+    // même affichage que juste après un enregistrement : la recommandation se prépare automatiquement
+    renderWorkflows(wfs.map((w, i) => ({ ...w, session: sid, _idx: i })), { autoReco: true });
+    statusEl.textContent = `Enregistrement « ${d.titre} » ouvert. Tes modifications sont enregistrées automatiquement.`;
+  } catch (e) {
+    statusEl.textContent = `Ouverture impossible : ${e.message}`;
+  }
+});

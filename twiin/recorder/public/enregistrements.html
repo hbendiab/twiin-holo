@@ -1,0 +1,154 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Twiin · Mes enregistrements</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Google+Sans+Flex:wght@300;400;500;600;700&display=swap">
+<link rel="stylesheet" href="pages.css">
+<link rel="stylesheet" href="theme.css">
+<style>
+  .tabs { display: flex; gap: 8px; margin: 0 0 20px; }
+  .rec { margin: 0 0 12px; }
+  .rec-titre { font-size: 15px; font-weight: 600; letter-spacing: -0.01em; margin: 0 0 4px; }
+  .rec-date { font-size: 13px; color: var(--text-dim); margin: 0; }
+  .rec-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
+  .rec-actions button.danger { color: #c0392b; }
+  .notice { font-size: 13px; color: var(--text-dim); margin: 0 0 16px; padding: 10px 14px; border-radius: 12px; background: var(--accent-soft, rgba(127,127,127,.12)); }
+  #msg { min-height: 22px; font-size: 13px; color: var(--text-dim); margin: 0 0 14px; }
+</style>
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="/"><span id="logoCells"></span><span>Tw<b>ii</b>n</span></a>
+    <nav class="nav"><a href="/">Analyser une tâche</a><a href="/enregistrements.html" aria-current="page">Mes enregistrements</a><a href="/videos.html">Mes vidéos</a><a href="/automatisations.html">Mes automatisations</a><a href="/back.html" class="nav-back">Back</a></nav>
+    <button id="themeBtn" type="button">Thème sombre</button>
+  </header>
+
+  <h1>Mes enregistrements</h1>
+  <div class="tabs">
+    <button type="button" class="btn primary" data-tab="enr" aria-pressed="true">Enregistrements</button>
+    <button type="button" class="btn" data-tab="corb" aria-pressed="false">Corbeille</button>
+  </div>
+  <p id="msg" role="status"></p>
+  <section id="liste"></section>
+  <section id="corbeille" hidden></section>
+
+<script src="shell.js" defer></script>
+<script>
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const fmt = (iso) => (iso ? new Date(iso).toLocaleString('fr-FR', { dateStyle: 'medium', timeStyle: 'short' }) : '—');
+const msg = (t) => { document.getElementById('msg').textContent = t || ''; };
+let vue = 'enr';
+
+function setTab(t) {
+  vue = t;
+  document.querySelectorAll('[data-tab]').forEach((b) => {
+    const actif = b.dataset.tab === t;
+    b.setAttribute('aria-pressed', String(actif));
+    b.classList.toggle('primary', actif);
+  });
+  document.getElementById('liste').hidden = t !== 'enr';
+  document.getElementById('corbeille').hidden = t !== 'corb';
+  msg('');
+  charger();
+}
+
+async function charger() {
+  if (vue === 'enr') {
+    const { sessions = [] } = await (await fetch('/api/sessions')).json();
+    document.getElementById('liste').innerHTML = sessions.length
+      ? sessions.map(carteEnr).join('') : '<p class="meta">Aucun enregistrement pour l\'instant.</p>';
+  } else {
+    const { items = [], jours = 30 } = await (await fetch('/api/corbeille')).json();
+    document.getElementById('corbeille').innerHTML =
+      `<p class="notice">Les enregistrements mis à la corbeille sont supprimés définitivement au bout de ${jours} jours.</p>` +
+      `<div class="rec-actions" style="margin:0 0 14px"><button class="danger" id="vider" ${items.length ? '' : 'disabled'}>Vider la corbeille</button></div>` +
+      (items.length ? items.map(carteCorb).join('') : '<p class="meta">La corbeille est vide.</p>');
+  }
+}
+
+// Une carte par enregistrement : petit titre (le process), date et heure, puis les actions.
+// « Ouvrir et modifier » ouvre l'écran d'enregistrement avec les étapes modifiables.
+function carteEnr(e) {
+  const statut = (e.analyse ? `${e.nb_taches} tâche(s), ${e.nb_etapes} étape(s)` : 'pas encore analysé') + (e.ajouts ? ` · ${e.ajouts} ajout(s) de tâche oubliée` : '');
+  return `<article class="panel rec" data-id="${esc(e.id)}">
+    <p class="rec-titre">${esc(e.titre || 'Enregistrement')}</p>
+    <p class="rec-date">${fmt(e.startedAt)} · ${statut}</p>
+    <div class="rec-actions">
+      ${e.analyse
+        ? `<a class="btn primary" href="/?session=${encodeURIComponent(e.id)}#enregistrer">Ouvrir et modifier</a>
+           <a class="btn" href="/?session=${encodeURIComponent(e.id)}&ajout=1#enregistrer">Ajouter une tâche oubliée</a>`
+        : '<button data-act="analyser">Analyser (utilise Holo)</button>'}
+      <button class="danger" data-act="supprimer">Mettre à la corbeille</button>
+    </div>
+  </article>`;
+}
+
+function carteCorb(e) {
+  const reste = e.jours_restants != null ? ` · supprimé définitivement dans ${e.jours_restants} jour(s)` : '';
+  return `<article class="panel rec" data-id="${esc(e.id)}">
+    <p class="rec-titre">${esc(e.titre || 'Enregistrement')}</p>
+    <p class="rec-date">${fmt(e.startedAt)} · mis à la corbeille le ${fmt(e.supprime_le)}${reste}</p>
+    <div class="rec-actions">
+      <button data-act="restaurer">Restaurer</button>
+      <button class="danger" data-act="supprimer-def">Supprimer définitivement</button>
+    </div>
+  </article>`;
+}
+
+document.querySelectorAll('[data-tab]').forEach((b) => b.addEventListener('click', () => setTab(b.dataset.tab)));
+
+document.getElementById('liste').addEventListener('click', async (ev) => {
+  const b = ev.target.closest('button[data-act]');
+  if (!b) return;
+  const id = b.closest('.rec').dataset.id;
+  if (b.dataset.act === 'analyser') {
+    if (!confirm('Analyser cet enregistrement utilise Holo et coûte un peu d\'argent. Continuer ?')) return;
+    b.disabled = true; b.textContent = 'Analyse en cours…';
+    const d = await (await fetch(`/api/sessions/${encodeURIComponent(id)}/analyze`, { method: 'POST' })).json();
+    msg(d.error || 'Analyse terminée.');
+    return charger();
+  }
+  if (b.dataset.act === 'supprimer') {
+    if (!confirm('Mettre cet enregistrement à la corbeille ? Il sera supprimé définitivement au bout de 30 jours.')) return;
+    const d = await (await fetch(`/api/sessions/${encodeURIComponent(id)}`, { method: 'DELETE' })).json();
+    msg(d.error || 'Enregistrement mis à la corbeille.');
+    return charger();
+  }
+});
+
+document.getElementById('corbeille').addEventListener('click', async (ev) => {
+  const b = ev.target.closest('button');
+  if (!b) return;
+  if (b.id === 'vider') {
+    if (!confirm('Vider la corbeille supprime définitivement tous ses enregistrements. C\'est irréversible. Continuer ?')) return;
+    const d = await (await fetch('/api/corbeille/vider', { method: 'POST' })).json();
+    msg(`Corbeille vidée (${d.supprimes} enregistrement(s) supprimé(s)).`);
+    return charger();
+  }
+  const id = b.closest('.rec').dataset.id;
+  if (b.dataset.act === 'restaurer') {
+    const d = await (await fetch(`/api/corbeille/${encodeURIComponent(id)}/restaurer`, { method: 'POST' })).json();
+    msg(d.error || 'Enregistrement restauré.');
+    return charger();
+  }
+  if (b.dataset.act === 'supprimer-def') {
+    if (!confirm('Supprimer définitivement cet enregistrement ? C\'est irréversible.')) return;
+    const d = await (await fetch(`/api/corbeille/${encodeURIComponent(id)}`, { method: 'DELETE' })).json();
+    msg(d.error || 'Supprimé définitivement.');
+    return charger();
+  }
+});
+
+// Le lien direct vers la corbeille (#corbeille) ouvre l'onglet corbeille
+const ouvrirSelonAncre = () => setTab(location.hash === '#corbeille' ? 'corb' : 'enr');
+window.addEventListener('hashchange', ouvrirSelonAncre);
+ouvrirSelonAncre();
+</script>
+<script src="/vendor/supabase/supabase.js"></script>
+<script src="auth.js"></script>
+<script src="banner.js"></script>
+<script src="common.js"></script>
+</body>
+</html>

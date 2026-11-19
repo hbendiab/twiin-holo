@@ -1,0 +1,18 @@
+{
+  "name": "Calculs → Notion (sans calculatrice)",
+  "schedule_cron": null,
+  "blocks": [
+    {
+      "type": "holo",
+      "name": "Holo — saisir résultats Notion",
+      "env": "mac",
+      "steps": [
+        "In Google Chrome, open the Notion page « Résultat des calculs ». Click in the body of the page below any existing content. Type « 9 » and press Enter. Type « 1 » and press Enter. Stop. Do not modify any other page or content."
+      ],
+      "expect": {
+        "resultats_saisis": "the values typed into the page, one per line"
+      }
+    }
+  ],
+  "id": "twiincalculsnoti"
+}

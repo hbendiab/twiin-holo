@@ -721,6 +721,7 @@ app.post('/api/frames', (req, res) => {
     const { session, frame } = req.body;
     const dir = sessionDirById(session);
     if (!dir || !frame) return res.status(400).json({ error: 'session ou image manquante' });
+    if (recorderSession?.paused) return res.json({ ok: true, paused: true }); // pause : aucune capture gardée
     fs.appendFileSync(path.join(dir, 'frames.jsonl'), JSON.stringify(frame) + '\n');
     res.json({ ok: true });
   } catch (err) {
@@ -738,7 +739,9 @@ app.post('/api/actions/start', (req, res) => {
     proc.stderr.on('data', (d) => console.warn('[journal]', String(d).trim().slice(0, 300)));
     proc.on('close', (code) => console.log(`Journal d'actions arrêté (code ${code})`));
     recorderSession = { id, dir, proc, startedAt: req.body?.startedAt || Date.now() };
-    fs.writeFileSync(path.join(dir, 'session.json'), JSON.stringify({ startedAt: recorderSession.startedAt }));
+    // ajouterA : cet enregistrement complète une tâche déjà enregistrée (tâche oubliée), ses étapes y seront ajoutées
+    recorderSession.ajouterA = req.body?.ajouterA || null;
+    fs.writeFileSync(path.join(dir, 'session.json'), JSON.stringify({ startedAt: recorderSession.startedAt, ajouterA: recorderSession.ajouterA }));
     console.log(`Journal d'actions démarré : ${dir}`);
     res.json({ session: id });
   } catch (err) {
@@ -749,6 +752,20 @@ app.post('/api/actions/start', (req, res) => {
 app.post('/api/actions/stop', (req, res) => {
   if (recorderSession?.proc) recorderSession.proc.kill('SIGTERM');
   res.json({ ok: true });
+});
+
+// Pause pendant l'enregistrement : le journal ignore les clics et les touches, et les captures ne sont plus gardées.
+app.post('/api/actions/pause', (req, res) => {
+  if (!recorderSession?.proc) return res.status(409).json({ error: 'Aucun enregistrement en cours.' });
+  recorderSession.paused = !recorderSession.paused;
+  recorderSession.proc.kill('SIGUSR1');
+  res.json({ paused: recorderSession.paused });
+});
+
+// L'interface demande au serveur s'il reste un journal ouvert (après un rechargement de la page).
+app.get('/api/actions/status', (req, res) => {
+  const running = !!(recorderSession?.proc && recorderSession.proc.exitCode === null && recorderSession.proc.signalCode === null);
+  res.json({ running, paused: !!(running && recorderSession.paused), session: running ? recorderSession.id : null });
 });
 
 app.get('/api/actions', (req, res) => {
@@ -834,6 +851,14 @@ async function analyze({ frames, transcript, actionLog = '', ocrLines = 0, scree
   fs.mkdirSync(path.dirname(CANDIDATES_PATH), { recursive: true });
   fs.writeFileSync(CANDIDATES_PATH, JSON.stringify(result, null, 2) + '\n');
   fs.writeFileSync(LAST_RUN_PATH, JSON.stringify({ meta, action_log: actionLog, ocr_transcript: transcript }, null, 2) + '\n');
+  // chaque analyse est gardée dans SON enregistrement : l'historique « Mes enregistrements » la retrouve
+  if (session && fs.existsSync(path.join(SESSIONS_DIR, path.basename(session)))) {
+    fs.writeFileSync(path.join(SESSIONS_DIR, path.basename(session), 'analysis.json'),
+      JSON.stringify({ analysedAt: new Date().toISOString(), meta, result }, null, 2) + '\n');
+    // enregistrement d'ajout : ses étapes complètent la tâche d'origine
+    const cible = lireJson(path.join(SESSIONS_DIR, path.basename(session), 'session.json'))?.ajouterA;
+    if (cible) fusionnerAjout(path.join(SESSIONS_DIR, path.basename(cible)), path.basename(session), result);
+  }
   console.log(`Wrote ${result.workflows.length} candidate workflow(s) to ${CANDIDATES_PATH}`);
   backLog('analyse', { model: HF_MODEL, provider, tokens_in: usage.prompt_tokens, tokens_out: usage.completion_tokens, cost_usd,
                        images_sent: meta.images_sent, ocr_lines: ocrLines, actions: meta.action_lines, json_repaired: repaired,
@@ -874,8 +899,21 @@ app.post('/api/generate-workflows', async (req, res) => {
       fs.writeFileSync(path.join(dir, 'frames.json'), JSON.stringify({ frames, startedAt, screens: shared || [] }));
     }
     if (!dir) return res.status(400).json({ error: 'Enregistrement introuvable.' });
-    const result = await analyzeSessionDir(dir, { textOnly: !!textOnly });
-    res.json({ ...result, _discovery: startDiscovery(dir) });
+    const out = await analyzeSessionDir(dir, { textOnly: !!textOnly });
+    // enregistrement d'ajout : on dit à l'écran à quelle tâche les étapes ont été ajoutées
+    const cible = lireJson(path.join(dir, 'session.json'))?.ajouterA;
+    let ajout = null;
+    if (cible) {
+      const cibleDir = path.join(SESSIONS_DIR, path.basename(cible));
+      const an = lireJson(path.join(cibleDir, 'analysis.json'));
+      ajout = {
+        cible: path.basename(cible),
+        titre: infoEnregistrement(cibleDir, path.basename(cible)).titre,
+        etapes_ajoutees: (out?.workflows || []).flatMap((w) => w.steps || []).length,
+        etapes_total: (an?.result?.workflows?.[0]?.steps || []).length,
+      };
+    }
+    res.json({ ...out, ajout, _discovery: startDiscovery(dir) });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: err.message });
@@ -1048,6 +1086,34 @@ app.post('/api/improve', async (req, res) => {
 
 // --- 💡 Améliorer mon process : bilan chiffré + recommandations POUR L'EMPLOYÉ (ne touche pas aux étapes) -------
 // L'enregistrement d'une tâche : celui noté dans la tâche ; à défaut (anciennes tâches), le dernier enregistrement.
+// Tuto d'une tâche complétée par des ajouts : on rassemble les images et le journal de l'enregistrement d'origine
+// et de ses ajouts, sur une même ligne de temps (le temps de chaque ajout est décalé de son départ).
+function sessionAvecAjouts(dir) {
+  const an = lireJson(path.join(dir, 'analysis.json'));
+  const segs = (an?.segments || []).map((s) => path.join(SESSIONS_DIR, path.basename(s.id))).filter((d) => fs.existsSync(d));
+  if (!segs.length) return dir;
+  const lignes = (d, f) => (fs.existsSync(path.join(d, f)) ? fs.readFileSync(path.join(d, f), 'utf8').split('\n').filter(Boolean) : []);
+  const depart = lireJson(path.join(dir, 'session.json'))?.startedAt || 0;
+  let frames = lignes(dir, 'frames.jsonl').map((l) => JSON.parse(l));
+  let actions = lignes(dir, 'actions.jsonl').map((l) => JSON.parse(l));
+  // chaque ajout se place à la suite de ce qui précède (pas de vide entre les deux, même si l'ajout a été fait plus tard)
+  for (const sd of segs) {
+    const debutSeg = (lireJson(path.join(sd, 'session.json'))?.startedAt || depart) / 1000;
+    const base = frames.reduce((m, f) => Math.max(m, f.seconds || 0), 0) + 2;
+    frames = frames.concat(lignes(sd, 'frames.jsonl').map((l) => { const f = JSON.parse(l); return { ...f, seconds: base + (f.seconds || 0) }; }));
+    actions = actions.concat(lignes(sd, 'actions.jsonl').map((l) => { const a = JSON.parse(l); return a.ts ? { ...a, ts: depart / 1000 + base + (a.ts - debutSeg) } : a; }));
+  }
+  frames.sort((a, b) => (a.seconds || 0) - (b.seconds || 0));
+  frames = frames.map((f, i) => ({ ...f, index: i }));
+  actions.sort((a, b) => (a.ts || 0) - (b.ts || 0));
+  const out = path.join(REPO_ROOT, 'workflows', 'tuto-sessions', path.basename(dir));
+  fs.rmSync(out, { recursive: true, force: true });
+  fs.mkdirSync(out, { recursive: true });
+  fs.writeFileSync(path.join(out, 'frames.jsonl'), frames.map((f) => JSON.stringify(f)).join('\n') + '\n');
+  fs.writeFileSync(path.join(out, 'actions.jsonl'), actions.map((a) => JSON.stringify(a)).join('\n') + '\n');
+  fs.writeFileSync(path.join(out, 'session.json'), JSON.stringify({ startedAt: depart }));
+  return out;
+}
 function sessionDirFor(wf) {
   if (wf?.session) {
     const id = String(wf.session);
@@ -1620,6 +1686,166 @@ app.post('/api/replay/stop', (req, res) => {
   res.json({ ok: true });
 });
 
+// Tâche oubliée : les étapes d'un enregistrement d'ajout sont ajoutées à la fin de la tâche d'origine.
+function fusionnerAjout(cibleDir, segmentId, result) {
+  const file = path.join(cibleDir, 'analysis.json');
+  if (!fs.existsSync(cibleDir)) return;
+  const nouvelles = (result?.workflows || []).flatMap((w) => w.steps || []);
+  if (!nouvelles.length) return;
+  const an = lireJson(file) || { meta: {}, result: { workflows: [] } };
+  an.result = an.result || { workflows: [] };
+  if (!an.result.workflows?.length) an.result.workflows = [{ name: 'Tâche', summary: null, steps: [] }];
+  an.result.workflows[0].steps = [...(an.result.workflows[0].steps || []), ...nouvelles];
+  an.segments = [...(an.segments || []), { id: segmentId, ajouteLe: new Date().toISOString(), etapes: nouvelles.length }];
+  an.analysedAt = new Date().toISOString();
+  fs.writeFileSync(file, JSON.stringify(an, null, 2) + '\n');
+}
+
+// --- Mes enregistrements : historique, analyse à la demande (coûteuse), corbeille ------------------------------
+// Une analyse n'est refaite que sur demande : les anciens enregistrements gardent leurs images, sans appel à Holo.
+const CORBEILLE_DIR = path.join(REPO_ROOT, 'workflows', 'corbeille');
+const lireJson = (file) => { try { return JSON.parse(fs.readFileSync(file, 'utf8')); } catch { return null; } };
+// Titre court pour retrouver un enregistrement : l'application la plus utilisée et sa fenêtre (sinon « Enregistrement »).
+function titreAuto(dir) {
+  try {
+    const ev = fs.readFileSync(path.join(dir, 'actions.jsonl'), 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l));
+    const compte = {};
+    let fenetre = {};
+    for (const e of ev) {
+      if (!e.app || /^Twiin|Enregistrement/.test(e.window || '')) continue;
+      compte[e.app] = (compte[e.app] || 0) + 1;
+      if (e.window && !fenetre[e.app]) fenetre[e.app] = e.window;
+    }
+    const top = Object.entries(compte).sort((a, b) => b[1] - a[1])[0];
+    if (!top) return 'Enregistrement';
+    const fen = fenetre[top[0]] ? ` · ${fenetre[top[0]].slice(0, 50)}` : '';
+    return `${top[0]}${fen}`;
+  } catch {
+    return 'Enregistrement';
+  }
+}
+function infoEnregistrement(dir, id) {
+  const an = lireJson(path.join(dir, 'analysis.json'));
+  const sess = lireJson(path.join(dir, 'session.json'));
+  const wfs = an?.result?.workflows || [];
+  return {
+    titre: wfs[0]?.name || titreAuto(dir),
+    id,
+    startedAt: sess?.startedAt ? new Date(sess.startedAt).toISOString() : null,
+    analyse: !!an,
+    analysedAt: an?.analysedAt || null,
+    nom: wfs[0]?.name || null,
+    nb_taches: wfs.length,
+    nb_etapes: wfs.reduce((n, w) => n + (w.steps || []).length, 0),
+    supprime_le: lireJson(path.join(dir, 'corbeille.json'))?.deletedAt || null,
+    ajout_de: sess?.ajouterA || null, // enregistrement d'une tâche oubliée : rangé dans la tâche d'origine
+  };
+}
+const listeDossiers = (base) => (fs.existsSync(base)
+  ? fs.readdirSync(base).filter((d) => fs.statSync(path.join(base, d)).isDirectory()).sort().reverse() : []);
+
+app.get('/api/sessions', (req, res) => {
+  const tous = listeDossiers(SESSIONS_DIR).map((id) => infoEnregistrement(path.join(SESSIONS_DIR, id), id));
+  // les ajouts ne sont pas des tâches à part : ils apparaissent comme « N ajout(s) » sur la tâche d'origine
+  const ajouts = {};
+  for (const e of tous) if (e.ajout_de) ajouts[e.ajout_de] = (ajouts[e.ajout_de] || 0) + 1;
+  res.json({ sessions: tous.filter((e) => !e.ajout_de).map((e) => ({ ...e, ajouts: ajouts[e.id] || 0 })) });
+});
+
+app.get('/api/sessions/:id', (req, res) => {
+  const dir = path.join(SESSIONS_DIR, path.basename(req.params.id));
+  if (!fs.existsSync(dir)) return res.status(404).json({ error: 'Enregistrement introuvable.' });
+  res.json({ ...infoEnregistrement(dir, req.params.id), analyse_complete: lireJson(path.join(dir, 'analysis.json')) });
+});
+
+app.post('/api/sessions/:id/analyze', async (req, res) => {
+  try {
+    const id = path.basename(req.params.id);
+    if (recorderSession?.id === id && recorderSession.proc?.exitCode === null) return res.status(409).json({ error: 'Cet enregistrement est en cours.' });
+    if (analysisProgress.phase !== 'idle' && Date.now() - analysisProgress.at < 600000) return res.status(409).json({ error: 'Une analyse est déjà en cours.' });
+    const dir = path.join(SESSIONS_DIR, id);
+    if (!fs.existsSync(dir)) return res.status(404).json({ error: 'Enregistrement introuvable.' });
+    await analyzeSessionDir(dir);
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Supprimer = mettre à la corbeille (récupérable). Rien n'est effacé définitivement sans « Vider la corbeille ».
+app.delete('/api/sessions/:id', (req, res) => {
+  const id = path.basename(req.params.id);
+  const dir = path.join(SESSIONS_DIR, id);
+  if (!fs.existsSync(dir)) return res.status(404).json({ error: 'Enregistrement introuvable.' });
+  if (recorderSession?.id === id && recorderSession.proc?.exitCode === null) return res.status(409).json({ error: 'Arrête l\'enregistrement avant de le supprimer.' });
+  fs.mkdirSync(CORBEILLE_DIR, { recursive: true });
+  const dest = path.join(CORBEILLE_DIR, id);
+  if (fs.existsSync(dest)) return res.status(409).json({ error: 'Déjà dans la corbeille.' });
+  fs.renameSync(dir, dest);
+  fs.writeFileSync(path.join(dest, 'corbeille.json'), JSON.stringify({ deletedAt: new Date().toISOString() }) + '\n');
+  res.json({ ok: true });
+});
+
+// La corbeille garde un enregistrement 30 jours, puis le supprime définitivement.
+const JOURS_CORBEILLE = 30;
+function viderCorbeilleExpiree() {
+  const maintenant = Date.now();
+  for (const id of listeDossiers(CORBEILLE_DIR)) {
+    const supprime = Date.parse(lireJson(path.join(CORBEILLE_DIR, id, 'corbeille.json'))?.deletedAt || '');
+    if (supprime && maintenant - supprime > JOURS_CORBEILLE * 86400000) fs.rmSync(path.join(CORBEILLE_DIR, id), { recursive: true, force: true });
+  }
+}
+app.get('/api/corbeille', (req, res) => {
+  viderCorbeilleExpiree();
+  const maintenant = Date.now();
+  res.json({ jours: JOURS_CORBEILLE, items: listeDossiers(CORBEILLE_DIR).map((id) => {
+    const info = infoEnregistrement(path.join(CORBEILLE_DIR, id), id);
+    const supprime = Date.parse(info.supprime_le || '');
+    return { ...info, jours_restants: supprime ? Math.max(0, Math.ceil(JOURS_CORBEILLE - (maintenant - supprime) / 86400000)) : JOURS_CORBEILLE };
+  }) });
+});
+
+// Modifications d'une tâche d'un enregistrement (étapes, nom, résumé) : sauvegardées dans son analysis.json.
+app.put('/api/sessions/:id/analysis/workflows/:idx', (req, res) => {
+  const file = path.join(SESSIONS_DIR, path.basename(req.params.id), 'analysis.json');
+  const an = lireJson(file);
+  const i = Number(req.params.idx);
+  const wfs = an?.result?.workflows;
+  if (!wfs?.[i]) return res.status(404).json({ error: 'Tâche introuvable dans cet enregistrement.' });
+  const b = req.body || {};
+  wfs[i] = { ...wfs[i],
+    name: typeof b.name === 'string' ? b.name : wfs[i].name,
+    summary: typeof b.summary === 'string' ? b.summary : wfs[i].summary,
+    steps: Array.isArray(b.steps) ? b.steps.map(String) : wfs[i].steps,
+    modifie_le: new Date().toISOString() };
+  fs.writeFileSync(file, JSON.stringify(an, null, 2) + '\n');
+  res.json({ ok: true });
+});
+
+app.post('/api/corbeille/:id/restaurer', (req, res) => {
+  const id = path.basename(req.params.id);
+  const src = path.join(CORBEILLE_DIR, id);
+  if (!fs.existsSync(src)) return res.status(404).json({ error: 'Introuvable dans la corbeille.' });
+  const dest = path.join(SESSIONS_DIR, id);
+  if (fs.existsSync(dest)) return res.status(409).json({ error: 'Un enregistrement avec ce nom existe déjà.' });
+  fs.renameSync(src, dest);
+  fs.rmSync(path.join(dest, 'corbeille.json'), { force: true });
+  res.json({ ok: true });
+});
+
+app.delete('/api/corbeille/:id', (req, res) => {
+  const src = path.join(CORBEILLE_DIR, path.basename(req.params.id));
+  if (!fs.existsSync(src)) return res.status(404).json({ error: 'Introuvable dans la corbeille.' });
+  fs.rmSync(src, { recursive: true, force: true }); // suppression définitive
+  res.json({ ok: true });
+});
+
+app.post('/api/corbeille/vider', (req, res) => {
+  const ids = listeDossiers(CORBEILLE_DIR);
+  for (const id of ids) fs.rmSync(path.join(CORBEILLE_DIR, id), { recursive: true, force: true });
+  res.json({ ok: true, supprimes: ids.length });
+});
+
 const PORT = process.env.PORT || 3000;
 // ════════════════════════════════════════════════════════════════════════════════════════════════════════════════
 // ÉTAPE 1 · AUDIT : « Présente-toi » (accueil vocal) + « Les logiciels de ton poste » (scan de l'ordinateur)
@@ -1889,8 +2115,9 @@ app.post('/api/tuto/create', async (req, res) => {
   try {
     if (!(example && fs.existsSync(props))) {
       // l'exemple réutilise son tuto déjà fait ; une vraie tâche part de son enregistrement
-      const dir = sessionDirFor(wf);
-      if (!dir) throw new Error('L\'enregistrement de cette tâche n\'est pas sur ce Mac : enregistre-la d\'abord (étape 2).');
+      const dir0 = sessionDirFor(wf);
+      if (!dir0) throw new Error('L\'enregistrement de cette tâche n\'est pas sur ce Mac : enregistre-la d\'abord (étape 2).');
+      const dir = sessionAvecAjouts(dir0); // images et journal des ajouts (tâches oubliées) inclus dans la vidéo
       if (!(wf.steps || []).length) throw new Error('La tâche n\'a pas d\'étapes.');
       const wfFile = path.join(WORKFLOWS_DIR, 'tuto-workflow.json');
       fs.writeFileSync(wfFile, JSON.stringify({ name: wf.name, steps: wf.steps }));
@@ -2234,6 +2461,22 @@ async function arreterTout() {
   return stoppees;
 }
 app.post('/api/automations/stop', async (req, res) => res.json({ ok: true, executions_arretees: await arreterTout() }));
+
+// Relancer l'étape échouée : n8n rejoue l'exécution en échec à partir du nœud qui a planté. Les étapes déjà
+// réussies ne sont pas refaites (testé : même date de rapport avant et après relance).
+app.post('/api/automations/:id/retry', async (req, res) => {
+  try {
+    if (automationRun || n8nRun?.running) return res.status(409).json({ error: 'Une automatisation tourne déjà.' });
+    if (replay?.running) return res.status(409).json({ error: 'Holo est occupé par un rejeu.' });
+    await ensureN8n();
+    const en = (await n8nApi(`/executions?workflowId=${encodeURIComponent(req.params.id)}&status=error&limit=1`)).data || [];
+    if (!en.length) return res.status(404).json({ error: 'Aucune exécution en échec à relancer.' });
+    await n8nApi(`/executions/${en[0].id}/retry`, { method: 'POST' });
+    res.json({ ok: true, execution: en[0].id });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
 
 // Lancement programmé à un créneau (une fois) : pause déjeuner, fin de journée, demain matin…
 const PLANS_PATH = path.join(REPO_ROOT, 'workflows', 'automations-programmees.json');
