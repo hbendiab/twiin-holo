@@ -50,6 +50,7 @@ port.onMessage.addListener((m) => {
   if (m.type === 'record') record(false);
   if (m.type === 'stop' && C.recording) Capture.stop();
 });
+if (typeof Reco !== 'undefined') Reco.config({ api, onUpdate: () => render() }); // « Reco » : module à part (reco.js)
 let wasAnalyzing = false;
 Capture.config({ onUpdate: () => {
   report();
@@ -88,6 +89,7 @@ const task = () => (C.result?.workflows?.length ? C.result.workflows[sel] || C.r
 
 // --- Affichage (redessiné seulement si quelque chose a changé : la vidéo et les champs ouverts ne sont pas effacés) ---
 const PHASES = [['mask', 'Masquage des informations sensibles, sur ton ordinateur'], ['upload', 'Envoi des dernières images'], ['ocr', 'Lecture du texte de l\'écran, sur ton Mac'], ['model', 'Analyse des étapes'], ['parse', 'Mise en forme de la tâche']];
+const phases = () => (C.hadVoice ? [...PHASES.slice(0, 2), ['transcription', 'Traitement de la voix, sur ton Mac'], ...PHASES.slice(2)] : PHASES); // avec la voix : une étape de plus
 function render() {
   const e = S.etat || {};
   let h = '';
@@ -150,9 +152,9 @@ function captureBlock() {
       <div class="row" style="margin-top:8px;justify-content:center"><button class="link" data-act="rvdel" type="button">Tout supprimer</button></div></div>`;
   }
   if (C.analyzing) {
-    const k = Math.max(0, PHASES.findIndex(([p]) => p === C.phase));
-    return `<div class="card"><h3>Twiin analyse ta tâche</h3><p class="sub">${C.frames} images · environ une minute.</p>
-      <ul class="checks">${PHASES.map(([, l], i) => `<li class="${i < k ? 'done' : i === k ? 'now' : ''}"><span class="c">${i < k ? '✓' : ''}</span>${l}</li>`).join('')}</ul></div>`;
+    const PH = phases(), k = Math.max(0, PH.findIndex(([p]) => p === C.phase));
+    return `<div class="card"><h3>Twiin analyse ta tâche</h3><p class="sub">${C.frames ? `${C.frames} images · ` : ''}environ une minute.</p>
+      <ul class="checks">${PH.map(([, l], i) => `<li class="${i < k ? 'done' : i === k ? 'now' : ''}"><span class="c">${i < k ? '✓' : ''}</span>${l}</li>`).join('')}</ul></div>`;
   }
   let h = '';
   if (S.rec?.on) { // enregistrement lancé depuis la page Twiin
@@ -163,6 +165,7 @@ function captureBlock() {
   if (C.error) h += `<div class="card"><div class="live plan"><span class="t"><b>Enregistrement interrompu</b><span>${esc(C.error)}</span></span>
     <button class="link" data-act="recclear" type="button">OK</button></div></div>`;
   h += `<button class="b dark big" data-act="rec" type="button"><span class="recdot"></span>Enregistrer une tâche</button>`;
+  if (last || C.result || C.error) h += `<button class="b big" style="margin-top:8px" data-act="reanalyze" type="button">Réanalyser le dernier enregistrement</button>`;
   return h;
 }
 
@@ -185,12 +188,18 @@ function taskBlock() {
   h += `<h2>${esc(t.name)}</h2><p class="sub">${esc(t.summary || '')}</p>
     <ol class="steps">${steps.slice(0, 5).map((x) => `<li>${esc(x)}</li>`).join('')}</ol>
     ${steps.length > 5 ? `<details class="more"><summary>Voir les ${steps.length - 5} autres étapes</summary><ol class="steps" start="6">${steps.slice(5).map((x) => `<li>${esc(x)}</li>`).join('')}</ol></details>` : ''}
-    <div class="actions">
-      <button class="b dark" data-act="mkauto" type="button" ${busy ? 'disabled' : ''}>Créer l'automatisation</button>
-      <button class="b" data-act="mktuto" type="button" ${tutoJob?.running ? 'disabled' : ''}>Créer la vidéo de formation</button>
+    ${typeof Reco !== 'undefined' ? Reco.html(t) : ''}
+    <div class="actions">${actionButtons(t, busy)}
       <button class="link" data-act="twiin" data-hash="#enregistrer" type="button">Corriger les étapes dans Twiin</button>
     </div>${autoBlock()}${tutoBlock()}</div>`;
   return h;
+}
+
+// Les deux boutons ; si la Reco est prête, le bouton recommandé passe en plein et en premier (comme sur la page web)
+function actionButtons(t, busy) {
+  const auto = `<button class="b ${typeof Reco !== 'undefined' && Reco.primary(t) === 'tuto' ? '' : 'dark'}" data-act="mkauto" type="button" ${busy ? 'disabled' : ''}>Créer l'automatisation</button>`;
+  const tuto = `<button class="b ${typeof Reco !== 'undefined' && Reco.primary(t) === 'tuto' ? 'dark' : ''}" data-act="mktuto" type="button" ${tutoJob?.running ? 'disabled' : ''}>Créer la vidéo de formation</button>`;
+  return typeof Reco !== 'undefined' && Reco.primary(t) === 'tuto' ? tuto + auto : auto + tuto;
 }
 
 function autoBlock() {
@@ -322,8 +331,10 @@ document.addEventListener('click', async (ev) => {
   if (act === 'rvtoggle') return Capture.toggle(Number(el.dataset.i));
   if (act === 'rvgo') return Capture.analyse();
   if (act === 'rvdel') { if (confirm('Supprimer cet enregistrement ? Ses images sont effacées de ton ordinateur, rien n\'est envoyé.')) Capture.discard(); return; }
+  if (act === 'reanalyze') return Capture.reanalyze();
   if (act === 'recstoppage') { ask({ type: 'record:stop' }); return; }
   if (act === 'sel') { sel = Number(el.dataset.i); autoJob = null; tutoMine = false; tutoJob = null; return render(); }
+  if (act === 'reco') return Reco.run(task());
   if (act === 'mkauto') return createAutomation();
   if (act === 'mktuto') return createTuto();
   if (act === 'stop') { el.textContent = 'Arrêt…'; await ask({ type: 'stop' }); }

@@ -20,6 +20,8 @@ const spawnMac = (args) => { try { const c = spawnMac(args); c.on('error', () =>
 import { fileURLToPath } from 'url';
 import crypto from 'crypto';
 import { AsyncLocalStorage } from 'async_hooks';
+import { mergeVoice } from './voice.js';
+import { appReport, effectiveExcluded, excludedTime, filterEvents, isCopy, isPaste, timePerApp } from './apps_filter.js';
 
 // recorder/ sits one level below the repo root, alongside the twiin/ Python package
 const REPO_ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
@@ -148,8 +150,8 @@ function runOcr(frames) {
     let out = '', err = '';
     py.stdout.on('data', (d) => (out += d));
     py.stderr.on('data', (d) => (err += d));
-    py.on('error', (e) => { console.error('OCR indisponible :', e.message); resolve([]); });
-    py.stdin.on('error', () => {});
+    py.on('error', (e) => { console.error('OCR indisponible :', e.message); resolve([]); }); // l'analyse continue sans le texte lu à l'écran
+    py.stdin.on('error', () => {});     // EPIPE si l'OCR s'arrête avant d'avoir tout lu : ne doit jamais faire tomber le serveur
     py.on('close', (code) => {
       if (code !== 0) { console.error('OCR échoué :', err.slice(0, 500)); return resolve([]); }
       try { resolve(JSON.parse(out)); } catch { resolve([]); }
@@ -206,6 +208,10 @@ typing burst (keys are never recorded, only that typing happened and where), key
 ⌘S / Ctrl+S save… ; ⌃ means Ctrl on Windows), structure key (Enter, Tab, Escape: they move between fields, e.g. Enter leaves a page title) and app switch, with the screen, the app, the window title and the label of the clicked element.
 The ACTION LOG is authoritative for the ORDER of actions, the SCREEN and APP used, and WHERE the user clicked or
 typed. Match each typing burst with the next frame of that screen to read WHAT was typed (from the OCR text).
+The ACTION LOG may also contain lines starting with 🎤: what the user SAID aloud during the session, transcribed automatically
+(it can contain small recognition errors), with the time. Use them to understand the INTENT: why a step is done, the rules or
+exceptions the user states, what matters to them, and to name the steps. They are NOT authoritative for exact values
+(the OCR text wins) nor for the order of actions (the click/typing lines win). Never turn a vague or off-topic remark into a step.
 You also receive an OCR TRANSCRIPT: the exact text read on every kept frame by a local OCR engine
 (only lines that are new compared to the previous frame). Use the images to understand context,
 layout and intent; use the OCR transcript for every EXACT value — dates, prices, amounts, names,
@@ -346,6 +352,19 @@ function displayToScreen(screens) {
 
 const IS_RECORDER = (e) => /improveme|Twiin · Enregistrement/i.test(e.window || '') || /localhost:3000/.test(e.window || '');
 
+// --- Fausses applis : applis ouvertes par erreur, hors tâche ---------------------------------------------------------
+// Détection automatique (peu de temps, ni saisie ni copier-coller) → préremplit ; l'employé corrige (apps.json de la session).
+// Dans le doute, l'appli reste comptée.
+const APPS_FILE = 'apps.json';
+function readAppChoice(dir) {
+  try { const j = JSON.parse(fs.readFileSync(path.join(dir, APPS_FILE), 'utf8')); return Array.isArray(j.excluded) ? j.excluded.map(String) : null; }
+  catch { return null; }
+}
+// Applis exclues pour cette session = choix de l'employé s'il existe, sinon suggestions automatiques.
+function excludedApps(dir, events) {
+  return effectiveExcluded(events.filter((e) => !IS_RECORDER(e)), dir ? readAppChoice(dir) : null);
+}
+
 function actionTranscript(events, startedAtMs, screens) {
   const map = displayToScreen(screens);
   const scr = (d) => (d == null ? 'screen ?' : map.has(d) ? `screen ${map.get(d)}` : `macOS display ${d}`);
@@ -358,11 +377,225 @@ function actionTranscript(events, startedAtMs, screens) {
     else if (e.type === 'click') lines.push(`${t(e.ts)} · ${where} · ${e.double ? 'double-' : ''}${e.button === 'right' ? 'right-' : ''}click on ${e.element || 'an element'}`);
     else if (e.type === 'typing') lines.push(`${t(e.ts)}→${t(e.until).slice(2)} · ${where} · typing${e.keys ? ` (${e.keys} keys)` : ''} in ${e.element || 'the focused field'}`);
     else if (e.type === 'shortcut') lines.push(`${t(e.ts)} · ${where} · shortcut ${e.keys}`);
+    else if (e.type === 'voice') lines.push(`${t(e.ts)}→${t(e.until).slice(2)} · 🎤 the user says: « ${String(e.text).replace(/\s+/g, ' ').trim()} »`);
     else if (e.type === 'key') lines.push(`${t(e.ts)} · ${where} · presses ${({ 'Entrée': 'Enter', 'Échap': 'Escape' })[e.keys] || e.keys}${e.element ? ` in ${e.element}` : ''}`);
   }
   let out = lines.join('\n');
   if (out.length > 15000) out = out.slice(0, 15000) + '\n[… journal tronqué]';
   return out;
+}
+
+// --- Voix : audio envoyé par la page (si « Capture vocale » est activée) puis transcrit en local par Whisper --------
+const AUDIO_RE = /^audio\.(webm|m4a|ogg)$/;
+const WHISPER_TIMEOUT_MS = parseInt(process.env.WHISPER_TIMEOUT_MS || '600000', 10); // 10 min
+app.post('/api/audio', express.raw({ type: () => true, limit: '200mb' }), (req, res) => {
+  try {
+    const dir = /^[0-9A-Za-z-]+$/.test(String(req.query.session || '')) ? sessionDirById(String(req.query.session)) : null; // jamais « .. » ni le dossier racine des sessions
+    const startedAt = Number(req.query.startedAt);
+    if (!dir) return res.status(400).json({ error: 'session introuvable' });
+    if (!Number.isFinite(startedAt)) return res.status(400).json({ error: 'heure de départ de l\'audio manquante' });
+    if (!Buffer.isBuffer(req.body) || req.body.length < 1000) return res.status(400).json({ error: 'audio vide' });
+    const mime = String(req.headers['content-type'] || '');
+    const ext = /mp4|m4a/.test(mime) ? 'm4a' : /ogg/.test(mime) ? 'ogg' : 'webm';
+    for (const f of fs.readdirSync(dir)) if (AUDIO_RE.test(f)) fs.rmSync(path.join(dir, f));
+    fs.rmSync(path.join(dir, 'voice.json'), { force: true }); // un nouvel audio = une nouvelle transcription
+    fs.writeFileSync(path.join(dir, `audio.${ext}`), req.body);
+    fs.writeFileSync(path.join(dir, 'audio.json'), JSON.stringify({ startedAt, mime, bytes: req.body.length }));
+    console.log(`Audio reçu : ${(req.body.length / 1024).toFixed(0)} Ko (${ext}) pour ${path.basename(dir)}`);
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// --- Transcription de la voix : 100 % locale (Whisper sur ce poste, l'audio ne le quitte pas) ----------------------
+// Au lancement du serveur, si faster-whisper ou le modèle manquent, ils s'installent seuls en arrière-plan (voir plus bas).
+const VOICE_VENV = path.join(REPO_ROOT, 'workflows', 'voice-venv'); // créé par le bouton d'installation si le projet n'a pas de .venv
+const venvPy = (dir) => path.join(dir, 'bin', 'python');
+// Python de la transcription locale, relu à chaque appel (l'installation à la volée peut le créer). On ne touche pas à
+// PYTHON (OCR, journal d'actions, Holo) : un .venv minimal créé ici lui retirerait ses modules (Quartz…).
+function voicePython() {
+  for (const d of [path.join(REPO_ROOT, '.venv'), VOICE_VENV]) if (fs.existsSync(venvPy(d))) return venvPy(d);
+  return 'python3';
+}
+const hfHub = () => path.join(process.env.HF_HOME || path.join(os.homedir(), '.cache', 'huggingface'), 'hub');
+const modelDir = () => path.join(hfHub(), 'models--Systran--faster-whisper-small');
+// Le modèle est « là » seulement si model.bin existe (un dossier à moitié téléchargé ne compte pas).
+function modelPresent() {
+  try {
+    const snaps = path.join(modelDir(), 'snapshots');
+    return fs.readdirSync(snaps).some((s) => fs.existsSync(path.join(snaps, s, 'model.bin')));
+  } catch { return false; }
+}
+function dirSize(dir) {
+  let n = 0;
+  try {
+    for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+      const p = path.join(dir, e.name);
+      if (e.isDirectory()) n += dirSize(p); else if (e.isFile()) n += fs.statSync(p).size;
+    }
+  } catch { /* dossier absent */ }
+  return n;
+}
+
+// Raison d'un échec de transcription, en une courte phrase pour l'employé (le détail technique reste dans `error` et la console).
+function voiceReason(msg) {
+  const m = String(msg || '');
+  if (/faster-whisper n'est pas installé|No module named 'faster_whisper'/.test(m)) return 'faster-whisper n\'est pas installé sur cet ordinateur';
+  if (/trop longue/.test(m)) return 'la transcription a pris trop de temps (modèle non téléchargé ou pas de réseau ?)';
+  if (/EOF|Invalid data|av\.error|Errno/.test(m)) return 'l\'audio n\'a pas pu être lu';
+  return 'erreur de transcription';
+}
+
+// Transcription locale possible sur CET ordinateur ? (faster-whisper et `av` < 16 installés ; le modèle « small », ~460 Mo,
+// est présent ou à télécharger). La partie Python est vérifiée une fois par minute au plus ; le modèle, à chaque appel.
+let localPyCache = { at: 0, value: null };
+function localVoiceStatus(fresh = false) {
+  return new Promise((resolve) => {
+    const finish = (py) => resolve(py.ready ? { ready: true, needsDownload: !modelPresent() } : py);
+    if (!fresh && localPyCache.value && Date.now() - localPyCache.at < 60_000) return finish(localPyCache.value);
+    const done = (value) => { localPyCache = { at: Date.now(), value }; finish(value); };
+    let out = '';
+    const py = spawn(voicePython(), ['-c', 'import faster_whisper, av; print(av.__version__)']);
+    const timer = setTimeout(() => py.kill('SIGKILL'), 15_000);
+    py.stdout.on('data', (d) => (out += d));
+    py.on('error', () => { clearTimeout(timer); done({ ready: false, reason: 'Python introuvable' }); });
+    py.on('close', (code) => {
+      clearTimeout(timer);
+      if (code !== 0) return done({ ready: false, reason: 'la transcription locale n\'est pas encore installée' });
+      if (parseInt(out, 10) >= 16) return done({ ready: false, reason: 'la bibliothèque « av » est trop récente (il faut une version < 16)' });
+      done({ ready: true });
+    });
+  });
+}
+
+// État de la transcription locale pour la page (+ l'installation automatique en cours, s'il y en a une).
+app.get('/api/audio/status', async (req, res) => {
+  const local = await localVoiceStatus();
+  // Prête = faster-whisper ET le modèle sont là ; un modèle à télécharger rend la voix indisponible le temps de l'installation.
+  const ready = local.ready && !local.needsDownload;
+  const reason = ready ? undefined : local.reason || (install.state === 'running' ? 'le modèle de transcription (~460 Mo) est en cours d\'installation' : 'le modèle de transcription n\'est pas encore téléchargé');
+  res.json({ ready, reason, install: installView(), canChange: ownPageOnly(req) });
+});
+
+// Installation : cet ordinateur ET une page de Twiin elle-même (pas une autre page web ouverte dans le navigateur,
+// qui pourrait envoyer la requête sans autorisation, ni un nom de domaine détourné vers 127.0.0.1).
+const LOCAL_HOSTS = ['localhost', '127.0.0.1', '[::1]'];
+const hostName = (h) => { try { return new URL(`http://${h}`).hostname; } catch { return ''; } };
+function ownPageOnly(req) {
+  if (!isLocal(req) || !LOCAL_HOSTS.includes(hostName(req.headers.host))) return false;
+  const origin = req.headers.origin;
+  if (!origin) return true; // outil en ligne de commande (curl)
+  try { return LOCAL_HOSTS.includes(new URL(origin).hostname); } catch { return false; }
+}
+
+// Installation de la transcription locale (automatique au lancement ; le bouton « Réessayer » de la page la relance) : un seul travail à la fois, suivi par la page.
+//   1. un .venv (ou workflows/voice-venv s'il n'y en a pas) ; 2. faster-whisper + av < 16 ; 3. le modèle « small » (~460 Mo).
+const MODEL_MB = 460;
+let install = { state: 'idle' };
+const installView = () => (install.state === 'running' && install.step === 'model' ? { ...install, modelBytes: dirSize(modelDir()), modelTotalMb: MODEL_MB } : install);
+function runCmd(cmd, args, timeoutMs) {
+  const env = { ...process.env }; delete env.HF_TOKEN; delete env.HUGGING_FACE_HUB_TOKEN; // modèle public : inutile d'envoyer un jeton
+  return new Promise((resolve, reject) => {
+    let tail = '';
+    const p = spawn(cmd, args, { env });
+    const timer = setTimeout(() => { p.kill('SIGKILL'); reject(new Error('timeout')); }, timeoutMs);
+    const keep = (d) => { tail = (tail + d).slice(-2000); };
+    p.stdout.on('data', keep); p.stderr.on('data', keep);
+    p.on('error', (e) => { clearTimeout(timer); reject(e); });
+    p.on('close', (code) => { clearTimeout(timer); if (code === 0) resolve(tail); else reject(new Error(tail.trim().split('\n').slice(-3).join(' ').slice(0, 300) || `code ${code}`)); });
+  });
+}
+function installReason(err) {
+  const m = String(err?.message || err).replace(/\s+/g, ' ').trim();
+  if (err?.user) return m;
+  if (/^timeout$/.test(m)) return 'l\'installation a pris trop de temps : vérifie ta connexion puis réessaie';
+  if (/Temporary failure|Max retries|Name or service|nodename|urlopen|offline|ConnectError|Network is unreachable|ConnectionError|Connection (reset|refused|aborted)|SSLError|getaddrinfo|Could not find a version|No matching distribution|CAS Client Error|error sending request|Request middleware/i.test(m)) return 'pas de réseau (ou accès bloqué) : vérifie ta connexion puis réessaie';
+  if (/ENOENT/.test(m)) return 'Python est introuvable sur cet ordinateur';
+  return `l'installation a échoué (${m.slice(0, 160)})`;
+}
+async function installVoice() {
+  const step = (s, message) => { install = { ...install, state: 'running', step: s, message }; };
+  try {
+    step('python', 'Vérification de Python…');
+    let py = voicePython();
+    if (py === 'python3') {
+      let ok = '';
+      try { ok = await runCmd('python3', ['-c', 'import sys; print(int(sys.version_info >= (3, 10)))'], 15_000); } catch { /* introuvable */ }
+      if (ok.trim() !== '1') throw Object.assign(new Error('Python 3.10 ou plus récent est nécessaire (python.org, ou « brew install python »)'), { user: true });
+      step('venv', 'Création de l\'environnement Python…');
+      await runCmd('python3', ['-m', 'venv', VOICE_VENV], 120_000);
+      py = venvPy(VOICE_VENV);
+    }
+    step('packages', 'Installation de faster-whisper…');
+    await runCmd(py, ['-m', 'pip', 'install', '--disable-pip-version-check', 'faster-whisper>=1.1', 'av<16'], 15 * 60_000);
+    step('model', `Téléchargement du modèle (~${MODEL_MB} Mo)…`);
+    await runCmd(py, ['-c', "from faster_whisper.utils import download_model; download_model('small')"], 40 * 60_000);
+    const st = await localVoiceStatus(true);
+    if (!st.ready) throw Object.assign(new Error(st.reason), { user: true });
+    if (st.needsDownload) throw Object.assign(new Error('le modèle n\'est pas complet : relance l\'installation'), { user: true });
+    install = { state: 'done', message: 'Transcription locale installée.' };
+    console.log('Transcription locale installée.');
+  } catch (err) {
+    install = { state: 'error', message: installReason(err) };
+    console.warn(`⚠️ Installation de la transcription locale : ${err.message}`);
+  }
+}
+app.post('/api/audio/install', async (req, res) => {
+  if (!ownPageOnly(req)) return res.status(403).json({ error: 'réservé à cet ordinateur' });
+  if (install.state === 'running') return res.status(202).json(installView()); // double clic : une seule installation
+  const st = await localVoiceStatus(true);
+  if (st.ready && !st.needsDownload) { install = { state: 'done', message: 'Déjà installée.' }; return res.json(install); }
+  if (install.state === 'running') return res.status(202).json(installView()); // une autre requête a démarré pendant la vérification
+  install = { state: 'running', step: 'python', message: 'Vérification de Python…', startedAt: Date.now() };
+  installVoice();
+  res.status(202).json(installView());
+});
+app.get('/api/audio/install/status', (req, res) => res.json(installView()));
+
+// Passages de voix déjà transcrits (voice.json), à heure absolue ; liste vide s'il n'y en a pas.
+function readVoiceCache(dir) {
+  try {
+    const voice = JSON.parse(fs.readFileSync(path.join(dir, 'voice.json'), 'utf8'));
+    const base = voice.audio_started_at_ms / 1000;
+    return (voice.segments || []).map((s) => ({ type: 'voice', ts: base + s.start, until: base + s.end, text: s.text }));
+  } catch { return []; }
+}
+
+// Transcrit l'audio de la session en local (une seule fois : voice.json sert de cache) et renvoie des événements « voice »
+// à heure absolue (secondes), calés sur le même repère que le journal d'actions. Ne plante jamais l'analyse.
+async function transcribeSession(dir) {
+  const info = { status: 'none', segments: 0 };
+  try {
+    const audio = fs.readdirSync(dir).find((f) => AUDIO_RE.test(f));
+    if (!audio) return { events: [], info };
+    const voiceF = path.join(dir, 'voice.json');
+    if (!fs.existsSync(voiceF)) {
+      setPhase('transcription');
+      const meta = JSON.parse(fs.readFileSync(path.join(dir, 'audio.json'), 'utf8'));
+      const script = path.join(path.dirname(fileURLToPath(import.meta.url)), 'transcribe.py');
+      const tmp = voiceF + '.tmp';
+      await new Promise((resolve, reject) => {
+        const py = spawn(voicePython(), [script, '--audio', path.join(dir, audio), '--out', tmp]);
+        let err = '';
+        // Garde-fou : premier usage sans réseau (téléchargement du modèle) ou audio énorme → on abandonne, l'analyse continue sans voix
+        const timer = setTimeout(() => { py.kill('SIGKILL'); reject(new Error(`transcription trop longue (plus de ${Math.round(WHISPER_TIMEOUT_MS / 60000)} min)`)); }, WHISPER_TIMEOUT_MS);
+        py.stderr.on('data', (d) => (err += d));
+        py.on('error', (e) => { clearTimeout(timer); reject(e); });
+        py.on('close', (code) => { clearTimeout(timer); if (code === 0) resolve(); else reject(new Error(err.trim().split('\n').slice(-2).join(' ').slice(0, 400) || `code ${code}`)); });
+      });
+      const out = JSON.parse(fs.readFileSync(tmp, 'utf8'));
+      out.audio_started_at_ms = meta.startedAt;
+      fs.writeFileSync(voiceF, JSON.stringify(out, null, 2));
+      fs.rmSync(tmp, { force: true });
+      console.log(`Transcription locale : ${out.segments.length} segment(s), ${out.audio_duration} s d'audio, ${out.elapsed} s de calcul`);
+    }
+    const events = readVoiceCache(dir);
+    return { events, info: { status: events.length ? 'ok' : 'empty', segments: events.length } };
+  } catch (err) {
+    console.warn(`⚠️ Voix non transcrite, l'analyse continue sans elle : ${err.message}`);
+    return { events: [], info: { status: 'failed', segments: 0, reason: voiceReason(err.message), error: String(err.message).slice(0, 200) } };
+  }
 }
 
 // Images envoyées AU FIL DE L'EAU par la page (une requête par image) : si la page plante, rien n'est perdu.
@@ -531,7 +764,7 @@ const setPhase = (phase) => { analysisProgress = { phase, at: Date.now() }; };
 app.get('/api/analysis/progress', (req, res) => res.json(analysisProgress));
 
 // Analyse commune : nouvel enregistrement (images + OCR) ou relance (images gardées, ou texte OCR seul).
-async function analyze({ frames, transcript, actionLog = '', ocrLines = 0, screens = 1, textOnly = false, session = null }) {
+async function analyze({ frames, transcript, actionLog = '', ocrLines = 0, screens = 1, textOnly = false, session = null, voice = null }) {
   const used = textOnly ? [] : sampleFrames(frames);
   const header = textOnly
     ? `No images are available for this session: only the OCR transcript of its ${frames?.length ?? 'several'} kept frames over ${screens} screen(s). Return the JSON described in the system prompt.`
@@ -539,7 +772,7 @@ async function analyze({ frames, transcript, actionLog = '', ocrLines = 0, scree
   const content = [
     { type: 'text', text: header },
     ...used.flatMap((f) => [{ type: 'text', text: `Image ${f.index} · screen ${f.screen ?? 1} · t+${f.seconds ?? '?'}s` }, toImageBlock(f.dataUrl)]),
-    { type: 'text', text: `ACTION LOG (recorded during the session: exact time, screen, app and clicked element; authoritative for ORDER and WHERE):\n${actionLog || '(no action log)'}` },
+    { type: 'text', text: `ACTION LOG (recorded during the session: exact time, screen, app and clicked element; authoritative for ORDER and WHERE; lines starting with 🎤 are what the user said aloud):\n${actionLog || '(no action log)'}` },
     { type: 'text', text: `OCR TRANSCRIPT (exact text, authoritative for values):\n${transcript || '(no text read)'}` },
   ];
 
@@ -563,7 +796,7 @@ async function analyze({ frames, transcript, actionLog = '', ocrLines = 0, scree
   const meta = { mode: RECORDER_MODE, model: HF_MODEL, provider, screens, images_kept: frames?.length ?? null,
                  images_sent: used.length, text_only: textOnly, ocr_lines: ocrLines, ocr_chars: (transcript || '').length,
                  action_lines: actionLog ? actionLog.split('\n').length : 0,
-                 usage, cost_usd };
+                 voice, usage, cost_usd };
   console.log(`Modèle ${HF_MODEL} via ${provider ?? '?'} : ${usage.prompt_tokens ?? '?'} tokens entrée, ${usage.completion_tokens ?? '?'} sortie` +
               (cost_usd != null ? `, ≈ ${cost_usd.toFixed(4)} $` : ''));
 
@@ -613,7 +846,13 @@ async function analyzeSessionDir(dir, { textOnly = false } = {}) {
   await masquerSession(dir); // jamais d'image non masquée vers l'analyse, même si la relecture a été sautée
   const { frames, startedAt, screens: shared } = loadSessionFrames(dir);
   if (!frames.length) throw new Error('Aucune image enregistrée pour cet enregistrement.');
-  const actionLog = masquerTexte(actionTranscript(readActions(dir), startedAt || Date.parse(frames[0]?.timestamp), shared));
+  const voice = await transcribeSession(dir);
+  const allEvents = mergeVoice(readActions(dir), voice.events);
+  const excluded = excludedApps(dir, allEvents);
+  const events = filterEvents(allEvents, excluded);
+  let actionLog = actionTranscript(events, startedAt || Date.parse(frames[0]?.timestamp), shared);
+  if (excluded.length) actionLog += `\n[NOTE: the user marked these apps as NOT part of the task (opened by mistake): ${excluded.join(', ')}. Ignore them in the screenshots too.]`;
+  actionLog = masquerTexte(actionLog); // la voix transcrite et le journal passent aussi par le masquage local
   const t0 = Date.now();
   setPhase('ocr');
   const ocr = await runOcr(frames);
@@ -621,7 +860,7 @@ async function analyzeSessionDir(dir, { textOnly = false } = {}) {
   const ocrLines = ocr.reduce((n, o) => n + (o.lines?.length || 0), 0);
   console.log(`OCR local : ${ocr.length} image(s), ${ocrLines} lignes, ${transcript.length} caractères gardés, ${((Date.now() - t0) / 1000).toFixed(1)} s · journal : ${actionLog ? actionLog.split('\n').length : 0} action(s)`);
   const screens = new Set(frames.map((f) => f.screen ?? 1)).size;
-  return analyze({ frames, transcript, actionLog, ocrLines, screens, textOnly, session: path.basename(dir) });
+  return analyze({ frames, transcript, actionLog, ocrLines, screens, textOnly, session: path.basename(dir), voice: voice.info });
 }
 
 app.post('/api/generate-workflows', async (req, res) => {
@@ -811,23 +1050,24 @@ app.post('/api/improve', async (req, res) => {
 // L'enregistrement d'une tâche : celui noté dans la tâche ; à défaut (anciennes tâches), le dernier enregistrement.
 function sessionDirFor(wf) {
   if (wf?.session) {
-    const dir = path.join(SESSIONS_DIR, path.basename(String(wf.session)));
+    const id = String(wf.session);
+    if (!/^[0-9A-Za-z-]+$/.test(id)) return null; // jamais « .. », « . » ni un chemin : on reste dans un dossier de session
+    const dir = path.join(SESSIONS_DIR, id);
     return fs.existsSync(dir) ? dir : null; // enregistrement absent (autre Mac) : pas de mesures plutôt que de fausses
   }
   return latestSessionDir();
 }
 function taskContext(wf) {
   const dir = sessionDirFor(wf);
-  const events = dir ? readActions(dir) : [];
+  const allEvents = dir ? readActions(dir) : [];
+  const excluded = excludedApps(dir, allEvents);       // applis ouvertes par erreur : choix de l'employé, sinon suggestions automatiques
+  const events = filterEvents(allEvents, excluded);
   const last = fs.existsSync(LAST_RUN_PATH) ? JSON.parse(fs.readFileSync(LAST_RUN_PATH, 'utf8')) : {};
   const same = dir && last.meta?.session === path.basename(dir);
-  let actionLog = same ? last.action_log : '';
-  if (!actionLog && dir && events.length) {
-    let started = null;
-    try { started = JSON.parse(fs.readFileSync(path.join(dir, 'session.json'), 'utf8')).startedAt; } catch { /* rien */ }
-    try { actionLog = actionTranscript(events, started || events[0].ts * 1000, []); } catch { actionLog = ''; }
-  }
-  return { dir, events, actionLog: actionLog || '', ocr: same ? last.ocr_transcript || '' : '' };
+  // le journal gardé à la dernière analyse ne tient pas compte d'un choix fait depuis : avec des applis exclues, on le refait
+  let actionLog = same && !excluded.length ? last.action_log : '';
+  if (!actionLog && dir && events.length) { try { actionLog = sessionActionLog(dir, events); } catch { actionLog = ''; } }
+  return { dir, allEvents, events, excluded, actionLog: actionLog || '', ocr: same ? last.ocr_transcript || '' : '' };
 }
 
 function latestSessionDir() {
@@ -837,28 +1077,66 @@ function latestSessionDir() {
   return dirs.length ? path.join(SESSIONS_DIR, dirs.at(-1)) : null;
 }
 
+// Journal d'actions texte d'une session, sans les applis exclues (même format que celui de l'analyse).
+function sessionActionLog(dir, events) {
+  const { frames, startedAt, screens } = loadSessionFrames(dir);
+  const t0 = startedAt || Date.parse(frames[0]?.timestamp) || (events[0]?.ts || 0) * 1000;
+  const voice = mergeVoice(events, readVoiceCache(dir));
+  return actionTranscript(voice, t0, screens);
+}
+
+// Événements du journal d'une session, sans ceux de la page elle-même.
+const sessionEvents = (dir) => readActions(dir).filter((e) => !IS_RECORDER(e));
+
+// Liste des applis vues dans le dernier enregistrement, avec le choix en cours (page : cases « fait partie de la tâche ? »).
+// `stale` : le choix a été fait après la dernière analyse, donc les étapes affichées n'en tiennent pas compte.
+// ?session=… : l'enregistrement de la tâche affichée (une tâche plus ancienne a ses propres applis) ; sans lui, le dernier.
+const appsDir = (id) => (id ? sessionDirFor({ session: id }) : latestSessionDir());
+app.get('/api/apps', (req, res) => {
+  const dir = appsDir(req.query.session);
+  if (!dir) return res.json({ apps: [] });
+  const events = sessionEvents(dir);
+  const mtime = (f) => { try { return fs.statSync(f).mtimeMs; } catch { return 0; } };
+  res.json({
+    excluded: effectiveExcluded(events, readAppChoice(dir)), apps: appReport(events),
+    stale: mtime(path.join(dir, APPS_FILE)) > mtime(CANDIDATES_PATH),
+  });
+});
+
+app.post('/api/apps', (req, res) => {
+  const dir = appsDir(req.body?.session);
+  if (!dir) return res.status(404).json({ error: 'Aucun enregistrement.' });
+  const seen = new Set(appReport(sessionEvents(dir)).map((a) => a.app));
+  const list = Array.isArray(req.body?.excluded) ? req.body.excluded : null;
+  if (!list) return res.status(400).json({ error: 'Liste « excluded » manquante.' });
+  const excluded = [...new Set(list.map(String).filter((a) => seen.has(a)))];
+  fs.writeFileSync(path.join(dir, APPS_FILE), JSON.stringify({ excluded }, null, 2) + '\n');
+  res.json({ excluded });
+});
+
 // Mesures objectives tirées du journal d'actions : durée, temps par appli, allers-retours, copier-coller, saisies.
-function processStats(events) {
+function processStats(allEvents, excluded = []) {
+  const events = filterEvents(allEvents, excluded);
   const ev = events.filter((e) => e?.type && !['start', 'stop', 'error'].includes(e.type) && !IS_RECORDER(e));
   if (!ev.length) return null;
-  const t0 = ev[0].ts, t1 = Math.max(...ev.map((e) => e.until || e.ts));
-  const perApp = {};
+  const all = allEvents.filter((e) => e?.type && !['start', 'stop', 'error'].includes(e.type) && !IS_RECORDER(e));
+  const t0 = all[0].ts, t1 = Math.max(...all.map((e) => e.until || e.ts));
+  // temps mesuré sur le journal complet, puis on ôte les applis exclues (voir excludedTime)
+  const perApp = { ...timePerApp(all).perApp };
+  for (const a of excluded) delete perApp[a];
   let switches = 0, prevApp = null;
-  for (let i = 0; i < ev.length; i++) {
-    const e = ev[i];
-    const end = i + 1 < ev.length ? ev[i + 1].ts : t1;
-    if (e.app) perApp[e.app] = (perApp[e.app] || 0) + Math.max(0, end - e.ts);
+  for (const e of ev) {
     if (e.app && prevApp && e.app !== prevApp) switches++;
     if (e.app) prevApp = e.app;
   }
   const count = (f) => ev.filter(f).length;
   return {
-    duration_s: Math.round(t1 - t0),
+    duration_s: Math.round(t1 - t0 - excludedTime(all, excluded)),
     time_per_app_s: Object.fromEntries(Object.entries(perApp).sort((a, b) => b[1] - a[1]).map(([k, v]) => [k, Math.round(v)])),
     app_switches: switches,
     clicks: count((e) => e.type === 'click'),
-    copies: count((e) => e.type === 'shortcut' && /C$/i.test(e.keys || '')),
-    pastes: count((e) => e.type === 'shortcut' && /V$/i.test(e.keys || '')),
+    copies: count(isCopy),
+    pastes: count(isPaste),
     typing_s: Math.round(ev.filter((e) => e.type === 'typing').reduce((n, e) => n + (e.until - e.ts), 0)),
     keystrokes: ev.filter((e) => e.type === 'typing').reduce((n, e) => n + (e.keys || 0), 0),
   };
@@ -885,12 +1163,15 @@ app.post('/api/process-advice', async (req, res) => {
   try {
     const wf = req.body?.workflow || {};
     const ctx = taskContext(wf);
-    const stats = processStats(ctx.events);
+    const excluded = ctx.excluded; // applis ouvertes par erreur (choix de l'employé), déjà retirées du journal et des chiffres
+    const stats = processStats(ctx.allEvents, excluded);
     const last = { action_log: ctx.actionLog, ocr_transcript: ctx.ocr };
+    const actionLog = ctx.actionLog;
     const user = [
       `TASK\nName: ${wf.name || ''}\nSummary: ${wf.summary || ''}\nSteps:\n` + (wf.steps || []).map((st, i) => `${i + 1}. ${st}`).join('\n'),
       `MEASURES (from the action log)\n${stats ? JSON.stringify(stats, null, 1) : '(no action log)'}`,
-      `ACTION LOG\n${(last.action_log || '(none)').slice(0, 12000)}`,
+      `ACTION LOG\n${(actionLog || '(none)').slice(0, 12000)}`,
+      excluded.length ? `NOT PART OF THE TASK (opened by mistake, already removed from the measures and the log): ${excluded.join(', ')}` : '',
       `OCR TEXT\n${(last.ocr_transcript || '(none)').slice(0, 8000)}`,
       profileContext(),
     ].filter(Boolean).join('\n\n');
@@ -974,7 +1255,8 @@ app.post('/api/verdict', async (req, res) => {
   try {
     const wf = req.body?.workflow || {};
     const ctx = taskContext(wf);
-    const stats = processStats(ctx.events);
+    const excluded = ctx.excluded;
+    const stats = processStats(ctx.allEvents, excluded);
     const tools = toolsUsed(ctx.events, ctx.ocr);
     const user = [
       `TASK\nName: ${wf.name || ''}\nSteps:\n` + (wf.steps || []).map((st, i) => `${i + 1}. ${st}`).join('\n'),
@@ -2182,4 +2464,16 @@ app.get('/api/audit/resultat', async (req, res) => {
   }
 });
 
-app.listen(PORT, () => console.log(`workflow-recorder (Hugging Face) running at http://localhost:${PORT}`));
+app.listen(PORT, () => {
+  console.log(`workflow-recorder (Hugging Face) running at http://localhost:${PORT}`);
+  // Transcription locale : si faster-whisper ou le modèle manquent, installation automatique en arrière-plan (un seul essai
+  // par lancement ; la page montre l'avancement et propose « Réessayer » en cas d'échec). VOICE_AUTO_INSTALL=0 la désactive.
+  if (process.env.VOICE_AUTO_INSTALL !== '0') {
+    localVoiceStatus(true).then((st) => {
+      if ((st.ready && !st.needsDownload) || install.state === 'running') return;
+      console.log('Transcription locale absente : installation automatique…');
+      install = { state: 'running', step: 'python', message: 'Vérification de Python…', startedAt: Date.now() };
+      installVoice();
+    }).catch(() => {});
+  }
+});

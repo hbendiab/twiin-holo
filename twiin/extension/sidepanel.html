@@ -6,6 +6,7 @@
 <title>Twiin</title>
 <link rel="stylesheet" href="popup.css">
 <link rel="stylesheet" href="panel.css">
+<link rel="stylesheet" href="voice.css">
 </head>
 <body>
   <header class="top">
@@ -14,6 +15,8 @@
     <button id="openTwiin" class="round" type="button" aria-label="Ouvrir Twiin dans un onglet" title="Ouvrir Twiin dans un onglet"><svg viewBox="0 0 24 24"><path d="M14 4h6v6"/><path d="M20 4l-9 9"/><path d="M18 14v6H4V6h6"/></svg></button>
   </header>
 
+  <div class="voicebar"><span id="voiceSlot"></span></div>
+
   <main id="app"><p class="muted">Connexion à Twiin…</p></main>
 
   <footer class="foot">
@@ -21,6 +24,7 @@
     <span class="keys"><kbd>⌥⇧T</kbd> ouvrir · <kbd>⌥⇧R</kbd> enregistrer / terminer · <kbd>⌥⇧X</kbd> tout arrêter</span>
     <button id="resetHidden" class="link" type="button" hidden></button>
   </footer>
+<script src="voice.js"></script>
 <script src="capture.js"></script>
 <script src="panel.js"></script>
 </body>

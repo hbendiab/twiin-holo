@@ -7,6 +7,8 @@
 <link rel="stylesheet" href="popup.css">
 <link rel="stylesheet" href="panel.css">
 <link rel="stylesheet" href="desktop.css">
+<link rel="stylesheet" href="voice.css">
+<link rel="stylesheet" href="reco.css">
 </head>
 <body>
   <header class="top">
@@ -24,6 +26,8 @@
     <button class="round" id="pillOpen" type="button" aria-label="Agrandir" title="Agrandir"><svg viewBox="0 0 24 24"><path d="M4 14v6h6"/><path d="M20 10V4h-6"/></svg></button>
   </div>
 
+  <div class="voicebar"><span id="voiceSlot"></span></div>
+
   <main id="app"><p class="muted">Connexion à Twiin…</p></main>
 
   <footer class="foot">
@@ -32,6 +36,8 @@
     <button id="resetHidden" class="link" type="button" hidden></button>
   </footer>
 <script src="desktop-shim.js"></script>
+<script src="voice.js"></script>
+<script src="reco.js"></script>
 <script src="capture.js"></script>
 <script src="panel.js"></script>
 <script src="desktop.js"></script>

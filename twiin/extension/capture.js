@@ -5,7 +5,7 @@
 const Capture = (() => {
   const MIN_GAP_MS = 1500, SETTLE_MAX_MS = 3000, HEARTBEAT_MS = 60000;
   const CHANGE_THRESHOLD = 3, STABLE_THRESHOLD = 1.5, MODEL_MAX_DIMENSION = 1024, OCR_MAX_DIMENSION = 1600;
-  const S = { recording: false, analyzing: false, phase: null, startedAt: 0, frames: 0, screens: [], thumbs: [], error: null, result: null, review: null };
+  const S = { recording: false, analyzing: false, phase: null, hadVoice: false, startedAt: 0, frames: 0, screens: [], thumbs: [], error: null, result: null, review: null };
   let base = 'http://localhost:3000', token = null, onUpdate = () => {}, transport = null;
   let shared = [], nextScreen = 1, sessionId = null, journalNext = 0, uploads = [], uploadErrors = 0, busy = false, stopping = false;
 
@@ -54,11 +54,13 @@ const Capture = (() => {
   async function start(opts) {
     if (S.recording) return addScreen(opts);
     const stream = await ask(opts); // avant tout le reste : le clic de l'employé n'est valable qu'un instant
-    Object.assign(S, { recording: true, analyzing: false, phase: null, startedAt: Date.now(), frames: 0, screens: [], thumbs: [], error: null, result: null, review: null });
+    const mic = await globalThis.Voice?.open(); // voix : seulement si voice.js est chargé et l'interrupteur activé
+    Object.assign(S, { recording: true, analyzing: false, phase: null, hadVoice: false, startedAt: Date.now(), frames: 0, screens: [], thumbs: [], error: null, result: null, review: null });
     shared = []; nextScreen = 1; uploads = []; uploadErrors = 0; journalNext = 0;
     addStream(stream);
     sessionId = (await post('/api/actions/start', { startedAt: S.startedAt }, 15000)).session || null;
     if (!sessionId) { S.error = 'Twiin ne répond pas sur ce Mac : enregistrement impossible.'; await stop({ cancel: true }); }
+    if (sessionId && S.recording) globalThis.Voice?.start(mic); else mic?.getTracks().forEach((t) => t.stop()); // micro seulement si l'enregistrement a démarré
     emit();
   }
   async function addScreen(opts) { addStream(await ask(opts)); }
@@ -140,10 +142,12 @@ const Capture = (() => {
     for (const s of S.screens) s.stream.getTracks().forEach((t) => t.stop());
     S.screens = [];
     stopping = false;
+    S.hadVoice = !cancel && !!globalThis.Voice?.state.recording; // le micro tournait : l'analyse aura une étape « voix »
+    const voiceSent = cancel ? globalThis.Voice?.cancel() : globalThis.Voice?.stop(sessionId); // l'audio part pendant l'envoi des images
     if (cancel) { S.analyzing = false; return emit(); }
     if (!S.frames) { Object.assign(S, { analyzing: false, error: 'Aucune image gardée.' }); return emit(); }
 
-    await Promise.allSettled(uploads);
+    await Promise.allSettled([...uploads, voiceSent]);
     // Relecture AVANT envoi : le serveur masque en local les informations sensibles, puis l'employé retire ce qu'il veut
     S.phase = 'mask'; emit();
     const rv = await call(`/api/session/${encodeURIComponent(sessionId)}/review`, { timeout: 3 * 60000 });
@@ -159,13 +163,20 @@ const Capture = (() => {
     if (!rv) return;
     S.review = null; S.analyzing = true; S.phase = 'upload'; emit();
     if (rv.remove.size) await post(`/api/session/${encodeURIComponent(sessionId)}/review`, { remove: [...rv.remove] }, 15000);
+    await runAnalysis('/api/generate-workflows', { session: sessionId, startedAt: S.startedAt, screens: shared, textOnly: rv.textOnly }, uploadErrors);
+  }
+
+  // Analyse (nouvelle ou relancée) : suit la progression du serveur, puis garde le résultat ou l'erreur
+  async function runAnalysis(url, body, uploadErrors = 0) {
     const poll = setInterval(async () => {
-      const p = await call('/api/analysis/progress', { timeout: 5000 }); if (p.phase && p.phase !== 'idle') { S.phase = p.phase; emit(); }
+      const p = await call('/api/analysis/progress', { timeout: 5000 });
+      if (p.phase && p.phase !== 'idle') { if (p.phase === 'transcription') S.hadVoice = true; S.phase = p.phase; emit(); }
     }, 1000);
     try {
-      const data = await post('/api/generate-workflows', { session: sessionId, startedAt: S.startedAt, screens: shared, textOnly: rv.textOnly }, 5 * 60000);
+      const data = await post(url, body, 5 * 60000);
       if (data.error) throw new Error(data.error);
       S.result = { workflows: data.workflows || [], uploadErrors };
+      globalThis.Voice?.report(data._meta?.voice);
     } catch (e) {
       S.error = `L'analyse n'a pas abouti : ${e.message}`;
     } finally {
@@ -174,11 +185,18 @@ const Capture = (() => {
       emit();
     }
   }
+  // « Réanalyser » : relance sur le dernier enregistrement gardé par le serveur (comme la page Twiin)
+  async function reanalyze() {
+    if (S.recording || S.analyzing || stopping) return;
+    Object.assign(S, { analyzing: true, phase: 'ocr', hadVoice: false, frames: 0, error: null, result: null });
+    emit();
+    await runAnalysis('/api/reanalyze', {});
+  }
 
   return {
     state: S,
     config(o) { if (o.base) base = o.base; if ('token' in o) token = o.token; if (o.onUpdate) onUpdate = o.onUpdate; if (o.transport) transport = o.transport; },
-    start, addScreen, stop, cancel: () => stop({ cancel: true }), analyse,
+    start, addScreen, reanalyze, stop, cancel: () => stop({ cancel: true }), analyse,
     clear() { S.error = null; S.result = null; emit(); },
     // Relecture : retirer / remettre une image, texte seul, ou tout supprimer (rien n'est envoyé)
     toggle(i) { const r = S.review?.remove; if (!r) return; r.has(i) ? r.delete(i) : r.add(i); emit(); },
