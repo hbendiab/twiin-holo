@@ -198,12 +198,32 @@ pauseBtn.addEventListener('click', async () => {
     const d = await r.json();
     if (d.error) throw new Error(d.error);
     pauseBtn.textContent = d.paused ? 'Reprendre' : 'Pause';
+    // pendant la pause, l'interface n'observe plus l'écran : plus de captures côté navigateur non plus
+    if (recording) {
+      if (d.paused) clearInterval(intervalId);
+      else intervalId = setInterval(tick, TICK_MS);
+    }
     statusEl.textContent = d.paused ? 'Enregistrement en pause : rien n\'est noté pendant la pause.' : 'Enregistrement repris.';
   } catch (e) {
     statusEl.textContent = `Pause impossible : ${e.message}`;
   }
 });
 reBtn.addEventListener('click', () => analyzeRequest('/api/reanalyze', null, 'Nouvelle analyse du dernier enregistrement…'));
+
+// Quitter la page pendant un enregistrement : on prévient, sinon l'enregistrement se perd.
+window.addEventListener('beforeunload', (e) => { if (recording) { e.preventDefault(); e.returnValue = ''; } });
+
+// Au chargement : si un journal d'actions tourne encore sur le serveur (page rechargée pendant un enregistrement),
+// on l'arrête. Sans l'interface, il continuerait à noter les clics en arrière-plan.
+(async () => {
+  try {
+    const s = await (await fetch('/api/actions/status')).json();
+    if (s.running && !recording) {
+      await fetch('/api/actions/stop', { method: 'POST' });
+      statusEl.textContent = 'Un enregistrement resté ouvert a été arrêté. Ses données sont gardées.';
+    }
+  } catch { /* serveur indisponible : rien à faire */ }
+})();
 
 async function addScreen() {
   statusEl.textContent = nextScreen > 1 ? 'Choisis l\'écran à ajouter…' : 'Choisis l\'écran à enregistrer…';

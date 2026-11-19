@@ -392,6 +392,12 @@ app.post('/api/actions/pause', (req, res) => {
   res.json({ paused: recorderSession.paused });
 });
 
+// L'interface demande au serveur s'il reste un journal ouvert (après un rechargement de la page).
+app.get('/api/actions/status', (req, res) => {
+  const running = !!(recorderSession?.proc && recorderSession.proc.exitCode === null && recorderSession.proc.signalCode === null);
+  res.json({ running, paused: !!(running && recorderSession.paused), session: running ? recorderSession.id : null });
+});
+
 app.get('/api/actions', (req, res) => {
   const since = parseInt(req.query.since || '0', 10);
   if (!recorderSession) return res.json({ events: [], next: 0 });
