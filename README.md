@@ -13,6 +13,18 @@
   OCR, journal)        automatiser)                  🙋 « Fais-le à ma place » (à venir)
 ```
 
+## Tester Twiin (jury)
+
+| Comment | Ce que vous voyez | Durée |
+|---|---|---|
+| **Lien web de démo** : https://dimensions-ordered-criteria-withdrawal.trycloudflare.com · code d'accès **`twiin-holo-708`** | Le vrai Twiin de l'équipe, en lecture seule : ouverture avec Iris et Ilo, *Mon travail* (audit), *Mes enregistrements*, *Mes vidéos* (tutos générés), *Mes automatisations* (workflows n8n, cibles personnalisables), *Mise en service* (charte de l'entreprise, connexions). Les automatisations qui tournent dans le cloud de H Company se lancent depuis la page. | 5 min |
+| **Vidéos** (dans la release v0.2.0) | Démo de 5 min, stack technique, cas d'usage filmés de bout en bout | 5 à 15 min |
+| **Installeur Mac** (Apple Silicon) : [release v0.2.0](https://github.com/hbendiab/twiin-holo/releases/tag/v0.2.0) | L'app Mac, l'extension Chrome et le lien mobile sur **votre** poste : enregistrer une tâche, l'analyser, l'automatiser. Non signé par Apple : clic droit sur l'app → *Ouvrir*. Demandez-nous le fichier d'accès (crédits de l'équipe). | 10 min |
+
+Le lien web est servi depuis le Mac de l'équipe par un tunnel Cloudflare, en **mode démo** : code d'accès, lecture seule,
+rien qui touche ce Mac (pas de capture, pas de télécommande, pas d'images d'enregistrements), seulement les automatisations
+qui tournent dans le cloud. Le code et les détails de ce mode : `twiin/recorder/server.js` (« Mode démo »).
+
 ## Démarrage rapide (équipe) : lancer Twiin sur ton Mac
 
 Twiin tourne **sur ton Mac**, pas en ligne : il filme ton écran, lit le texte avec l'OCR de macOS et note tes clics.
