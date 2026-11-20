@@ -1,0 +1,91 @@
+{
+ "bouton": "C'est parti",
+ "segs": [
+  {
+   "qui": [
+    0
+   ],
+   "clips": [
+    "iris-1"
+   ],
+   "ton": "ink",
+   "mots": [
+    [
+     "Bonjour",
+     0
+    ],
+    [
+     "JC",
+     0.395
+    ],
+    [
+     "!",
+     0.778
+    ],
+    [
+     "Nous",
+     0.871
+    ],
+    [
+     "sommes",
+     1.045
+    ],
+    [
+     "Twiin.",
+     1.265
+    ]
+   ],
+   "fin": 1.858
+  },
+  {
+   "qui": [
+    1
+   ],
+   "clips": [
+    "ilo-1"
+   ],
+   "ton": "dim",
+   "mots": [
+    [
+     "Analyse",
+     0
+    ],
+    [
+     "tes",
+     0.453
+    ],
+    [
+     "tâches.",
+     0.604
+    ],
+    [
+     "Automatise",
+     1.08
+    ],
+    [
+     "tes",
+     1.73
+    ],
+    [
+     "process.",
+     1.846
+    ]
+   ],
+   "fin": 2.554
+  },
+  {
+   "qui": [
+    0,
+    1
+   ],
+   "clips": [
+    "iris-2",
+    "ilo-2"
+   ],
+   "ton": null,
+   "mots": [],
+   "fin": 1.811,
+   "texte": "Prêt à découvrir notre solution ?"
+  }
+ ]
+}

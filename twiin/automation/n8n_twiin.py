@@ -211,7 +211,9 @@ def compile_plan(plan):
                 "for (const [col, r] of Object.entries(rules)) {\n"
                 "  const v = String(row[col] ?? '').trim();\n"
                 "  if (r.required && (!v || /non trouvé/i.test(v))) { problems.push(`${col} vide`); continue; }\n"
-                "  if (v && r.pattern && !new RegExp(r.pattern, 'i').test(v)) problems.push(`${col} : format inattendu « ${v} »`);\n"
+                # un nombre lu « 1.0992 » ou « 1,0992 » : les deux séparateurs décimaux sont acceptés
+                "  const re = r.pattern ? new RegExp(r.pattern, 'i') : null;\n"
+                "  if (v && re && ![v, v.replace(/(\\d)\\.(\\d)/g, '$1,$2'), v.replace(/(\\d),(\\d)/g, '$1.$2')].some((x) => re.test(x))) problems.push(`${col} : format inattendu « ${v} »`);\n"
                 "  for (const f of r.forbid || []) if (v.toLowerCase().includes(f.toLowerCase())) problems.push(`${col} : « ${f} » interdit`);\n"
                 "}\n"
                 "row['Vérification'] = problems.length ? '⚠️ ' + problems.join(' ; ') : '✅ OK';\n"

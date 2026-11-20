@@ -1,0 +1,26 @@
+[
+ {
+  "f": "demo/fin1-iris.mp3",
+  "qui": "iris",
+  "texte": "Merci à tous ! Vous avez vu : on apprend, on prouve, et on fait à votre place.",
+  "s": 4.74
+ },
+ {
+  "f": "demo/fin2-ilo.mp3",
+  "qui": "ilo",
+  "texte": "Et pendant que vous applaudissez… on a déjà automatisé trois tâches.",
+  "s": 3.3
+ },
+ {
+  "f": "demo/fin3-iris.mp3",
+  "qui": "iris",
+  "texte": "À très vite sur Twiin !",
+  "s": 1.49
+ },
+ {
+  "f": "demo/fin4-ilo.mp3",
+  "qui": "ilo",
+  "texte": "Powered by H Company… and not a lot of sleep.",
+  "s": 2.69
+ }
+]

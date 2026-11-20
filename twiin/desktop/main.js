@@ -108,7 +108,15 @@ const discret = () => !win || !win.isVisible() || win.isMinimized() || compact |
 // Fenêtre transparente, au-dessus de tout, qui ne prend ni le focus ni les clics (Holo clique « à travers »).
 // Invisible dans les captures d'écran (Holo ne la voit pas, elle ne le gêne pas) mais visible sur l'écran et le projecteur ;
 // TWIIN_GUIDE_CAPTURE=1 la rend visible dans les captures, pour filmer une démo.
-let guide = null, guideSuivi = null, gx = null, gy = null;
+let guide = null, guideSuivi = null, gx = null, gy = null, fenetreTache = null;
+// Où se passe la tâche : la fenêtre au premier plan (celle que Holo utilise), relue toutes les secondes par System Events
+function lireFenetreTache() {
+  execFile('osascript', ['-e', 'tell application "System Events" to tell (first process whose frontmost is true) to get {position, size} of front window'],
+    { timeout: 2000 }, (e, out) => {
+      const n = String(out || '').split(',').map((x) => parseInt(x, 10));
+      fenetreTache = !e && n.length === 4 && n.every(Number.isFinite) ? { x: n[0], y: n[1], w: n[2], h: n[3] } : fenetreTache;
+    });
+}
 const GUIDE_W = 380, GUIDE_H = 150;
 function ouvrirGuide() {
   if (guide) return;
@@ -123,10 +131,18 @@ function ouvrirGuide() {
   guide.once('ready-to-show', () => guide?.showInactive());
   guide.on('closed', () => { guide = null; clearInterval(guideSuivi); guideSuivi = null; gx = gy = null; });
   // suit la souris en douceur, à côté du pointeur (jamais dessus), et reste dans l'écran
+  let tic = 0;
   guideSuivi = setInterval(() => {
     if (!guide) return;
-    const p = screen.getCursorScreenPoint();
-    const wa = screen.getDisplayNearestPoint(p).workArea;
+    if (tic++ % 30 === 0) lireFenetreTache();
+    let p = screen.getCursorScreenPoint();
+    // l'écran de la tâche (fenêtre au premier plan) ; si la souris est ailleurs (autre écran), on reste près de la fenêtre
+    const f = fenetreTache;
+    const ecran = f ? screen.getDisplayNearestPoint({ x: f.x + Math.round(f.w / 2), y: f.y + Math.round(f.h / 2) }) : screen.getDisplayNearestPoint(p);
+    const b = ecran.bounds;
+    const dedans = p.x >= b.x && p.x < b.x + b.width && p.y >= b.y && p.y < b.y + b.height;
+    if (!dedans) p = { x: ecran.workArea.x + ecran.workArea.width - GUIDE_W - 40, y: ecran.workArea.y + ecran.workArea.height - GUIDE_H - 60 };
+    const wa = ecran.workArea;
     let x = p.x + 26, y = p.y + 22;
     if (x + GUIDE_W > wa.x + wa.width) x = p.x - GUIDE_W - 14;
     if (y + GUIDE_H > wa.y + wa.height) y = p.y - GUIDE_H - 10;

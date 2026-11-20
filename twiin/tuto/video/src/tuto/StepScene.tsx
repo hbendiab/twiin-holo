@@ -3,6 +3,7 @@ import type React from "react";
 import {
   AbsoluteFill,
   CanvasImage,
+  Img,
   Easing,
   interpolate,
   Sequence,
@@ -13,7 +14,7 @@ import {
 import { COLORS, MONO, type Scene, type Shot } from "./types";
 
 // Zone où s'affiche la capture (sous le bandeau, au-dessus des sous-titres)
-const AREA = { x: 80, y: 150, w: 1760, h: 700 };
+const AREA = { x: 80, y: 140, w: 1760, h: 620 };
 
 type ShotProps = { readonly shot: Shot; readonly duration: number };
 
@@ -125,7 +126,19 @@ export const StepScene: React.FC<Props> = ({ scene, index, total, accent = COLOR
           opacity: interpolate(frame, [0.2 * fps, 0.7 * fps], [0, 1], { extrapolateLeft: "clamp", extrapolateRight: "clamp" }),
         }}
       >
-        <div style={{ color: COLORS.text, fontSize: 36, lineHeight: 1.3, fontWeight: 500 }}>{scene.narration}</div>
+        {/* le jumeau qui parle (Iris ou Ilo, à tour de rôle) et sa bulle */}
+        <div style={{ display: "flex", alignItems: "flex-end", gap: 22 }}>
+          <Img src={staticFile(`twiin/${scene.qui || (index % 2 ? "iris" : "ilo")}.png`)}
+            style={{ width: 104, height: 104, flex: "none", filter: "drop-shadow(0 14px 18px rgba(30,34,60,.35))",
+              translate: `0px ${-Math.abs(Math.sin(frame / 4.2)) * 7}px`, rotate: `${Math.sin(frame / 9) * 3}deg` }} />
+          <div style={{ color: COLORS.text, fontSize: 34, lineHeight: 1.3, fontWeight: 500, background: "#ffffff", border: `2px solid ${COLORS.line}`,
+            borderRadius: "8px 28px 28px 28px", padding: "18px 26px", boxShadow: "0 24px 40px -28px rgba(56,66,110,.55)", maxWidth: 1560 }}>
+            <div style={{ fontFamily: MONO, fontSize: 20, letterSpacing: "0.08em", color: accent, marginBottom: 4 }}>
+              {(scene.qui || (index % 2 ? "iris" : "ilo")).toUpperCase()}
+            </div>
+            {scene.narration}
+          </div>
+        </div>
         {scene.tip ? (
           <div
             style={{

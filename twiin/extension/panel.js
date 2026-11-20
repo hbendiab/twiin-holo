@@ -5,6 +5,19 @@ const ask = (m) => chrome.runtime.sendMessage(m);
 const api = (path, opts = {}) => ask({ type: 'api', path, ...opts });
 const $ = (s) => document.querySelector(s);
 const esc = (x) => String(x ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+// Titres courts (comme dans le SaaS) : « Analyser un cas Awwwards avec Claude et… » → « Inspirations design Awwwards »
+const COURTS = new Map(), enCours = new Set();
+function court(t) {
+  t = String(t || '');
+  if (COURTS.has(t)) return COURTS.get(t);
+  if (t.split(/\s+/).length > 5 && !enCours.has(t)) {
+    enCours.add(t);
+    fetch(`${BASE}/api/titres-courts`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ titres: [t] }) })
+      .then((r) => r.json()).then((d) => { const c = d.titres?.[t]; if (c && c !== t) { COURTS.set(t, c); try { render(); } catch { /* rien */ } } })
+      .catch(() => {}).finally(() => enCours.delete(t));
+  }
+  return t.replace(/\s*\([^)]*\)/g, '');
+}
 const dur = (s) => (s >= 3600 ? `${Math.floor(s / 3600)} h ${Math.round((s % 3600) / 60)} min` : s >= 60 ? `${Math.floor(s / 60)} min ${String(Math.round(s % 60)).padStart(2, '0')}` : `${Math.round(s)} s`);
 const clock = (s) => `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
 function quand(iso) {
@@ -127,7 +140,7 @@ function liveAutomation(e) {
       ${e.sur_mac ? '<p class="sub" style="margin:8px 0 0">Ne touche ni la souris ni le clavier jusqu\'à la fin.</p>' : ''}</div>`;
   } else if (e.prochain) {
     h += `<div class="card"><div class="live plan"><span class="dot"></span><span class="t"><b>Programmée ${esc(quand(e.prochain.at))}</b>
-      <span>${esc(e.prochain.name)}</span></span><button class="b" data-act="unplan" data-id="${esc(e.prochain.id)}" type="button">Annuler</button></div></div>`;
+      <span>${esc(court(e.prochain.name))}</span></span><button class="b" data-act="unplan" data-id="${esc(e.prochain.id)}" type="button">Annuler</button></div></div>`;
   }
   return h;
 }
@@ -185,9 +198,9 @@ function taskBlock() {
   let h = `<div class="label">${fresh ? 'Tâche trouvée' : 'Dernière tâche analysée'}</div><div class="card task">`;
   if (fresh && C.result.workflows.length > 1) {
     h += `<p class="sub">${C.result.workflows.length} tâches trouvées :</p><div class="others">${C.result.workflows.map((w, i) =>
-      `<button class="b" data-act="sel" data-i="${i}" aria-pressed="${i === sel}" type="button">${esc(w.name)}</button>`).join('')}</div>`;
+      `<button class="b" data-act="sel" data-i="${i}" aria-pressed="${i === sel}" type="button">${esc(court(w.name))}</button>`).join('')}</div>`;
   }
-  h += `<h2>${esc(t.name)}</h2>
+  h += `<h2 title="${esc(t.name)}">${esc(court(t.name))}</h2>
     ${steps.length ? `<details class="more"><summary>${steps.length} étape${steps.length > 1 ? 's' : ''}</summary><ol class="steps">${steps.map((x) => `<li>${esc(x)}</li>`).join('')}</ol></details>` : ''}
     <div class="actions">${actionButtons(t, busy)}
       <div class="row" style="justify-content:space-between">${t.session ? '<button class="link" data-act="recajout" type="button">+ Ajouter un passage oublié</button>' : ''}
@@ -243,7 +256,7 @@ function renderAutos() {
   return list.map((a) => {
     const mac = a.blocks.some((b) => b.kind === 'holo' && b.env !== 'cloud');
     const isOpen = openId === a.id;
-    return `<div class="auto"><div class="h"><span class="n" data-act="more" data-id="${esc(a.id)}" title="Options">${esc(a.name)}</span>
+    return `<div class="auto"><div class="h"><span class="n" data-act="more" data-id="${esc(a.id)}" title="Options">${esc(court(a.name))}</span>
         <button class="b" data-act="run" data-id="${esc(a.id)}" type="button" ${S.etat?.running ? 'disabled' : ''}>${a.running ? 'En cours' : 'Lancer'}</button></div>
       <div class="m">${surCeSite(a) ? `<span class="site">Sur ${esc(site)}</span> · ` : ''}${esc(a.freq_label)}${a.plan ? ` · programmée ${esc(quand(a.plan))}` : ''}
         ${mac ? ' · <span class="pill mac">utilise ton Mac</span>' : ''} · <button class="link" data-act="more" data-id="${esc(a.id)}" type="button">${isOpen ? 'fermer' : 'programmer'}</button></div>

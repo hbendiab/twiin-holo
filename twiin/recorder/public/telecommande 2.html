@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Twiin · Télécommande</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Google+Sans+Flex:wght@300;400;500;600;700&display=swap">
+<link rel="stylesheet" href="pages.css">
+<style>
+  .tc { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr); gap: 28px; align-items: center; max-width: 980px; }
+  .tc h1 { margin-bottom: 8px; }
+  .tc .lead { font-size: 16px; color: var(--text-dim); margin: 0 0 22px; max-width: 460px; }
+  .tc ol { margin: 0 0 22px; padding-left: 22px; display: grid; gap: 10px; font-size: 14.5px; }
+  .tc ol b { font-weight: 600; }
+  .phone { justify-self: center; width: 300px; aspect-ratio: 9 / 18.5; border-radius: 44px; padding: 14px; position: relative;
+    background: linear-gradient(160deg, #2a2a28, #0d0d0c); box-shadow: 0 40px 90px -30px rgba(22, 22, 21, .55), inset 0 0 0 1.5px #8f8f8a, inset 0 0 0 3px #1b1b1a; }
+  .phone::before { content: ""; position: absolute; top: 22px; left: 50%; width: 84px; height: 22px; margin-left: -42px; border-radius: 12px; background: #000; z-index: 2; }
+  .screen { height: 100%; border-radius: 32px; overflow: hidden; display: grid; place-items: center; text-align: center; padding: 26px 20px; color: #f1f2f5;
+    background: radial-gradient(120% 60% at 15% -10%, rgba(255,255,255,.14), transparent 60%), radial-gradient(100% 60% at 110% 10%, rgba(0,157,255,.12), transparent 60%), #0d0d0c; }
+  .qr { background: #fff; border-radius: 18px; padding: 10px; width: 210px; height: 210px; margin: 0 auto 14px; display: grid; place-items: center; }
+  .qr svg { width: 100%; height: 100%; display: block; }
+  .screen small { display: block; color: #9aa1b2; font-size: 12.5px; line-height: 1.4; }
+  .twins { display: flex; gap: 8px; justify-content: center; margin-bottom: 18px; }
+  .twins span { width: 40px; height: 40px; border-radius: 50%; animation: float 3s ease-in-out infinite; }
+  .twins span:first-child { background: radial-gradient(circle at 35% 30%, #fff, #8fd3ff 45%, #3a7bd5); box-shadow: 0 0 26px rgba(143,211,255,.6); }
+  .twins span:last-child { background: radial-gradient(circle at 35% 30%, #fff, #7c6cff 45%, #3b2db0); box-shadow: 0 0 26px rgba(124,108,255,.6); animation-delay: -1.5s; }
+  .busy .twins span { animation-duration: .9s; }
+  @keyframes float { 50% { transform: translateY(-8px); } }
+  .pill { display: inline-flex; align-items: center; gap: 7px; font-size: 13px; padding: 5px 12px; border-radius: 999px; background: var(--panel-2); color: var(--text-dim); margin-bottom: 18px; }
+  .pill i { width: 8px; height: 8px; border-radius: 50%; background: var(--text-dim); }
+  .pill.on i { background: #22c55e; box-shadow: 0 0 8px #22c55e; }
+  .pill.err i { background: #ef4444; }
+  .actions { display: flex; flex-wrap: wrap; gap: 10px; }
+  .note { font-size: 13px; color: var(--text-dim); margin-top: 18px; max-width: 460px; }
+  .err { color: #ef4444; font-size: 14px; margin: 0 0 14px; }
+  .link { font-size: 11.5px; word-break: break-all; color: #9aa1b2; margin-top: 10px; }
+  @media (max-width: 820px) { .tc { grid-template-columns: minmax(0, 1fr); } }
+  @media (prefers-reduced-motion: reduce) { .twins span { animation: none; } }
+</style>
+<link rel="stylesheet" href="theme.css">
+</head>
+<body>
+  <section class="tc">
+    <div>
+      <span class="pill" id="pill"><i></i><span id="pillText">…</span></span>
+      <h1>Pilote ton Mac depuis ton téléphone</h1>
+      <p class="lead">Où que tu sois, dis à Twiin quoi faire : il agit sur ton Mac pendant que tu regardes l'écran en direct sur ton téléphone.</p>
+      <ol>
+        <li><b>Active la télécommande</b> : Twiin prépare la connexion sécurisée (la première fois, environ une minute).</li>
+        <li><b>Scanne le QR code</b> avec l'appareil photo de ton téléphone.</li>
+        <li><b>Parle ou écris</b> : « Lance l'automatisation des factures », « Envoie-moi le fichier du devis »…</li>
+      </ol>
+      <p class="err" id="err" hidden></p>
+      <div class="actions">
+        <button class="btn primary" id="start">Activer la télécommande</button>
+        <button class="btn" id="stop" hidden>Mettre en pause</button>
+        <button class="btn" id="forget" hidden>Déconnecter le téléphone</button>
+      </div>
+      <p class="note">Ton téléphone reçoit un accès limité à ce Mac et valable 24 h. Il n'a aucune clé. « Déconnecter le téléphone » coupe son accès immédiatement. Twiin ne valide jamais un paiement, un envoi ou une suppression sans que tu le demandes.</p>
+    </div>
+    <div class="phone" aria-hidden="false">
+      <div class="screen" id="screen">
+        <div id="idle"><div class="twins"><i class="tw-orb iris" style="--s:44px"></i><i class="tw-orb ilo" style="--s:44px"></i></div><small>Active la télécommande pour afficher le QR code.</small></div>
+        <div id="qrBox" hidden>
+          <div class="qr" id="qr"></div>
+          <small>Valable jusqu'à <span id="exp"></span></small>
+          <div class="link"><a id="openLink" href="#" target="_blank" rel="noopener" style="color:inherit">Ouvrir sur cet ordinateur</a></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+<script src="/vendor/supabase/supabase.js"></script>
+  <script src="shell.js" defer></script>
+  <script src="auth.js"></script>
+  <script src="banner.js"></script>
+  <script src="common.js"></script>
+<script>
+(() => {
+  const $ = (id) => document.getElementById(id);
+  const LABELS = { off: 'Télécommande en pause', installation: 'Préparation (première fois, ~1 min)…', demarrage: 'Connexion à H…', on: 'Prête : en attente du téléphone', erreur: 'Problème' };
+  function render(s) {
+    const busy = s.etat === 'installation' || s.etat === 'demarrage';
+    $('pill').className = `pill ${s.etat === 'on' ? 'on' : s.etat === 'erreur' || !s.disponible ? 'err' : ''}`;
+    $('pillText').textContent = !s.disponible ? 'Indisponible' : LABELS[s.etat] || s.etat;
+    $('err').hidden = !s.erreur; $('err').textContent = s.erreur || '';
+    $('start').hidden = s.etat === 'on'; $('start').disabled = busy || !s.disponible;
+    $('start').textContent = busy ? 'Préparation…' : s.etat === 'erreur' ? 'Réessayer' : 'Activer la télécommande';
+    $('stop').hidden = $('forget').hidden = s.etat !== 'on';
+    $('screen').classList.toggle('busy', busy);
+    $('qrBox').hidden = !s.qr; $('idle').hidden = !!s.qr;
+    if (s.qr) {
+      $('qr').innerHTML = s.qr; // SVG produit par notre serveur local
+      $('exp').textContent = new Date(s.expire).toLocaleString('fr-FR', { weekday: 'long', hour: '2-digit', minute: '2-digit' });
+      $('openLink').href = s.url;
+    }
+  }
+  async function call(method, url) {
+    try { const r = await fetch(url, { method }); render(await r.json()); } catch { render({ disponible: true, etat: 'erreur', erreur: 'Le serveur Twiin ne répond pas.' }); }
+  }
+  $('start').onclick = () => { render({ disponible: true, etat: 'demarrage' }); call('POST', '/api/telecommande/start'); };
+  $('stop').onclick = () => call('POST', '/api/telecommande/stop');
+  $('forget').onclick = () => { if (confirm('Déconnecter le téléphone ? Il faudra rescanner un nouveau QR code.')) call('POST', '/api/telecommande/stop?oublier=1'); };
+  call('GET', '/api/telecommande');
+  setInterval(() => call('GET', '/api/telecommande'), 5000);
+})();
+</script>
+</body>
+</html>

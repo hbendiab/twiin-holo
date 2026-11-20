@@ -1,0 +1,104 @@
+[
+ {
+  "f": "demo/v01-iris.mp3",
+  "qui": "iris",
+  "texte": "Un message, depuis le téléphone…",
+  "s": 2.0
+ },
+ {
+  "f": "demo/v02-ilo.mp3",
+  "qui": "ilo",
+  "texte": "… et le Mac fait le travail, tout seul.",
+  "s": 2.04
+ },
+ {
+  "f": "demo/v03-iris.mp3",
+  "qui": "iris",
+  "texte": "Bonjour ! Nous sommes Twiin, vos jumeaux numériques, propulsés par Holo, de H Company.",
+  "s": 4.78
+ },
+ {
+  "f": "demo/v04-ilo.mp3",
+  "qui": "ilo",
+  "texte": "Dans une PME, chaque employé perd environ trois heures par semaine sur des tâches répétitives. Et beaucoup de projets d'automatisation échouent, faute de savoir comment le travail se fait vraiment.",
+  "s": 9.1
+ },
+ {
+  "f": "demo/v05-iris.mp3",
+  "qui": "iris",
+  "texte": "Twiin fait trois choses. Il apprend : vous faites la tâche une fois. Il prouve : il la rejoue et vérifie que ça tient. Puis il la fait à votre place.",
+  "s": 9.1
+ },
+ {
+  "f": "demo/v06-ilo.mp3",
+  "qui": "ilo",
+  "texte": "Exemple réel, filmé cette nuit. Depuis son téléphone, Hanine demande sa facture fournisseur.",
+  "s": 4.83
+ },
+ {
+  "f": "demo/v07-iris.mp3",
+  "qui": "iris",
+  "texte": "Holo ouvre Gmail sur le Mac, trouve l'e-mail, télécharge le PDF… et l'envoie sur le téléphone. En une minute.",
+  "s": 6.73
+ },
+ {
+  "f": "demo/v08-ilo.mp3",
+  "qui": "ilo",
+  "texte": "La tâche est déjà enregistrée dans Twiin. Un message de plus : automatise-la.",
+  "s": 4.23
+ },
+ {
+  "f": "demo/v09-iris.mp3",
+  "qui": "iris",
+  "texte": "Twiin écrit le workflow n8n, le teste une fois… et il réussit. La prochaine fois, c'est sans vous.",
+  "s": 5.76
+ },
+ {
+  "f": "demo/v10-ilo.mp3",
+  "qui": "ilo",
+  "texte": "Pour former un collègue, Twiin crée aussi la vidéo de formation. Avec nous deux en voix off.",
+  "s": 4.46
+ },
+ {
+  "f": "demo/v11-iris.mp3",
+  "qui": "iris",
+  "texte": "Dans Twiin, chaque employé a sa fiche : son audit, ses priorités, et le temps qu'il peut gagner.",
+  "s": 5.67
+ },
+ {
+  "f": "demo/v12-ilo.mp3",
+  "qui": "ilo",
+  "texte": "Chaque automatisation se personnalise : un fournisseur, ou tous vos fournisseurs. Et pendant qu'elle tourne, on vous montre ce qui se passe, étape par étape.",
+  "s": 7.76
+ },
+ {
+  "f": "demo/v13-iris.mp3",
+  "qui": "iris",
+  "texte": "Quand la tâche est sur le web, Holo travaille dans le cloud de H Company. Le taux de la BCE, relevé en vingt-huit secondes, pour à peine un centime.",
+  "s": 9.01
+ },
+ {
+  "f": "demo/v14-ilo.mp3",
+  "qui": "ilo",
+  "texte": "Twiin est partout : dans le navigateur, sur le Mac, dans Chrome, sur le téléphone. Et aux couleurs de votre entreprise.",
+  "s": 6.08
+ },
+ {
+  "f": "demo/v15-iris.mp3",
+  "qui": "iris",
+  "texte": "Résultat : des heures rendues chaque semaine, pour quelques centimes par exécution.",
+  "s": 4.32
+ },
+ {
+  "f": "demo/v16-ilo.mp3",
+  "qui": "ilo",
+  "texte": "Twiin. Montrez une fois. Twiin le fait pour toujours.",
+  "s": 3.02
+ },
+ {
+  "f": "demo/v17-iris.mp3",
+  "qui": "iris",
+  "texte": "Powered by H Company… and not a lot of sleep !",
+  "s": 2.83
+ }
+]

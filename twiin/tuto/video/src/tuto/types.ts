@@ -17,6 +17,7 @@ export type Scene = {
   audio: string | null;
   durationInFrames: number;
   shots: Shot[];
+  qui?: "iris" | "ilo"; // le jumeau qui raconte cette étape
 };
 
 export type TutoData = {

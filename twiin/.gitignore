@@ -76,7 +76,8 @@ automation/cibles/
 workflows/titres-courts.json
 workflows/marque.json
 workflows/marque-logo.*
-tuto/video/public/marque*
+tuto/video/public/marque.json
+tuto/video/public/marque-logo.*
 workflows/categories-tutos.json
 workflows/connexions.json
 workflows/equipe.json
