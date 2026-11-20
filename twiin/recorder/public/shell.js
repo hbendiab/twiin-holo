@@ -94,6 +94,7 @@
     intro();
     // Iris et Ilo, compagnons de route sur toutes les pages
     const comp = document.createElement('script'); comp.src = '/compagnons.js'; document.head.append(comp);
+    comp.onload = () => { const esc = document.createElement('script'); esc.src = '/vie.js'; document.head.append(esc); }; // Iris et Ilo vivent sur la page
     addEventListener('hashchange', () => setTimeout(eyebrow, 30));
     requestAnimationFrame(() => requestAnimationFrame(() => root.classList.remove('side-noanim')));
 

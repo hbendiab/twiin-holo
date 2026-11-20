@@ -530,3 +530,88 @@ body.twn #a2.panel { background: transparent !important; border: 0 !important; b
 /* la bulle d'Iris et Ilo : même plaque de verre */
 .twc-bulle { background: var(--glass-fill) !important; border: 1px solid var(--glass-line) !important; box-shadow: var(--glass-shadow) !important;
   backdrop-filter: blur(14px) saturate(1.2); -webkit-backdrop-filter: blur(14px) saturate(1.2); border-radius: var(--r-card) var(--r-card) 3px var(--r-card) !important; }
+
+/* ══════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+   Verre liquide (choix de Louis, 2026-11-20) : remplace la plaque Noomo ci-dessus. Verre clair et très flou, liseré
+   lumineux en haut, reflet en biais, ombre douce et large ; coins bien arrondis ; boutons en pilule.
+   ══════════════════════════════════════════════════════════════════════════════════════════════════════════════════ */
+:root {
+  --r-panel: 28px; --r-card: 22px; --r-btn: 999px;
+  --glass-fill: linear-gradient(160deg, rgba(255, 255, 255, .72) 0%, rgba(255, 255, 255, .42) 55%, rgba(236, 240, 252, .5) 100%);
+  --glass-line: rgba(255, 255, 255, .85);
+  --glass-shadow: inset 0 1px 1px rgba(255, 255, 255, .95), inset 0 -1px 1px rgba(201, 210, 231, .35),
+    0 1px 2px rgba(56, 66, 110, .06), 0 18px 40px -22px rgba(56, 66, 110, .35);
+  --glass-shadow-hover: inset 0 1px 1px rgba(255, 255, 255, 1), inset 0 -1px 1px rgba(201, 210, 231, .4),
+    0 2px 4px rgba(56, 66, 110, .06), 0 26px 50px -22px rgba(56, 66, 110, .45);
+  --glass-blur: blur(24px) saturate(1.8);
+}
+:root[data-theme="dark"] {
+  --glass-fill: linear-gradient(160deg, rgba(255, 255, 255, .12) 0%, rgba(255, 255, 255, .05) 55%, rgba(170, 183, 224, .08) 100%);
+  --glass-line: rgba(255, 255, 255, .16);
+  --glass-shadow: inset 0 1px 1px rgba(255, 255, 255, .14), 0 18px 40px -22px rgba(0, 0, 0, .7);
+  --glass-shadow-hover: inset 0 1px 1px rgba(255, 255, 255, .2), 0 26px 50px -22px rgba(0, 0, 0, .8);
+}
+.panel, .workflow, #analysis, #example, .dash, details.panel, .player > div, #profileCard, .tuto, .n8n, .changes, .replay, .advice, .verdict,
+.option, .item, .card, .tool, .a2-tool, .a2-card, .a2-opp, .kpi, .tile, .tool-grid .tool, .rule, .no-task, .verdict-head, .rec-card,
+.in-steps li, .rc-key, .in-switch, .a2-top3 > *, .twc-bulle {
+  backdrop-filter: var(--glass-blur) !important; -webkit-backdrop-filter: var(--glass-blur) !important; }
+.a2-card { border-radius: var(--r-card) !important; }
+.twc-bulle { border-radius: var(--r-card) var(--r-card) 6px var(--r-card) !important; }
+.player video { border-radius: var(--r-panel) !important; }
+
+/* boutons : pilules de verre ; l'action principale, du verre teinté lavande */
+button, .btn, .link-btn {
+  border-radius: var(--r-btn) !important; background: var(--glass-fill) !important; border: 1px solid var(--glass-line) !important;
+  box-shadow: inset 0 1px 1px rgba(255, 255, 255, .9), 0 6px 16px -10px rgba(56, 66, 110, .35) !important;
+  backdrop-filter: var(--glass-blur); -webkit-backdrop-filter: var(--glass-blur);
+  transition: background-color .25s ease, box-shadow .35s var(--ease), scale .2s var(--ease) !important; }
+button:hover:not(:disabled), .btn:hover, .link-btn:hover { background: rgba(255, 255, 255, .85) !important;
+  box-shadow: inset 0 1px 1px #fff, 0 10px 22px -12px rgba(56, 66, 110, .45) !important; }
+button.primary, .btn.primary, .primary,
+:root[data-theme="dark"] button.primary, :root[data-theme="dark"] .btn.primary, :root[data-theme="dark"] .primary {
+  background: linear-gradient(160deg, rgba(214, 222, 242, .95) 0%, rgba(184, 196, 228, .9) 100%) !important;
+  border: 1px solid rgba(255, 255, 255, .8) !important;
+  box-shadow: inset 0 1px 1px rgba(255, 255, 255, .9), inset 0 -2px 6px rgba(86, 102, 156, .18), 0 12px 26px -14px rgba(86, 102, 156, .8) !important; }
+button.primary:hover:not(:disabled), .btn.primary:hover, .primary:hover,
+:root[data-theme="dark"] button.primary:hover:not(:disabled), :root[data-theme="dark"] .btn.primary:hover {
+  background: linear-gradient(160deg, rgba(224, 230, 246, 1) 0%, rgba(196, 207, 235, .95) 100%) !important;
+  box-shadow: inset 0 1px 1px #fff, inset 0 -2px 6px rgba(86, 102, 156, .2), 0 0 0 4px rgba(201, 210, 231, .5), 0 14px 30px -14px rgba(86, 102, 156, .85) !important; }
+:root[data-theme="dark"] button:hover:not(:disabled), :root[data-theme="dark"] .btn:hover { background: rgba(255, 255, 255, .14) !important; }
+button.quiet, .a2-nav button.quiet, .tw-side button, .tw-side .tw-item {
+  background: transparent !important; border-color: transparent !important; box-shadow: none !important; backdrop-filter: none; -webkit-backdrop-filter: none; }
+.tw-side .tw-item[aria-current="page"] { box-shadow: 0 6px 16px -10px rgba(24, 21, 32, .35) !important; }
+/* petits éléments arrondis eux aussi */
+.tw-item, .tw-round { border-radius: 999px !important; }
+.tw-side { border-radius: 28px !important; }
+#stepper { border-radius: 999px !important; } #stepper li { border-radius: 999px !important; }
+.a2-chip, .chip, .app-pill, .pill, .tag, .tag-list span, .scan-summary span, .facts span { border-radius: 999px !important; }
+input:not([type="checkbox"]):not([type="radio"]):not([type="range"]), select, textarea { border-radius: 14px !important; }
+.tw-banner { border-radius: 22px !important; }
+/* cartes de l'accueil : pas de numéro, juste le texte */
+.in-steps .n { display: none !important; }
+
+/* petites lignes (dates, étiquettes, numéros de section) : SF Pro Rounded, la version ronde de la police de l'app,
+   au lieu de la police machine à écrire ; chiffres à largeur fixe gardés */
+html:root { --mono: ui-rounded, "SF Pro Rounded", -apple-system, BlinkMacSystemFont, "Inter", system-ui, sans-serif; }
+.mt-date, .tw-eyebrow, .tw-group > span { font-variant-numeric: tabular-nums; }
+
+/* fond : le dégradé et l'aurore de la maquette « compagnon » (lavande en haut à gauche, bleu ciel à droite, rose en bas),
+   immobile ; le panneau latéral devient du verre clair pour le laisser voir. Thème clair seulement. */
+:root:not([data-theme="dark"]) {
+  --ink: #26213f; --text: #26213f;
+}
+html:not([data-theme="dark"]) {
+  background:
+    radial-gradient(48vmax 40vmax at 8% -6%, rgba(170, 142, 255, .38), transparent 70%),
+    radial-gradient(44vmax 36vmax at 100% 6%, rgba(110, 205, 255, .3), transparent 70%),
+    radial-gradient(50vmax 40vmax at 40% 112%, rgba(255, 176, 214, .3), transparent 70%),
+    linear-gradient(180deg, #f4efff 0%, #fbf7ff 50%, #fff8f2 100%) !important;
+  background-attachment: fixed !important;
+}
+:root:not([data-theme="dark"]) .tw-side, :root:not([data-theme="dark"]).side-collapsed .tw-side {
+  background: linear-gradient(180deg, rgba(255, 255, 255, .5) 0%, rgba(255, 255, 255, .28) 100%) !important;
+  border: 1px solid rgba(255, 255, 255, .75) !important;
+  box-shadow: inset 0 1px 1px rgba(255, 255, 255, .9), 0 18px 40px -24px rgba(84, 64, 170, .35) !important;
+  backdrop-filter: blur(24px) saturate(1.6) !important; -webkit-backdrop-filter: blur(24px) saturate(1.6) !important;
+}
+:root.side-collapsed:not([data-theme="dark"]) .tw-side { background: transparent !important; border-color: transparent !important; box-shadow: none !important; }
