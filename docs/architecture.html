@@ -1,0 +1,1002 @@
+<title>Architecture Twiin</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@500&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Mise en page : une colonne de lecture. Schéma d'aujourd'hui, stacks étape par étape, puis version finale et graphe vivant. */
+:root {
+  --bg: #f5f6f8; --panel: #ffffff; --ink: #151821; --dim: #586172; --line: #dce0e7;
+  --accent: #2b55c8; --accent-soft: #e7edfb;
+  --post: #0e7a58; --post-soft: #e1f3eb; --srv: #7445c0; --srv-soft: #efe7fa; --ext: #b0590e; --ext-soft: #fbeedc;
+  --db: #1f7f8c; --db-soft: #dff2f4;
+  --ok: #1b7a3d; --part: #966600;
+  --f-display: "Space Grotesk", "Segoe UI", system-ui, sans-serif;
+  --f-body: "IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
+  --f-mono: "IBM Plex Mono", ui-monospace, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #0e1117; --panel: #161a22; --ink: #e6e9ef; --dim: #9aa3b3; --line: #2a303c;
+  --accent: #8daaff; --accent-soft: #1c2541;
+  --post: #5fd3a8; --post-soft: #11271f; --srv: #c4a4f6; --srv-soft: #241b34; --ext: #f1a75e; --ext-soft: #2c2014;
+  --db: #6fd0dc; --db-soft: #10282c; --ok: #5fd38a; --part: #e6b84d; color-scheme: dark } }
+:root[data-theme="dark"] {
+  --bg: #0e1117; --panel: #161a22; --ink: #e6e9ef; --dim: #9aa3b3; --line: #2a303c;
+  --accent: #8daaff; --accent-soft: #1c2541;
+  --post: #5fd3a8; --post-soft: #11271f; --srv: #c4a4f6; --srv-soft: #241b34; --ext: #f1a75e; --ext-soft: #2c2014;
+  --db: #6fd0dc; --db-soft: #10282c; --ok: #5fd38a; --part: #e6b84d; color-scheme: dark }
+body { background: var(--bg); color: var(--ink); font: 15px/1.6 var(--f-body); }
+body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); z-index: 10; background: var(--bg); }
+.wrap { max-width: 1000px; margin: 0 auto; padding-block: 36px 64px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+h1, h2, h3 { font-family: var(--f-display); text-wrap: balance; line-height: 1.2; margin: 0; }
+h1 { font-size: 2.2rem; letter-spacing: -0.015em; }
+h2 { font-size: 1.45rem; }
+h3 { font-size: 1.05rem; }
+p { margin: 0; }
+.lede { color: var(--dim); max-width: 70ch; margin-top: 10px; }
+.meta { font: 12px var(--f-mono); color: var(--dim); margin-top: 12px; letter-spacing: .02em; }
+nav.toc { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 5; background: var(--bg); margin-top: 20px;
+  padding-block: 10px; border-bottom: 1px solid var(--line); display: flex; flex-wrap: wrap; gap: 6px 8px; }
+nav.toc a { font: 500 13px var(--f-body); color: var(--ink); text-decoration: none; padding: 4px 10px; border-radius: 999px; border: 1px solid var(--line); background: var(--panel); }
+nav.toc a:hover, nav.toc a:focus-visible { border-color: var(--accent); color: var(--accent); outline: none; }
+section.block { margin-top: 44px; display: grid; gap: 14px; scroll-margin-top: 70px; }
+.sub { color: var(--dim); max-width: 75ch; }
+.legend { display: flex; flex-wrap: wrap; gap: 6px 18px; font-size: 13px; color: var(--dim); }
+.legend span { display: inline-flex; align-items: center; gap: 6px; }
+.sw { width: 11px; height: 11px; border-radius: 3px; display: inline-block; }
+.frame { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 14px; overflow-x: auto; }
+.frame svg { display: block; min-width: 900px; width: 100%; height: auto; }
+.frame svg text { font-family: var(--f-body); }
+.chip { font: 500 11px var(--f-mono); border-radius: 5px; padding: 1px 6px; white-space: nowrap; }
+.c-post { color: var(--post); background: var(--post-soft); }
+.c-srv { color: var(--srv); background: var(--srv-soft); }
+.c-ext { color: var(--ext); background: var(--ext-soft); }
+.c-db { color: var(--db); background: var(--db-soft); }
+.steps { display: grid; gap: 12px; }
+details.step { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; min-width: 0; }
+section.block > * { min-width: 0; }
+details.step > summary { list-style: none; cursor: pointer; padding: 14px 18px; display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 12px; }
+details.step > summary::-webkit-details-marker { display: none; }
+details.step > summary:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; border-radius: 12px; }
+.num { font: 600 12px var(--f-mono); color: var(--accent); background: var(--accent-soft); border-radius: 6px; padding: 2px 8px; }
+.what { color: var(--dim); font-size: 14px; flex-basis: 100%; }
+.state { font: 500 12px var(--f-mono); margin-left: auto; }
+.s-ok { color: var(--ok); } .s-part { color: var(--part); }
+.step-body { padding: 0 18px 16px; }
+.tbl { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; font-size: 14px; }
+th { text-align: left; font: 500 11px var(--f-mono); text-transform: uppercase; letter-spacing: .06em; color: var(--dim); padding: 6px 12px 6px 0; border-bottom: 1px solid var(--line); }
+td { padding: 8px 12px 8px 0; border-bottom: 1px solid var(--line); vertical-align: top; }
+tr:last-child td { border-bottom: 0; }
+td:first-child { font-weight: 500; }
+code { font: 13px var(--f-mono); background: var(--accent-soft); border-radius: 4px; padding: 0 4px; }
+.facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; }
+.fact { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; }
+.fact b { display: block; font: 600 1.4rem var(--f-display); font-variant-numeric: tabular-nums; }
+.fact span { color: var(--dim); font-size: 13px; }
+.final { border-top: 2px solid var(--accent); padding-top: 28px; }
+.eyebrow { font: 500 12px var(--f-mono); letter-spacing: .08em; text-transform: uppercase; color: var(--accent); }
+.cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px; }
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; display: grid; gap: 6px; align-content: start; min-width: 0; }
+.card ul { margin: 0; padding-left: 18px; display: grid; gap: 4px; font-size: 14px; }
+.graph { --a: #2b62d6; --b: #7546cf; --c: #bf2d6c; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .graph { --a: #7fa5ff; --b: #b596ff; --c: #f173aa; } }
+:root[data-theme="dark"] .graph { --a: #7fa5ff; --b: #b596ff; --c: #f173aa; }
+.graph { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; overflow: hidden; }
+.graph-top { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; padding: 12px 14px; border-bottom: 1px solid var(--line); }
+.graph-top .legend { flex: 1 1 320px; }
+button { font: 500 13px var(--f-body); color: var(--ink); background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 6px 12px; cursor: pointer; }
+button:hover, button:focus-visible { border-color: var(--accent); color: var(--accent); outline: none; }
+canvas#g { display: block; width: 100%; height: 480px; touch-action: none; }
+.caption { padding: 10px 14px 12px; border-top: 1px solid var(--line); font-size: 14px; color: var(--dim); min-height: 3.2em; }
+.caption b { color: var(--ink); }
+.horizon { border: 2px solid var(--accent); background: var(--accent-soft); border-radius: 14px; padding: 18px 20px; display: grid; gap: 6px; }
+.horizon-k { font: 600 12px var(--f-mono); letter-spacing: .08em; text-transform: uppercase; color: var(--accent); }
+.horizon-t { font: 700 1.6rem/1.2 var(--f-display); text-wrap: balance; }
+.cases { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 12px; }
+.case-card { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 16px 18px; display: grid; gap: 8px; align-content: start; min-width: 0; }
+.case-card .tagline { font: 500 12px var(--f-mono); color: var(--accent); }
+.case-card dl { margin: 0; display: grid; grid-template-columns: max-content 1fr; gap: 4px 12px; font-size: 14px; }
+.case-card dt { color: var(--dim); }
+.case-card dd { margin: 0; }
+.case-card .res { border-top: 1px solid var(--line); padding-top: 8px; font-size: 14px; }
+.lex { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 8px 18px; }
+.lex div { font-size: 14px; }
+.lex b { font-family: var(--f-display); }
+.brief { margin-top: 22px; display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px; }
+.brief-item { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; display: grid; gap: 6px; align-content: start; min-width: 0; }
+.brief-k { font: 600 12px var(--f-mono); letter-spacing: .08em; text-transform: uppercase; color: var(--accent); }
+.flow { margin: 0; padding-left: 20px; display: grid; gap: 4px; }
+footer { margin-top: 48px; color: var(--dim); font-size: 13px; }
+@media (max-width: 560px) { h1 { font-size: 1.75rem; } canvas#g { height: 400px; } .state { margin-left: 0; } }
+</style>
+
+<div class="wrap">
+  <header>
+    <h1>Architecture Twiin</h1>
+    <p class="lede">Ce document présente Twiin à quelqu'un qui découvre le projet : ce qu'il fait, avec quelles technologies, ce qui a été testé, et la version visée à long terme. Il s'adresse à un lecteur technique qui ne connaît pas encore le projet.</p>
+    <p class="meta">Hackathon Build The Future · Team 10 · état au 19/11/2026 · branche feat/decouverte-env-test</p>
+  </header>
+
+  <section class="brief" aria-label="En bref">
+    <div class="brief-item"><p class="brief-k">Le problème</p>
+      <p>Dans une entreprise, beaucoup de tâches de bureau sont répétitives : recopier des factures, comparer des prix,
+        préparer des rapports. Les salariés savent les faire, mais n'ont ni le temps ni les compétences pour les automatiser.</p></div>
+    <div class="brief-item"><p class="brief-k">Ce que fait Twiin</p>
+      <ol class="flow">
+        <li><b>Observer</b> : le salarié fait sa tâche une fois devant Twiin.</li>
+        <li><b>Comprendre</b> : Twiin résume la tâche et demande « Ai-je bien compris ? ».</li>
+        <li><b>Tester</b> : Twiin rejoue la tâche sur une copie de test, de plusieurs façons, sans toucher aux vrais outils.</li>
+        <li><b>Proposer</b> : un conseil pour aller plus vite, ou une automatisation prête à l'emploi. L'automatisation tourne en arrière-plan : le salarié continue à travailler pendant ce temps.</li>
+      </ol></div>
+    <div class="brief-item"><p class="brief-k">Où on en est</p>
+      <p>Le parcours complet fonctionne sur un ordinateur (Mac ou Windows) et a été testé sur deux tâches réelles :
+        un comparatif d'achat et une saisie de facture. C'est l'état actuel du projet.
+        La fin du document décrit la version visée à long terme.</p></div>
+  </section>
+
+  <nav class="toc" aria-label="Sommaire">
+    <a href="#lexique">Lexique</a><a href="#schema">Schéma</a><a href="#etapes">Étape par étape</a><a href="#stack">Toute la stack</a>
+    <a href="#cas">Cas testés</a><a href="#chiffres">Chiffres</a><a href="#final">Vision long terme</a><a href="#graphe">Graphe de savoir-faire</a>
+  </nav>
+
+  <section class="block" id="lexique">
+    <h2>Les mots du projet</h2>
+    <div class="lex">
+      <div><b>Twiin</b> : notre outil. Il observe une tâche faite une fois par un salarié et propose de l'accélérer ou de l'automatiser.</div>
+      <div><b>Holo</b> : modèle « computer use » de H Company (API compatible OpenAI) : il voit une capture d'écran et renvoie l'action à faire (clic, saisie…).</div>
+      <div><b>n8n</b> : outil d'automatisation standard, où une tâche devient une suite de blocs que l'entreprise peut lire et modifier.</div>
+      <div><b>Jumeau</b> : copie de test de la tâche, générée automatiquement, avec de fausses données. Les essais s'y font, jamais sur les vrais outils.</div>
+      <div><b>Qwen</b> : modèle vision-langage (Qwen3.8-27B, via le routeur Hugging Face) qui lit captures et OCR pour comprendre la tâche.</div>
+      <div><b>Supabase</b> : la base de données de Twiin (tâches, essais, recommandations), cloisonnée par entreprise.</div>
+      <div><b>DSI</b> : direction informatique de l'entreprise cliente, qui autorise les outils une fois pour tous.</div>
+    </div>
+  </section>
+
+  <section class="block" id="schema">
+    <h2>Le schéma d'aujourd'hui</h2>
+    <p class="sub">Trois zones : ce qui tourne sur le poste du salarié, le serveur Twiin (sur le poste aussi, pour l'instant),
+      et les services appelés par API. Les numéros renvoient aux étapes détaillées plus bas.</p>
+    <div class="legend">
+      <span><i class="sw" style="background:var(--post)"></i>poste du salarié</span>
+      <span><i class="sw" style="background:var(--srv)"></i>serveur Twiin (local pour l'instant)</span>
+      <span><i class="sw" style="background:var(--ext)"></i>service externe (API)</span>
+      <span><i class="sw" style="background:var(--db)"></i>base de données</span>
+    </div>
+    <div class="frame">
+      <svg viewBox="0 0 960 560" role="img" aria-label="Schéma de l'architecture actuelle de Twiin">
+        <defs>
+          <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M0,0 L10,5 L0,10 z" fill="var(--dim)"/>
+          </marker>
+        </defs>
+        <rect x="10" y="10" width="940" height="120" rx="12" fill="var(--post-soft)" stroke="var(--post)" stroke-opacity=".5"/>
+        <text x="26" y="34" font-size="13" font-weight="600" fill="var(--post)">POSTE DU SALARIÉ · Mac ou Windows, détecté automatiquement</text>
+        <rect x="10" y="150" width="940" height="250" rx="12" fill="var(--srv-soft)" stroke="var(--srv)" stroke-opacity=".5"/>
+        <text x="26" y="174" font-size="13" font-weight="600" fill="var(--srv)">SERVEUR TWIIN · Node.js + workers Python (local pour l'instant)</text>
+        <rect x="10" y="420" width="940" height="130" rx="12" fill="var(--ext-soft)" stroke="var(--ext)" stroke-opacity=".5"/>
+        <text x="26" y="444" font-size="13" font-weight="600" fill="var(--ext)">SERVICES EXTERNES (API)</text>
+
+        <g font-size="12" fill="var(--ink)">
+          <rect x="26" y="48" width="200" height="66" rx="8" fill="var(--panel)" stroke="var(--line)"/>
+          <text x="38" y="68" font-weight="600">1 · Audit du poste</text>
+          <text x="38" y="86" fill="var(--dim)">logiciels installés et utilisés</text>
+          <text x="38" y="102" fill="var(--dim)">+ audit vocal</text>
+          <rect x="240" y="48" width="220" height="66" rx="8" fill="var(--panel)" stroke="var(--line)"/>
+          <text x="252" y="68" font-weight="600">2 · Enregistrement</text>
+          <text x="252" y="86" fill="var(--dim)">captures (Chrome) · OCR local</text>
+          <text x="252" y="102" fill="var(--dim)">journal de clics (sans touches)</text>
+          <rect x="474" y="48" width="220" height="66" rx="8" fill="var(--panel)" stroke="var(--line)"/>
+          <text x="486" y="68" font-weight="600">Page Twiin (navigateur)</text>
+          <text x="486" y="86" fill="var(--dim)">question · reco · automatisations</text>
+          <text x="486" y="102" fill="var(--dim)">0 · mise en service (DSI)</text>
+          <rect x="708" y="48" width="226" height="66" rx="8" fill="var(--panel)" stroke="var(--line)"/>
+          <text x="720" y="68" font-weight="600">Fichiers du poste</text>
+          <text x="720" y="86" fill="var(--dim)">Excel écrit par fichier · PDF lus</text>
+          <text x="720" y="102" fill="var(--dim)">coffre local des connexions</text>
+        </g>
+
+        <g font-size="12" fill="var(--ink)">
+          <rect x="26" y="190" width="170" height="70" rx="8" fill="var(--panel)" stroke="var(--line)"/>
+          <text x="38" y="210" font-weight="600">3 · Analyse</text>
+          <text x="38" y="228" fill="var(--dim)">étapes, conseils,</text>
+          <text x="38" y="244" fill="var(--dim)">premier verdict</text>
+          <rect x="210" y="190" width="170" height="70" rx="8" fill="var(--panel)" stroke="var(--line)"/>
+          <text x="222" y="210" font-weight="600">4 · Question</text>
+          <text x="222" y="228" fill="var(--dim)">« Ai-je bien compris ? »</text>
+          <text x="222" y="244" fill="var(--dim)">+ résultat attendu</text>
+          <rect x="394" y="190" width="170" height="70" rx="8" fill="var(--panel)" stroke="var(--line)"/>
+          <text x="406" y="210" font-weight="600">5 · Jumeau</text>
+          <text x="406" y="228" fill="var(--dim)">copie HTML isolée,</text>
+          <text x="406" y="244" fill="var(--dim)">données fictives</text>
+          <rect x="578" y="190" width="170" height="70" rx="8" fill="var(--panel)" stroke="var(--line)"/>
+          <text x="590" y="210" font-weight="600">6 · 3 essais conseil</text>
+          <text x="590" y="228" fill="var(--dim)">3 agents Holo</text>
+          <text x="590" y="244" fill="var(--dim)">en parallèle</text>
+          <rect x="762" y="190" width="172" height="70" rx="8" fill="var(--panel)" stroke="var(--line)"/>
+          <text x="774" y="210" font-weight="600">7 · 2 essais auto</text>
+          <text x="774" y="228" fill="var(--dim)">n8n natif ou</text>
+          <text x="774" y="244" fill="var(--dim)">n8n + Holo</text>
+
+          <rect x="26" y="290" width="270" height="92" rx="8" fill="var(--panel)" stroke="var(--line)"/>
+          <text x="38" y="310" font-weight="600">8 · Proposer</text>
+          <text x="38" y="328" fill="var(--dim)">≥ 90 % : automatiser (workflow testé)</text>
+          <text x="38" y="344" fill="var(--dim)">sinon : accélérer (conseils, tuto,</text>
+          <text x="38" y="360" fill="var(--dim)">aucune trace d'automatisation)</text>
+          <rect x="310" y="290" width="300" height="92" rx="8" fill="var(--panel)" stroke="var(--line)"/>
+          <text x="322" y="310" font-weight="600">9 · Livrer et exécuter (n8n local)</text>
+          <text x="322" y="328" fill="var(--dim)">lecture web → Excel</text>
+          <text x="322" y="344" fill="var(--dim)">document → saisie web sans API</text>
+          <text x="322" y="360" fill="var(--dim)">Arrêter · planifier · double Échap</text>
+          <rect x="624" y="290" width="310" height="92" rx="8" fill="var(--db-soft)" stroke="var(--db)"/>
+          <text x="636" y="310" font-weight="600" fill="var(--db)">Supabase (Postgres + RLS + Auth)</text>
+          <text x="636" y="328" fill="var(--dim)">dictionnaire · taches · tests · recommendations</text>
+          <text x="636" y="344" fill="var(--dim)">profiles · audits · tutos · automations</text>
+          <text x="636" y="360" fill="var(--dim)">automation_runs · back_log</text>
+        </g>
+
+        <g font-size="12" fill="var(--ink)">
+          <rect x="26" y="458" width="210" height="78" rx="8" fill="var(--panel)" stroke="var(--line)"/>
+          <text x="38" y="478" font-weight="600">Hugging Face · Qwen3.8-27B</text>
+          <text x="38" y="496" fill="var(--dim)">analyse, question, jumeau,</text>
+          <text x="38" y="512" fill="var(--dim)">lecture des PDF</text>
+          <rect x="250" y="458" width="230" height="78" rx="8" fill="var(--panel)" stroke="var(--line)"/>
+          <text x="262" y="478" font-weight="600">H Company · Holo</text>
+          <text x="262" y="496" fill="var(--dim)">holo4-35b-a3b (holo3 gratuit)</text>
+          <text x="262" y="512" fill="var(--dim)">agit sur l'écran, sans API</text>
+          <rect x="494" y="458" width="200" height="78" rx="8" fill="var(--panel)" stroke="var(--line)"/>
+          <text x="506" y="478" font-weight="600">ElevenLabs</text>
+          <text x="506" y="496" fill="var(--dim)">audit vocal (Scribe),</text>
+          <text x="506" y="512" fill="var(--dim)">voix des tutos</text>
+          <rect x="708" y="458" width="226" height="78" rx="8" fill="var(--panel)" stroke="var(--line)"/>
+          <text x="720" y="478" font-weight="600">Logiciels de l'entreprise</text>
+          <text x="720" y="496" fill="var(--dim)">avec API (M365, Google) ou</text>
+          <text x="720" y="512" fill="var(--dim)">web sans API (ex. QONTA)</text>
+        </g>
+
+        <g stroke="var(--dim)" stroke-width="1.4" fill="none" marker-end="url(#ar)">
+          <path d="M330 114 L120 188"/>
+          <path d="M196 225 L208 225"/>
+          <path d="M380 225 L392 225"/>
+          <path d="M564 225 L576 225"/>
+          <path d="M748 225 L760 225"/>
+          <path d="M848 260 C848 282 420 270 160 288"/>
+          <path d="M296 336 L308 336"/>
+          <path d="M300 200 L560 116"/>
+          <path d="M440 382 L380 456" stroke-dasharray="4 3"/>
+          <path d="M590 382 L780 456" stroke-dasharray="4 3"/>
+          <path d="M600 290 L780 116" stroke-dasharray="4 3"/>
+        </g>
+        <text x="40" y="146" font-size="11" fill="var(--dim)">texte, OCR, journal →</text>
+        <text x="440" y="146" font-size="11" fill="var(--dim)">la question s'affiche</text>
+      </svg>
+    </div>
+  </section>
+
+  <section class="block" id="etapes">
+    <h2>Les stacks, étape par étape</h2>
+    <p class="sub">Pour chaque étape : ce qu'elle fait, la technologie utilisée, pourquoi ce choix, et où elle tourne. Cliquer sur le titre d'une étape la replie.</p>
+    <div class="steps">
+
+      <details class="step" open>
+        <summary><span class="num">0</span><h3>Mise en service par la DSI</h3><span class="state s-part">première version</span>
+          <span class="what">Une fois pour toute l'entreprise : quelles autorisations donner, par éditeur, pour que les salariés ne configurent rien.</span></summary>
+        <div class="step-body tbl"><table>
+          <tr><th>Brique</th><th>Technologie</th><th>Pourquoi</th><th>Où</th></tr>
+          <tr><td>Page « Mise en service »</td><td>page web de Twiin</td><td>couverture déduite des audits des postes (ex. Microsoft 365 couvre 50 % des outils du poste testé)</td><td><span class="chip c-srv">serveur</span></td></tr>
+          <tr><td>Autorisations</td><td>Microsoft Entra ID (consentement admin), Google Workspace (compte de service), installations « espace de travail »</td><td>un consentement par éditeur au lieu d'une connexion par salarié</td><td><span class="chip c-ext">API</span></td></tr>
+        </table></div>
+      </details>
+
+      <details class="step" open>
+        <summary><span class="num">1</span><h3>Auditer le poste</h3><span class="state s-ok">en place</span>
+          <span class="what">Les logiciels installés et vraiment utilisés, et ce que le salarié dit de son travail.</span></summary>
+        <div class="step-body tbl"><table>
+          <tr><th>Brique</th><th>Technologie</th><th>Pourquoi</th><th>Où</th></tr>
+          <tr><td>Logiciels du poste</td><td>macOS : applications et usage · Windows : registre (Uninstall + UserAssist)</td><td>savoir quels outils existent avant de proposer quoi que ce soit</td><td><span class="chip c-post">poste</span></td></tr>
+          <tr><td>Logos</td><td>extraits des applications du poste (Mac et Windows)</td><td>une page lisible au premier coup d'œil</td><td><span class="chip c-post">poste</span></td></tr>
+          <tr><td>Audit vocal</td><td>ElevenLabs Scribe (transcription) + lexique métier</td><td>le salarié décrit son poste à l'oral, sans formulaire</td><td><span class="chip c-ext">API</span></td></tr>
+          <tr><td>Stockage</td><td>Supabase : <code>audits</code>, <code>profiles</code></td><td>chaque salarié ne voit que les données de son entreprise (RLS sur company_id)</td><td><span class="chip c-db">base</span></td></tr>
+        </table></div>
+      </details>
+
+      <details class="step" open>
+        <summary><span class="num">2</span><h3>Observer la tâche</h3><span class="state s-ok">en place</span>
+          <span class="what">Le salarié fait sa tâche une fois. Twiin garde des captures, le texte à l'écran et les clics, jamais les touches tapées.</span></summary>
+        <div class="step-body tbl"><table>
+          <tr><th>Brique</th><th>Technologie</th><th>Pourquoi</th><th>Où</th></tr>
+          <tr><td>Page et API</td><td>Node.js 24 + Express, HTML/JS ; React + Vite pour la sphère de logos</td><td>une page web suffit, rien à installer dans le navigateur</td><td><span class="chip c-srv">serveur</span></td></tr>
+          <tr><td>Captures multi-écrans</td><td>partage d'écran de Chrome ; écrans détectés par Quartz (Mac) ou Win32 (Windows)</td><td>standard, identique sur Mac et Windows</td><td><span class="chip c-post">poste</span></td></tr>
+          <tr><td>OCR</td><td>Vision (macOS) · Windows.Media.Ocr via <code>winocr</code></td><td>texte lu en local, gratuit, rien ne sort du poste</td><td><span class="chip c-post">poste</span></td></tr>
+          <tr><td>Journal d'actions</td><td>Quartz + Accessibilité (macOS) · pynput + UI Automation (Windows)</td><td>sait sur quel bouton on clique : c'est le « chemin n°0 » des essais</td><td><span class="chip c-post">poste</span></td></tr>
+        </table></div>
+      </details>
+
+      <details class="step" open>
+        <summary><span class="num">3</span><h3>Analyser</h3><span class="state s-ok">en place</span>
+          <span class="what">Captures, texte et journal deviennent des étapes fidèles, des conseils et un premier verdict.</span></summary>
+        <div class="step-body tbl"><table>
+          <tr><th>Brique</th><th>Technologie</th><th>Pourquoi</th><th>Où</th></tr>
+          <tr><td>Modèle de vision</td><td>Qwen3.8-27B via le routeur Hugging Face (API compatible OpenAI)</td><td>lit images et texte, environ 0,005 $ par analyse, fournisseur interchangeable</td><td><span class="chip c-ext">API</span></td></tr>
+          <tr><td>Robustesse</td><td>json-repair</td><td>le modèle rend parfois un JSON mal formé</td><td><span class="chip c-srv">serveur</span></td></tr>
+          <tr><td>Travail de fond</td><td>workers Python 3.12 lancés par le serveur, sans fenêtre</td><td>la page reste fluide ; aucune console ne s'ouvre chez le salarié</td><td><span class="chip c-srv">serveur</span></td></tr>
+        </table></div>
+      </details>
+
+      <details class="step" open>
+        <summary><span class="num">4</span><h3>Comprendre et faire valider</h3><span class="state s-ok">en place</span>
+          <span class="what">Une seule question : « Ai-je bien compris votre problème ? », avec le résultat attendu sous forme de tableau.</span></summary>
+        <div class="step-body tbl"><table>
+          <tr><th>Brique</th><th>Technologie</th><th>Pourquoi</th><th>Où</th></tr>
+          <tr><td>Fiche de cadrage</td><td>appel court à Qwen (texte + OCR), 4 à 30 s</td><td>la question n'attend pas le jumeau</td><td><span class="chip c-ext">API</span></td></tr>
+          <tr><td>Résultat attendu</td><td>valeurs réellement lues à l'écran pendant l'enregistrement</td><td>les essais sont notés contre ce que le salarié a validé, pas contre une invention de l'IA</td><td><span class="chip c-srv">serveur</span></td></tr>
+          <tr><td>Stockage</td><td>Supabase <code>taches</code> (texte et chiffres) ; captures gardées sur le poste</td><td>les images d'écran ne quittent pas le poste par défaut</td><td><span class="chip c-db">base</span></td></tr>
+        </table></div>
+      </details>
+
+      <details class="step" open>
+        <summary><span class="num">5</span><h3>Construire le jumeau</h3><span class="state s-ok">en place</span>
+          <span class="what">Pendant que le salarié lit la question, Twiin reconstruit les écrans de sa tâche dans une page isolée, avec des données fictives.</span></summary>
+        <div class="step-body tbl"><table>
+          <tr><th>Brique</th><th>Technologie</th><th>Pourquoi</th><th>Où</th></tr>
+          <tr><td>Génération</td><td>Qwen (vision) : page HTML + mission + fausse API</td><td>un jumeau en 1 à 2 min, sans développement</td><td><span class="chip c-ext">API</span></td></tr>
+          <tr><td>Connaissance des outils</td><td>table <code>dictionnaire</code> + captures publiques collectées avec Playwright</td><td>le jumeau ressemble au vrai logiciel</td><td><span class="chip c-db">base</span></td></tr>
+          <tr><td>Classement des outils</td><td>dictionnaire puis Qwen : API, page lisible, ou écran seulement</td><td>choisir d'avance le bon mode d'automatisation</td><td><span class="chip c-srv">serveur</span></td></tr>
+        </table></div>
+      </details>
+
+      <details class="step" open>
+        <summary><span class="num">6</span><h3>3 essais « conseil »</h3><span class="state s-ok">en place</span>
+          <span class="what">Trois agents partent du même point, en même temps, et prennent chacun un chemin différent, comme un GPS.</span></summary>
+        <div class="step-body tbl"><table>
+          <tr><th>Brique</th><th>Technologie</th><th>Pourquoi</th><th>Où</th></tr>
+          <tr><td>Agent</td><td>Holo (H Company) : holo4-35b-a3b, ou holo3-1-35b-a3b gratuit</td><td>« computer use » : agit sur l'écran comme un humain</td><td><span class="chip c-ext">API</span></td></tr>
+          <tr><td>Navigateur</td><td>Playwright + Chromium invisible</td><td>un navigateur par agent, rien sur l'écran du salarié</td><td><span class="chip c-srv">serveur</span></td></tr>
+          <tr><td>Fiabilité</td><td>outil <code>note</code> (mémoire), avancement montré, « fini » refusé si incomplet, listes de suggestions et listes déroulantes gérées</td><td>sans mémoire, Holo inventait des valeurs (cas du comparatif, copie de test : 30 % avant, 100 % après, sur un essai de chaque)</td><td><span class="chip c-srv">serveur</span></td></tr>
+          <tr><td>Chemins différents</td><td>registre partagé en direct ; chemin n°0 tiré du journal d'actions</td><td>trois solutions distinctes à comparer</td><td><span class="chip c-srv">serveur</span></td></tr>
+          <tr><td>Sécurité</td><td>clics « valider, payer, envoyer, supprimer » bloqués</td><td>aucune action irréversible, même dans le jumeau</td><td><span class="chip c-srv">serveur</span></td></tr>
+        </table></div>
+      </details>
+
+      <details class="step" open>
+        <summary><span class="num">7</span><h3>2 essais « automatisation »</h3><span class="state s-ok">en place</span>
+          <span class="what">Le mode est décidé d'avance : si tout a une API ou une page lisible, n8n natif ; sinon n8n avec Holo pour l'outil sans API.</span></summary>
+        <div class="step-body tbl"><table>
+          <tr><th>Brique</th><th>Technologie</th><th>Pourquoi</th><th>Où</th></tr>
+          <tr><td>Orchestrateur</td><td>n8n 2.48 : workflow créé par l'API REST, exécuté par le serveur MCP de n8n, puis supprimé</td><td>standard, workflows lisibles et modifiables par l'entreprise</td><td><span class="chip c-srv">serveur</span></td></tr>
+          <tr><td>n8n natif</td><td>lecture HTTP + extraction HTML, ou bloc Code</td><td>le plus rapide et le moins cher (2,5 s, sans Holo)</td><td><span class="chip c-srv">serveur</span></td></tr>
+          <tr><td>n8n + Holo</td><td>blocs qui appellent Holo seulement pour l'outil sans API</td><td>computer use réservé à ce qui n'a pas d'autre accès</td><td><span class="chip c-ext">API</span></td></tr>
+          <tr><td>Notation</td><td>comparaison avec le résultat attendu : texte tolérant, nombres stricts</td><td>on ne croit pas l'agent sur parole : les « faux réussis » sont détectés</td><td><span class="chip c-srv">serveur</span></td></tr>
+        </table></div>
+      </details>
+
+      <details class="step" open>
+        <summary><span class="num">8</span><h3>Proposer</h3><span class="state s-ok">en place</span>
+          <span class="what">90 % ou plus : automatiser avec le workflow testé. Sinon : accélérer, avec des conseils seulement.</span></summary>
+        <div class="step-body tbl"><table>
+          <tr><th>Brique</th><th>Technologie</th><th>Pourquoi</th><th>Où</th></tr>
+          <tr><td>Décision tracée</td><td>Supabase <code>recommendations</code> + <code>tests</code></td><td>chaque recommandation est justifiée par des essais mesurés</td><td><span class="chip c-db">base</span></td></tr>
+          <tr><td>Affichage</td><td>encart dans l'étape Reco, pas de fenêtre surgissante</td><td>« Accélérer » ne montre aucune trace d'automatisation</td><td><span class="chip c-srv">serveur</span></td></tr>
+          <tr><td>Tuto vidéo</td><td>Remotion + voix ElevenLabs</td><td>montrer la façon rapide de faire</td><td><span class="chip c-srv">serveur</span></td></tr>
+        </table></div>
+      </details>
+
+      <details class="step" open>
+        <summary><span class="num">9</span><h3>Livrer et exécuter l'automatisation</h3><span class="state s-ok">en place</span>
+          <span class="what">« Créer cette automatisation » construit le workflow à partir de la solution testée. Même quand Holo doit utiliser un logiciel par l'écran (n8n + Holo, en computer use), il le fait dans un navigateur invisible, en arrière-plan : la souris, le clavier et l'écran restent au salarié, qui continue à travailler pendant que l'automatisation tourne.</span></summary>
+        <div class="step-body tbl"><table>
+          <tr><th>Brique</th><th>Technologie</th><th>Pourquoi</th><th>Où</th></tr>
+          <tr><td>Choix du modèle</td><td>« lecture web → Excel » ou « document → saisie web »</td><td>la livraison suit la tâche réelle, avec les vraies adresses lues à l'écran</td><td><span class="chip c-srv">serveur</span></td></tr>
+          <tr><td>Lire le web</td><td>Holo dans un navigateur invisible</td><td>la souris et le clavier restent au salarié</td><td><span class="chip c-srv">serveur</span></td></tr>
+          <tr><td>Lire un document</td><td>pypdf + Qwen, lignes de tableau et destinataire</td><td>une facture PDF devient des champs à saisir ; un document déjà saisi n'est pas repris</td><td><span class="chip c-post">poste</span></td></tr>
+          <tr><td>Saisir sans API</td><td>Holo invisible, enregistrement en brouillon</td><td>logiciels métier sans API (cas saisie comptable : facture saisie en 79 s, valeurs exactes)</td><td><span class="chip c-srv">serveur</span></td></tr>
+          <tr><td>Connexion</td><td>coffre local, rempli par Twiin lui-même</td><td>Holo ne voit jamais un mot de passe</td><td><span class="chip c-post">poste</span></td></tr>
+          <tr><td>Contrôle</td><td>vérification champ par champ + messages d'erreur du logiciel</td><td>une saisie refusée ou fausse n'est jamais comptée comme réussie</td><td><span class="chip c-srv">serveur</span></td></tr>
+          <tr><td>Écrire dans Excel</td><td>openpyxl, par le fichier</td><td>pas besoin d'ouvrir Excel</td><td><span class="chip c-post">poste</span></td></tr>
+          <tr><td>Garder la main</td><td>bouton Arrêter, double Échap, planification jour / heure / minute</td><td>le salarié peut tout arrêter à tout moment</td><td><span class="chip c-srv">serveur</span></td></tr>
+        </table></div>
+      </details>
+    </div>
+  </section>
+
+  <section class="block" id="stack">
+    <h2>Toute la stack, d'un coup d'œil</h2>
+    <p class="sub">Chaque technologie, son rôle, et les étapes où elle sert.</p>
+    <div class="frame tbl"><table>
+      <tr><th>Technologie</th><th>Rôle</th><th>Étapes</th><th>Où</th></tr>
+      <tr><td>Qwen3.8-27B (Hugging Face)</td><td>analyse, question, jumeau, classement des outils, lecture des documents</td><td>3 · 4 · 5 · 9</td><td><span class="chip c-ext">API</span></td></tr>
+      <tr><td>Holo (H Company)</td><td>agent « computer use » : essais, lecture et saisie sans API</td><td>6 · 7 · 9</td><td><span class="chip c-ext">API</span></td></tr>
+      <tr><td>ElevenLabs</td><td>transcription de l'audit vocal, voix des tutos</td><td>1 · 8</td><td><span class="chip c-ext">API</span></td></tr>
+      <tr><td>n8n 2.48 (API REST + serveur MCP)</td><td>tester, livrer, exécuter et planifier les automatisations</td><td>7 · 9</td><td><span class="chip c-srv">serveur</span></td></tr>
+      <tr><td>Supabase (Postgres, RLS, Auth, Storage)</td><td>tâches, essais, recommandations et comptes ; cloisonnement par entreprise via RLS</td><td>1 · 4 · 5 · 8</td><td><span class="chip c-db">base</span></td></tr>
+      <tr><td>Node.js 24 + Express</td><td>la page Twiin, ses API, les ponts locaux n8n → poste</td><td>toutes</td><td><span class="chip c-srv">serveur</span></td></tr>
+      <tr><td>Python 3.12</td><td>workers : découverte, agents, OCR, journal, documents, Excel</td><td>2 à 9</td><td><span class="chip c-srv">serveur</span></td></tr>
+      <tr><td>Playwright + Chromium</td><td>navigateur invisible pour Holo ; collecte des docs publiques</td><td>5 · 6 · 9</td><td><span class="chip c-srv">serveur</span></td></tr>
+      <tr><td>Vision / Windows.Media.Ocr</td><td>OCR local</td><td>2</td><td><span class="chip c-post">poste</span></td></tr>
+      <tr><td>Quartz + Accessibilité / pynput + UI Automation</td><td>journal de clics, sans les touches</td><td>2</td><td><span class="chip c-post">poste</span></td></tr>
+      <tr><td>pypdf · openpyxl</td><td>lire les PDF, écrire dans Excel</td><td>9</td><td><span class="chip c-post">poste</span></td></tr>
+      <tr><td>React + Vite</td><td>composant de la page d'audit</td><td>1</td><td><span class="chip c-srv">serveur</span></td></tr>
+      <tr><td>Remotion</td><td>montage des tutos vidéo</td><td>8</td><td><span class="chip c-srv">serveur</span></td></tr>
+      <tr><td>GitHub</td><td>code partagé par l'équipe</td><td>—</td><td><span class="chip c-post">poste</span></td></tr>
+    </table></div>
+  </section>
+
+  <section class="block" id="cas">
+    <h2>Les cas d'usage testés</h2>
+    <p class="sub">Deux tâches de bureau réelles, choisies parmi les cas d'usage du hackathon, ont servi à tester Twiin de bout en bout sur un PC Windows.</p>
+    <div class="cases">
+      <article class="case-card">
+        <p class="tagline">Cas « comparatif d'achat »</p>
+        <h3>Comparer un casque audio sur 3 sites et remplir un tableau Excel</h3>
+        <dl>
+          <dt>Qui</dt><dd>un acheteur ou un assistant</dd>
+          <dt>À la main</dt><dd>ouvrir 3 sites marchands, relever le prix et le lien du même casque, les recopier dans le fichier Excel « Comparatif »</dd>
+          <dt>Outils</dt><dd>navigateur web, Excel</dd>
+          <dt>Difficulté</dt><dd>sites différents, fenêtres de cookies, prix qui changent</dd>
+        </dl>
+        <p class="res"><b>Résultat :</b> Twiin recommande d'automatiser. L'automatisation lit les 3 sites dans un navigateur invisible et écrit les 3 lignes dans Excel en 51 s, sans toucher à l'écran du salarié.</p>
+      </article>
+      <article class="case-card">
+        <p class="tagline">Cas « saisie comptable »</p>
+        <h3>Saisir une facture fournisseur reçue en PDF dans le logiciel comptable</h3>
+        <dl>
+          <dt>Qui</dt><dd>un ou une comptable</dd>
+          <dt>À la main</dt><dd>lire la facture PDF (fournisseur, référence, date, lignes, TVA), ouvrir le dossier du client, tout ressaisir, enregistrer en brouillon</dd>
+          <dt>Outils</dt><dd>QONTA, un logiciel comptable de démonstration qui imite un vieux logiciel de cabinet <b>sans API</b> : seul l'écran permet d'y entrer des données</dd>
+          <dt>Difficulté</dt><dd>listes à suggestions (fournisseur), listes déroulantes (taux de TVA), plusieurs lignes par facture</dd>
+        </dl>
+        <p class="res"><b>Résultat :</b> la réussite des essais dans la copie de test est passée de 57&nbsp;% à 100&nbsp;%. En réel, Holo saisit une facture complète en 79 s, en arrière-plan pendant que la comptable continue à travailler, toutes les valeurs sont justes et vérifiées une par une.</p>
+      </article>
+    </div>
+  </section>
+
+  <section class="block" id="chiffres">
+    <h2>Chiffres mesurés</h2>
+    <div class="facts">
+      <div class="fact"><b>4 à 30 s</b><span>pour que Twiin pose sa question au salarié après l'enregistrement</span></div>
+      <div class="fact"><b>30 → 100 %</b><span>cas comparatif, copie de test : valeurs justes, avant puis après la mémoire de travail et le guidage. Un essai de chaque : indicatif, pas une moyenne</span></div>
+      <div class="fact"><b>2,5 s</b><span>cas comparatif : automatisation n8n sans Holo, 93 % des valeurs justes</span></div>
+      <div class="fact"><b>51 s</b><span>cas comparatif, en réel : 3 sites lus, 3 lignes écrites dans Excel</span></div>
+      <div class="fact"><b>57 → 100 %</b><span>cas saisie comptable, copie de test : avant puis après la gestion des listes à suggestions. Un essai après : indicatif, pas une moyenne</span></div>
+      <div class="fact"><b>79 s</b><span>cas saisie comptable, en réel : une facture PDF saisie par Holo, valeurs exactes</span></div>
+    </div>
+  </section>
+
+  <section class="block final" id="final">
+    <div class="horizon">
+      <p class="horizon-k">À partir d'ici : vision long terme</p>
+      <p class="horizon-t">Ce qui suit n'est pas l'état actuel du projet.</p>
+      <p>C'est la version finale qu'on vise sur le long terme. Ce qui existe aujourd'hui est décrit plus haut.</p>
+    </div>
+    <p class="eyebrow">Version finale visée</p>
+    <h2>Ce vers quoi Twiin va</h2>
+    <p class="sub">Le salarié n'installe et ne configure rien. Il se connecte avec le compte de son entreprise. Tout le calcul
+      tourne dans le cloud, en Europe, dans des environnements jetables. Sur le poste, il ne reste qu'un petit capteur.</p>
+    <div class="frame">
+      <svg viewBox="0 0 960 330" role="img" aria-label="Architecture cible de Twiin dans le cloud">
+        <defs>
+          <marker id="ar2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M0,0 L10,5 L0,10 z" fill="var(--dim)"/>
+          </marker>
+        </defs>
+        <rect x="10" y="10" width="200" height="310" rx="12" fill="var(--post-soft)" stroke="var(--post)" stroke-opacity=".5"/>
+        <text x="24" y="34" font-size="13" font-weight="600" fill="var(--post)">POSTE</text>
+        <rect x="230" y="10" width="500" height="310" rx="12" fill="var(--srv-soft)" stroke="var(--srv)" stroke-opacity=".5"/>
+        <text x="244" y="34" font-size="13" font-weight="600" fill="var(--srv)">CLOUD TWIIN (UE)</text>
+        <rect x="750" y="10" width="200" height="310" rx="12" fill="var(--ext-soft)" stroke="var(--ext)" stroke-opacity=".5"/>
+        <text x="764" y="34" font-size="13" font-weight="600" fill="var(--ext)">SERVICES</text>
+        <g font-size="12" fill="var(--ink)">
+          <rect x="24" y="52" width="172" height="84" rx="8" fill="var(--panel)" stroke="var(--line)"/>
+          <text x="36" y="72" font-weight="600">Capteur léger</text>
+          <text x="36" y="90" fill="var(--dim)">captures, OCR, journal</text>
+          <text x="36" y="106" fill="var(--dim)">déployé par la DSI</text>
+          <text x="36" y="122" fill="var(--dim)">aucune clé dedans</text>
+          <rect x="24" y="152" width="172" height="70" rx="8" fill="var(--panel)" stroke="var(--line)"/>
+          <text x="36" y="172" font-weight="600">Navigateur</text>
+          <text x="36" y="190" fill="var(--dim)">app Twiin, connexion SSO</text>
+          <text x="36" y="206" fill="var(--dim)">(Microsoft, Google)</text>
+          <rect x="24" y="238" width="172" height="66" rx="8" fill="var(--panel)" stroke="var(--line)"/>
+          <text x="36" y="258" font-weight="600">Agent local</text>
+          <text x="36" y="276" fill="var(--dim)">seulement pour un logiciel</text>
+          <text x="36" y="292" fill="var(--dim)">de bureau sans API</text>
+
+          <rect x="244" y="52" width="150" height="84" rx="8" fill="var(--panel)" stroke="var(--line)"/>
+          <text x="256" y="72" font-weight="600">App web Twiin</text>
+          <text x="256" y="90" fill="var(--dim)">parcours salarié,</text>
+          <text x="256" y="106" fill="var(--dim)">Back, DSI</text>
+          <rect x="406" y="52" width="150" height="84" rx="8" fill="var(--panel)" stroke="var(--line)"/>
+          <text x="418" y="72" font-weight="600">Workers jetables</text>
+          <text x="418" y="90" fill="var(--dim)">un conteneur par tâche :</text>
+          <text x="418" y="106" fill="var(--dim)">jumeau + essais</text>
+          <rect x="568" y="52" width="150" height="84" rx="8" fill="var(--panel)" stroke="var(--line)"/>
+          <text x="580" y="72" font-weight="600">n8n par entreprise</text>
+          <text x="580" y="90" fill="var(--dim)">n8n Cloud ou Docker,</text>
+          <text x="580" y="106" fill="var(--dim)">région UE</text>
+          <rect x="244" y="152" width="312" height="84" rx="8" fill="var(--db-soft)" stroke="var(--db)"/>
+          <text x="256" y="172" font-weight="600" fill="var(--db)">Supabase : le graphe de l'entreprise</text>
+          <text x="256" y="190" fill="var(--dim)">salariés, tâches, logiciels, essais, automatisations</text>
+          <text x="256" y="206" fill="var(--dim)">reliés entre eux (clés étrangères + pgvector pour</text>
+          <text x="256" y="222" fill="var(--dim)">« tâches qui se ressemblent »)</text>
+          <rect x="568" y="152" width="150" height="84" rx="8" fill="var(--panel)" stroke="var(--line)"/>
+          <text x="580" y="172" font-weight="600">Coffre de secrets</text>
+          <text x="580" y="190" fill="var(--dim)">clés API et connexions</text>
+          <text x="580" y="206" fill="var(--dim)">côté serveur seulement</text>
+          <rect x="244" y="252" width="474" height="52" rx="8" fill="var(--panel)" stroke="var(--line)"/>
+          <text x="256" y="272" font-weight="600">Mise en service DSI, une fois</text>
+          <text x="256" y="290" fill="var(--dim)">un consentement par éditeur, déduit des audits ; Twiin crée ensuite les connexions dans n8n</text>
+
+          <rect x="764" y="52" width="172" height="70" rx="8" fill="var(--panel)" stroke="var(--line)"/>
+          <text x="776" y="72" font-weight="600">Holo hébergé</text>
+          <text x="776" y="90" fill="var(--dim)">logiciels web</text>
+          <text x="776" y="106" fill="var(--dim)">sans API</text>
+          <rect x="764" y="134" width="172" height="70" rx="8" fill="var(--panel)" stroke="var(--line)"/>
+          <text x="776" y="154" font-weight="600">Modèles d'IA</text>
+          <text x="776" y="172" fill="var(--dim)">Qwen (analyse),</text>
+          <text x="776" y="188" fill="var(--dim)">ElevenLabs (voix)</text>
+          <rect x="764" y="216" width="172" height="88" rx="8" fill="var(--panel)" stroke="var(--line)"/>
+          <text x="776" y="236" font-weight="600">Outils de l'entreprise</text>
+          <text x="776" y="254" fill="var(--dim)">Microsoft 365, Google,</text>
+          <text x="776" y="270" fill="var(--dim)">logiciels métier</text>
+        </g>
+        <g stroke="var(--dim)" stroke-width="1.4" fill="none" marker-end="url(#ar2)">
+          <path d="M196 94 L242 94"/>
+          <path d="M196 187 L242 116"/>
+          <path d="M394 94 L404 94"/>
+          <path d="M556 94 L566 94"/>
+          <path d="M470 136 L430 150"/>
+          <path d="M718 88 L762 88"/>
+          <path d="M718 120 L762 250"/>
+          <path d="M556 124 L762 168"/>
+        </g>
+      </svg>
+    </div>
+    <div class="cols">
+      <div class="card"><h3>Ce qui change par rapport à aujourd'hui</h3>
+        <ul>
+          <li>Le serveur Twiin quitte le poste pour le cloud (UE).</li>
+          <li>Un conteneur jetable par tâche, réseau fermé sauf les API utiles.</li>
+          <li>n8n hébergé, un par entreprise.</li>
+          <li>Clés et mots de passe dans un coffre côté serveur, plus de fichier local.</li>
+          <li>Connexion des salariés par SSO via Supabase Auth.</li>
+          <li>Nombre d'essais réglable : la règle actuelle (3 « conseil » + 2 « automatisation ») sert à la phase de test ; on pourra faire par exemple 5 conseils ou 5 automatisations.</li>
+        </ul></div>
+      <div class="card"><h3>Ce qui reste identique</h3>
+        <ul>
+          <li>Le parcours : audit, enregistrement, question, reco.</li>
+          <li>Holo seulement là où il n'y a ni API ni page lisible.</li>
+          <li>Aucune automatisation ne prend l'écran du salarié.</li>
+          <li>Les captures restent sur le poste par défaut.</li>
+        </ul></div>
+      <div class="card"><h3>Limites connues</h3>
+        <ul>
+          <li>Sur Mac, l'autorisation d'enregistrer l'écran se donne une fois par utilisateur (règle d'Apple).</li>
+          <li>Un logiciel de bureau sans API garde un agent local.</li>
+          <li>L'interrupteur DISCOVERY est retiré au rendu final.</li>
+        </ul></div>
+    </div>
+  </section>
+
+  <section class="block" id="graphe">
+    <p class="eyebrow">Vision long terme · données</p>
+    <h2>Le graphe de savoir-faire</h2>
+    <p class="sub">Twiin range chaque tâche enregistrée dans un arbre : entreprise › logiciel (Excel, Sage, logiciel interne…)
+      › catégorie › cas précis. Le but : rapprocher les tâches qui se ressemblent sans être identiques. Un même cas
+      regroupe plusieurs salariés (« moi aussi », ou un process similaire reconnu), ce qui donne un meilleur score aux
+      recommandations : on sait combien de personnes et combien d'heures sont en jeu. Chaque salarié crée lui-même son
+      automatisation (n8n, ou n8n + Holo en computer use quand le logiciel n'a pas d'API) ou applique un conseil. Twiin
+      partage ensuite ces bonnes pratiques avec les collègues qui font la même tâche. La DSI n'intervient qu'une fois,
+      pour autoriser les outils. Exemple ci-dessous avec une entreprise fictive.</p>
+    <style>
+#tg{
+  --bg:#F4F6F8; --surface:#FFFFFF; --ink:#17202B; --muted:#657083; --line:#D2D8E1; --line-soft:#E6EAF0;
+  --accent:#08795A; --accent-soft:#E1F2EA;
+  --watch:#B05E00; --watch-soft:#FBEFDF;
+  --a:#2B62D6; --a-soft:#E6EDFC; --b:#7546CF; --b-soft:#EFE8FB; --c:#BF2D6C; --c-soft:#FBE7EF;
+  --f-display:"Space Grotesk",ui-sans-serif,system-ui,sans-serif;
+  --f-text:"Inter",ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;
+  --f-mono:"JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]) #tg{
+  --bg:#0F141B; --surface:#171E28; --ink:#E6EAF0; --muted:#97A2B4; --line:#2D3744; --line-soft:#212A35;
+  --accent:#3CC99C; --accent-soft:#11362B; --watch:#F1A64C; --watch-soft:#3A2A15;
+  --a:#7FA5FF; --a-soft:#1A2848; --b:#B596FF; --b-soft:#2A2046; --c:#F173AA; --c-soft:#40182B; color-scheme:dark}
+}
+:root[data-theme="dark"] #tg{
+  --bg:#0F141B; --surface:#171E28; --ink:#E6EAF0; --muted:#97A2B4; --line:#2D3744; --line-soft:#212A35;
+  --accent:#3CC99C; --accent-soft:#11362B; --watch:#F1A64C; --watch-soft:#3A2A15;
+  --a:#7FA5FF; --a-soft:#1A2848; --b:#B596FF; --b-soft:#2A2046; --c:#F173AA; --c-soft:#40182B; color-scheme:dark}
+#tg [hidden]{display:none!important}
+#tg{background:var(--bg);color:var(--ink);font-family:var(--f-text);font-size:14px;line-height:1.45}
+#tg .wrap{max-width:1440px;margin:0 auto;padding-block:20px 28px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));display:grid;gap:16px}
+#tg header{display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:12px}
+#tg h1{font-family:var(--f-display);font-weight:600;font-size:26px;margin:0;letter-spacing:-.01em}
+#tg .sub{color:var(--muted);margin:2px 0 0}
+#tg .controls{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+#tg button{font:inherit;font-weight:500;border:1px solid var(--line);background:var(--surface);color:var(--ink);border-radius:8px;padding:7px 14px;cursor:pointer}
+#tg button:hover{border-color:var(--muted)}
+#tg button:focus-visible{outline:2px solid var(--a);outline-offset:2px}
+#tg button.primary{background:var(--ink);color:var(--bg);border-color:var(--ink);min-width:96px}
+#tg .progress{display:flex;gap:3px}
+#tg .progress button{flex:1;height:8px;padding:0;border:0;border-radius:3px;background:var(--line);min-width:0}
+#tg .progress button.done{background:var(--muted)}
+#tg .progress button.cur{background:var(--accent)}
+#tg .main{display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:16px;align-items:start}
+@media (max-width:980px){#tg .main{grid-template-columns:minmax(0,1fr)}
+}
+#tg .stage{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:16px;display:grid;gap:10px;min-width:0}
+#tg .caption{min-height:3.2em;display:flex;gap:12px;align-items:baseline}
+#tg .stepno{font-family:var(--f-mono);font-size:12px;color:var(--muted);white-space:nowrap}
+#tg .captext{font-size:16px;font-weight:500;text-wrap:balance}
+#tg .svgbox{overflow-x:auto}
+#tg svg#g{display:block;width:100%;min-width:820px;height:auto}
+#tg aside{display:grid;gap:12px;min-width:0}
+#tg .panel{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:14px;display:grid;gap:8px}
+#tg .panel h2{font-family:var(--f-display);font-size:13px;font-weight:600;margin:0;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}
+#tg .rule{display:flex;gap:8px;flex-wrap:wrap;align-items:center;font-family:var(--f-mono);font-size:13px}
+#tg .rule b{background:var(--accent-soft);color:var(--accent);padding:2px 8px;border-radius:6px;font-weight:500}
+#tg .small{color:var(--muted);font-size:12px;margin:0}
+#tg ol.log{list-style:none;margin:0;padding:0;display:grid;gap:7px;min-height:220px}
+#tg ol.log li{font-size:12.5px;line-height:1.4;animation:in .35s ease}
+#tg ol.log li .who{font-weight:600;margin-right:4px}
+#tg ol.log li.dsi .who{color:var(--b)}
+#tg ol.log li.twiin .who{color:var(--accent)}
+#tg ol.log li.emp .who{color:var(--a)}
+@keyframes in{from{opacity:0;transform:translateY(-4px)}}
+#tg .chips{display:flex;flex-wrap:wrap;gap:6px}
+#tg .chip{font-size:12px;border:1px solid var(--line);border-radius:999px;padding:3px 10px;color:var(--muted);transition:all .4s}
+#tg .chip.used{border-color:var(--ink);color:var(--ink);font-weight:600}
+#tg .legend{display:grid;gap:6px;font-size:12.5px}
+#tg .legend div{display:flex;gap:8px;align-items:center}
+#tg .sw{width:12px;height:12px;border-radius:3px;flex:none;border:1.5px solid}
+#tg .summary{background:var(--accent-soft);border-color:var(--accent)}
+#tg .summary .big{font-family:var(--f-display);font-size:22px;font-weight:600;color:var(--accent)}
+#tg svg text{font-family:var(--f-text);fill:var(--ink)}
+#tg .edge{fill:none;stroke:var(--line);stroke-width:1.5;stroke-dasharray:1;stroke-dashoffset:1;transition:stroke-dashoffset .8s ease,stroke .4s}
+#tg .edge.on{stroke-dashoffset:0}
+#tg .edge.hot{stroke:var(--accent);stroke-width:2}
+#tg .node{opacity:0;transform:scale(.88);transform-box:fill-box;transform-origin:center;transition:opacity .5s ease,transform .5s ease}
+#tg .node.on{opacity:1;transform:none}
+#tg .node rect.box{fill:var(--surface);stroke:var(--line);stroke-width:1.5;transition:fill .5s,stroke .5s}
+#tg .root rect.box{fill:var(--ink);stroke:var(--ink)}
+#tg .root text{fill:var(--bg)}
+#tg .tool rect.box{fill:var(--line-soft)}
+#tg .lbl{font-size:12.5px;font-weight:600}
+#tg .tool .lbl{font-family:var(--f-display);font-size:13.5px}
+#tg .meta{font-family:var(--f-mono);font-size:11.5px;fill:var(--muted)}
+#tg .barbg{fill:var(--line-soft)}
+#tg .bar{fill:var(--muted);transition:fill .4s}
+#tg .bar.full{fill:var(--accent)}
+#tg .barlbl{font-size:9.5px;fill:var(--muted)}
+#tg .node.proposed rect.box{stroke-dasharray:5 4;stroke:var(--muted)}
+#tg .node.lit rect.box{fill:var(--accent-soft);stroke:var(--accent);stroke-width:2.2}
+#tg .node.lit .meta{fill:var(--accent)}
+#tg .node.grouped rect.box{stroke:var(--accent)}
+#tg .node.watch rect.box{fill:var(--watch-soft);stroke:var(--watch)}
+#tg .node.watch .meta{fill:var(--watch)}
+#tg .node.drop{opacity:.42}
+#tg .node.flash rect.box{animation:flash 1.3s ease}
+@keyframes flash{0%{stroke-width:2}35%{stroke-width:7}100%{stroke-width:2.2}}
+#tg .agg{font-family:var(--f-mono);font-size:11px;fill:var(--accent);opacity:0;transition:opacity .5s}
+#tg .agg.on{opacity:1}
+#tg .tag{opacity:0;transition:opacity .4s}
+#tg .tag.on{opacity:1}
+#tg .tag rect{fill:var(--b-soft);stroke:var(--b)}
+#tg .tag text{font-size:10.5px;font-weight:600;fill:var(--b)}
+#tg .br rect.box{stroke-width:1.5}
+#tg .br.A rect.box{fill:var(--a-soft);stroke:var(--a)}
+#tg .br.A .bt{fill:var(--a)}
+#tg .br.B rect.box{fill:var(--b-soft);stroke:var(--b)}
+#tg .br.B .bt{fill:var(--b)}
+#tg .br.C rect.box{fill:var(--c-soft);stroke:var(--c)}
+#tg .br.C .bt{fill:var(--c)}
+#tg .bt{font-size:12px;font-weight:600}
+#tg .bd{font-size:11px;fill:var(--muted)}
+#tg .bto{font-size:10px;fill:var(--muted);font-family:var(--f-mono)}
+#tg .bedge{fill:none;stroke-width:1.5;stroke-dasharray:1;stroke-dashoffset:1;transition:stroke-dashoffset .7s}
+#tg .bedge.on{stroke-dashoffset:0}
+#tg .bedge.A{stroke:var(--a)}
+#tg .bedge.B{stroke:var(--b)}
+#tg .bedge.C{stroke:var(--c)}
+#tg .bracket{fill:none;stroke:var(--accent);stroke-width:2;opacity:0;transition:opacity .5s}
+#tg .bracket.on{opacity:1}
+#tg .emp{fill:var(--surface);stroke:var(--muted);stroke-width:1.3;transition:fill .4s,stroke .4s}
+#tg .emp.eng{fill:var(--ink);stroke:var(--ink)}
+#tg .emp.ping{animation:ping .7s ease}
+@keyframes ping{50%{r:8}}
+#tg .grp{font-size:10.5px;fill:var(--muted)}
+#tg .empttl{font-family:var(--f-display);font-size:12px;font-weight:600;fill:var(--muted)}
+#tg .pt{fill:var(--a)}
+#tg .pt.rec{fill:var(--accent)}
+#tg .ring{fill:none;stroke:var(--accent);stroke-width:1.5}
+#tg .plus{font-family:var(--f-mono);font-size:12px;font-weight:500;fill:var(--a)}
+#tg .plus.rec{fill:var(--accent)}
+#tg .bar,#tg .barbg,#tg .barlbl{display:none}
+@media (prefers-reduced-motion:reduce){#tg *{transition:none!important;animation:none!important}
+}
+
+
+#tg{background:transparent;min-width:0}
+#tg .wrap{padding:0;max-width:none}
+#tg .wrap>*{min-width:0}
+#tg .tg-h{font-family:var(--f-display);font-weight:600;font-size:20px;margin:0}
+#tg .chip{font:12px var(--f-text)}
+#tg .caption{padding:0;border:0;min-height:3.2em}
+#tg .sub{max-width:none}
+#tg .main{grid-template-columns:minmax(0,1fr)}
+#tg aside{display:block;columns:3 240px;column-gap:12px}
+#tg aside>.panel{break-inside:avoid;margin:0 0 12px;width:100%;box-sizing:border-box}
+#tg ol.log{min-height:0}
+</style>
+<div id="tg"><div class="wrap">
+  <header>
+    <div>
+      <h3 class="tg-h">Graphe de savoir-faire Twiin</h3>
+      <p class="sub">Entreprise fictive, 34 employés. Les noms sont remplacés par des rôles : la DSI ne voit que des groupes.</p>
+    </div>
+    <div class="controls">
+      <button id="play" class="primary" type="button">Lecture</button>
+      <button id="replay" type="button">Rejouer</button>
+      <button id="speed" type="button" aria-label="Vitesse">Vitesse 1×</button>
+    </div>
+  </header>
+
+  <div class="progress" id="progress" aria-label="Étapes"></div>
+
+  <div class="main">
+    <section class="stage">
+      <div class="caption" aria-live="polite"><span class="stepno" id="stepno"></span><span class="captext" id="cap"></span></div>
+      <div class="svgbox"><svg id="g" viewBox="0 0 1190 650" role="img" aria-label="Arbre de l'entreprise : outils, catégories, cas, solutions et employés"></svg></div>
+    </section>
+
+    <aside>
+      <div class="panel" id="sumpanel" hidden>
+        <h2>Bonnes pratiques partagées</h2>
+        <div class="big">2 automatisations</div>
+        <p class="small" style="color:var(--ink)">créées par 2 salariés, proposées à 23 collègues qui font la même tâche : factures fournisseurs (14 pers, 497 h/mois) et rapports Excel (11 pers, 32 h/mois).</p>
+      </div>
+      <div class="panel">
+        <h2>Comment Twiin rapproche les tâches</h2>
+        <p class="small">Chaque tâche enregistrée est rangée sous logiciel › catégorie › cas. Une tâche similaire, sans être identique, rejoint le même cas, et un collègue peut cliquer « moi aussi ». Ce qu'un salarié a automatisé peut alors servir à tous ceux du même cas.</p>
+      </div>
+      <div class="panel">
+        <h2>Journal</h2>
+        <ol class="log" id="log"></ol>
+      </div>
+      <div class="panel">
+        <h2>Catalogue d'outils de la DSI</h2>
+        <div class="chips" id="chips"></div>
+      </div>
+      <div class="panel">
+        <h2>Légende</h2>
+        <div class="legend">
+          <div><span class="sw" style="background:var(--a-soft);border-color:var(--a)"></span>Conseil : le salarié l'applique lui-même, à la main</div>
+          <div><span class="sw" style="background:var(--b-soft);border-color:var(--b)"></span>Automatisation n8n (le logiciel a une API)</div>
+          <div><span class="sw" style="background:var(--c-soft);border-color:var(--c)"></span>Automatisation n8n + Holo (computer use, sans API), en arrière-plan</div>
+          <div><span class="sw" style="background:var(--accent-soft);border-color:var(--accent)"></span>Cas dont l'automatisation est partagée entre collègues</div>
+          <div><span class="sw" style="background:var(--surface);border-color:var(--muted);border-style:dashed"></span>Catégorie créée par Twiin quand rien ne correspond</div>
+        </div>
+      </div>
+    </aside>
+  </div>
+</div>
+
+</div>
+<script>
+(function(){
+const NS='http://www.w3.org/2000/svg';
+const svg=document.getElementById('g');
+
+/* ---------- Données de l'exemple ---------- */
+const ROOT={x:16,y:277,w:132,h:46};
+const TOOLS={sage:{label:'Sage 100',y:100},excel:{label:'Excel',y:335},sf:{label:'Salesforce',y:520}};
+const CATS={
+  saisie:{tool:'sage',label:'Saisie de factures',y:100},
+  rapports:{tool:'excel',label:'Automatisation de rapports',y:240},
+  reception:{tool:'excel',label:'Réception de données',y:345},
+  autres:{tool:'excel',label:'Autres : notes de frais',y:430},
+  relances:{tool:'sf',label:'Relances commerciales',y:520}};
+const CASES={
+  facture:{cat:'saisie',label:'Traiter une facture fournisseur',y:100,n:14,h:497},
+  hebdo:{cat:'rapports',label:'Rapport hebdomadaire des ventes',y:205,n:6,h:21},
+  treso:{cat:'rapports',label:'Rapport mensuel de trésorerie',y:275,n:5,h:11},
+  commandes:{cat:'reception',label:'Saisir les commandes reçues en PDF',y:345,n:4,h:65},
+  notes:{cat:'autres',label:'Vérifier les notes de frais',y:430,n:2,h:7},
+  relances:{cat:'relances',label:'Relancer les devis sans réponse',y:520,n:3,h:28}};
+const SEUIL_N=10, SEUIL_H=30;
+const BR={
+  fA:{k:'A',from:'facture',y:70,t:'Conseil',to:'→ la salariée',d:'Supprimer la vérif. TVA manuelle'},
+  fB:{k:'C',from:'facture',y:130,t:'Automatisation n8n + Holo',to:'→ partagée',d:'Factures vers Sage 100, sans API'},
+  rB:{k:'B',from:'group',y:241,t:'Automatisation n8n',to:'→ partagée',d:'API Excel et Salesforce, envoi n8n'}};
+const CHIPS={ms:'Microsoft 365',gw:'Google Workspace',n8n:'n8n',claude:'Claude',holo:'Holo'};
+const X={tool:180,toolW:120,cat:340,catW:205,cas:585,casW:260,br:905,brW:272};
+const TH=34, CH=58, BH=44;
+
+/* employés : un point par personne, groupés par rôle */
+const GROUPS=[['facture','Comptabilité',14],['hebdo','Contrôle de gestion',6],['treso','Trésorerie',5],['commandes','ADV',4],['relances','Commerciaux',3],['notes','Assistants',2]];
+const EMPS=[]; {let x=150; GROUPS.forEach(([c,role,n],gi)=>{const x0=x; for(let i=0;i<n;i++){EMPS.push({c,x,y:600}); x+=23;} GROUPS[gi].push(x0,x-23); x+=26;});}
+const first=c=>EMPS.findIndex(e=>e.c===c);
+const range=(c,from)=>{const o=[];EMPS.forEach((e,i)=>{if(e.c===c&&i>=from)o.push(i)});return o;};
+
+/* ---------- Construction du SVG ---------- */
+function el(tag,attrs,parent,text){const e=document.createElementNS(NS,tag);for(const k in attrs)e.setAttribute(k,attrs[k]);if(text!=null)e.textContent=text;(parent||svg).appendChild(e);return e;}
+const gEdges=el('g',{}),gNodes=el('g',{}),gFx=el('g',{});
+const nodes={},edges=[],tags={};
+function curve(x1,y1,x2,y2){const m=(x1+x2)/2;return `M${x1},${y1} C${m},${y1} ${m},${y2} ${x2},${y2}`;}
+function edge(to,x1,y1,x2,y2,cls){const p=el('path',{d:curve(x1,y1,x2,y2),class:cls||'edge',pathLength:1},gEdges);edges.push({to,p});return p;}
+function tag(id,x,y){const g=el('g',{class:'tag'},gNodes);const r=el('rect',{x:0,y:y-11,height:17,rx:5},g);const t=el('text',{x:0,y:y+1,'text-anchor':'end'},g);tags[id]={g,r,t,x};}
+
+// racine
+{const g=el('g',{class:'node root'},gNodes);el('rect',{class:'box',x:ROOT.x,y:ROOT.y,width:ROOT.w,height:ROOT.h,rx:10},g);
+ el('text',{class:'lbl',x:ROOT.x+14,y:ROOT.y+20,style:'font-family:var(--f-display);font-size:15px'},g,'Entreprise');
+ el('text',{x:ROOT.x+14,y:ROOT.y+36,style:'font-size:11px;opacity:.75'},g,'DSI');nodes.root={g};}
+for(const id in TOOLS){const t=TOOLS[id];const g=el('g',{class:'node tool'},gNodes);
+ el('rect',{class:'box',x:X.tool,y:t.y-TH/2,width:X.toolW,height:TH,rx:17},g);
+ el('text',{class:'lbl',x:X.tool+X.toolW/2,y:t.y+5,'text-anchor':'middle'},g,t.label);
+ nodes['t-'+id]={g};edge('t-'+id,ROOT.x+ROOT.w,ROOT.y+ROOT.h/2,X.tool,t.y);}
+for(const id in CATS){const c=CATS[id];const g=el('g',{class:'node cat'},gNodes);
+ el('rect',{class:'box',x:X.cat,y:c.y-TH/2,width:X.catW,height:TH,rx:8},g);
+ const l=el('text',{class:'lbl',x:X.cat+12,y:c.y+4.5},g,c.label);
+ nodes['k-'+id]={g,l};edge('k-'+id,X.tool+X.toolW,TOOLS[c.tool].y,X.cat,c.y);
+ tag('k-'+id,X.cat+X.catW,c.y-TH/2-8);}
+const agg=el('text',{class:'agg',x:X.cat+12,y:CATS.rapports.y+TH/2+15},gNodes,'même méthode : 11 pers · 32 h/mois');
+for(const id in CASES){const c=CASES[id];const y=c.y-CH/2,x=X.cas;const g=el('g',{class:'node case'},gNodes);
+ el('rect',{class:'box',x,y,width:X.casW,height:CH,rx:9},g);
+ el('text',{class:'lbl',x:x+12,y:y+21},g,c.label);
+ const m=el('text',{class:'meta',x:x+12,y:y+43},g);
+ const tn=el('tspan',{},m,'0');el('tspan',{},m,' pers · ');const th=el('tspan',{},m,'0');el('tspan',{},m,' h/mois');
+ el('text',{class:'barlbl',x:x+162,y:y+38},g,'pers');el('text',{class:'barlbl',x:x+162,y:y+49},g,'heures');
+ el('rect',{class:'barbg',x:x+196,y:y+33,width:52,height:5,rx:2},g);el('rect',{class:'barbg',x:x+196,y:y+44,width:52,height:5,rx:2},g);
+ const bn=el('rect',{class:'bar',x:x+196,y:y+33,width:0,height:5,rx:2},g);const bh=el('rect',{class:'bar',x:x+196,y:y+44,width:0,height:5,rx:2},g);
+ nodes['c-'+id]={g,tn,th,bn,bh};edge('c-'+id,X.cat+X.catW,CATS[c.cat].y,x,c.y);
+ tag('c-'+id,x+X.casW,y-8);}
+// accolade du groupe rapports
+const bx=X.cas+X.casW, jy=(CASES.hebdo.y+CASES.treso.y)/2;
+const bracket=el('path',{class:'bracket',d:`M${bx},${CASES.hebdo.y} H${bx+18} V${CASES.treso.y} H${bx}`},gEdges);
+// branches
+const bnodes={},bedges={};
+for(const id in BR){const b=BR[id];const g=el('g',{class:'node br '+b.k},gNodes);const y=b.y-BH/2;
+ el('rect',{class:'box',x:X.br,y,width:X.brW,height:BH,rx:9},g);
+ el('text',{class:'bt',x:X.br+12,y:y+18},g,b.t);el('text',{class:'bto',x:X.br+X.brW-10,y:y+18,'text-anchor':'end'},g,b.to);
+ el('text',{class:'bd',x:X.br+12,y:y+34},g,b.d);bnodes[id]=g;
+ const sx=b.from==='facture'?bx:bx+18, sy=b.from==='facture'?CASES.facture.y:jy;
+ bedges[id]=el('path',{class:'bedge '+b.k,d:curve(sx,sy,X.br,b.y),pathLength:1},gEdges);}
+// employés
+el('text',{class:'empttl',x:16,y:604},gNodes,'Employés');
+const empEls=EMPS.map(e=>el('circle',{class:'emp',cx:e.x,cy:e.y,r:6},gNodes));
+GROUPS.forEach(g=>el('text',{class:'grp',x:(g[3]+g[4])/2,y:628,'text-anchor':'middle'},gNodes,g[1]+' ('+g[2]+')'));
+// catalogue
+const chipsBox=document.getElementById('chips');const chipEls={};
+for(const k in CHIPS){const s=document.createElement('span');s.className='chip';s.textContent=CHIPS[k];chipsBox.appendChild(s);chipEls[k]=s;}
+
+/* ---------- Scénario ---------- */
+const rec=(e,c)=>[e,c,'rec'], too=(es,c)=>es.map(e=>[e,c,'too']);
+const STEPS=[
+ {cap:'L’entreprise ouvre son graphe. La DSI renseigne une fois le catalogue d’outils autorisés.',dur:3000,
+  run:s=>{s.on.add('root');s.catalog=true;log(s,'dsi','DSI','renseigne son catalogue : Microsoft 365, Google Workspace, n8n, Claude, Holo.');}},
+ {cap:'Une comptable enregistre sa tâche une seule fois. Twiin la range : Sage 100 › Saisie de factures › cas précis.',dur:4200,
+  fx:[rec(0,'facture')],run:s=>{log(s,'emp','Comptable','enregistre « Traiter une facture fournisseur ».');log(s,'twiin','Twiin','classe le cas sous Sage 100 › Saisie de factures.');}},
+ {cap:'Un conseil lui est proposé tout de suite, qu’elle applique elle-même : Sage 100 vérifie déjà la TVA, l’étape à la calculatrice peut sauter.',dur:3600,
+  run:s=>{s.br.add('fA');s.chips.add('claude');log(s,'twiin','Twiin → comptable','conseil : supprimer la vérification TVA manuelle, environ 3 min gagnées par facture.');}},
+ {cap:'Un commercial et une contrôleuse de gestion enregistrent leurs tâches : de nouvelles branches poussent.',dur:3400,
+  fx:[rec(first('relances'),'relances'),rec(first('hebdo'),'hebdo')],run:s=>{log(s,'emp','Commercial','enregistre « Relancer les devis sans réponse ».');log(s,'emp','Contrôle de gestion','enregistre « Rapport hebdomadaire des ventes ».');}},
+ {cap:'Une deuxième comptable fait presque la même chose. Twiin reconnaît un process similaire à 91 % et la rattache au même cas.',dur:3800,
+  fx:[rec(1,'facture')],run:s=>{log(s,'emp','Comptable','enregistre sa saisie de factures.');log(s,'twiin','Twiin','process similaire à 91 % : rattaché au cas existant, pas de nouveau nœud.');}},
+ {cap:'Les autres comptables se reconnaissent et cliquent « moi aussi » : pas de nouvel enregistrement ni de nouvelle analyse.',dur:5600,tween:2400,
+  fx:too(range('facture',2),'facture'),run:s=>{log(s,'emp','12 comptables','cliquent « moi aussi » sur « Traiter une facture fournisseur ».');log(s,'twiin','Twiin','12 enregistrements et 12 analyses évités.');}},
+ {cap:'D’autres tâches arrivent et les « moi aussi » s’accumulent. Quand rien ne correspond, Twiin crée une catégorie.',dur:5200,tween:2200,
+  fx:[rec(first('treso'),'treso'),rec(first('commandes'),'commandes'),rec(first('notes'),'notes'),...too(range('hebdo',first('hebdo')+1),'hebdo'),...too(range('treso',first('treso')+1),'treso'),...too(range('commandes',first('commandes')+1),'commandes'),...too(range('relances',first('relances')+1),'relances'),...too(range('notes',first('notes')+1),'notes')],
+  run:s=>{s.st['k-autres']='proposed';log(s,'emp','Trésorerie, ADV, assistants','enregistrent leurs tâches ; 15 collègues cliquent « moi aussi ».');log(s,'twiin','Twiin','crée la catégorie « Notes de frais ».');}},
+ {cap:'La première comptable crée son automatisation en un clic. Sage 100 n’a pas d’API : n8n + Holo (computer use) la font tourner en arrière-plan, elle continue à travailler.',dur:4800,
+  run:s=>{s.br.add('fB');['n8n','holo'].forEach(c=>s.chips.add(c));s.hot.add('c-facture');log(s,'emp','Comptable','crée l’automatisation « Traiter une facture fournisseur ».');}},
+ {cap:'Bonne pratique partagée : Twiin propose cette automatisation aux 13 autres comptables du même cas, sans nouvel enregistrement.',dur:4400,
+  run:s=>{s.st['c-facture']='lit';s.hot.add('k-saisie');s.hot.add('t-sage');log(s,'twiin','Twiin → 13 comptables','proposent l’automatisation de leur collègue.');}},
+ {cap:'La contrôleuse de gestion automatise son rapport avec n8n seul : les logiciels ont une API.',dur:4000,
+  run:s=>{s.br.add('rB');s.chips.add('ms');s.st['c-hebdo']='lit';s.hot.add('c-hebdo');log(s,'emp','Contrôle de gestion','crée l’automatisation du rapport hebdomadaire.');}},
+ {cap:'Le rapport de trésorerie ressemble au rapport des ventes : même catégorie, même méthode. Twiin propose l’automatisation à la trésorerie aussi.',dur:4400,
+  run:s=>{s.group=true;s.st['k-rapports']='lit';s.st['c-treso']='grouped';['k-rapports','c-treso','t-excel'].forEach(i=>s.hot.add(i));log(s,'twiin','Twiin → trésorerie','propose l’automatisation des rapports, adaptée à leur rapport.');}},
+ {cap:'Bilan : 2 automatisations créées par 2 salariés, proposées à 23 collègues qui font la même tâche.',dur:3200,
+  run:s=>{s.summary=true;log(s,'twiin','Twiin','2 bonnes pratiques partagées entre salariés.');}}
+];
+function log(s,kind,who,text){s.log.push({kind,who,text});}
+
+function blank(){return{on:new Set(),count:{},eng:new Set(),st:{},hot:new Set(),br:new Set(),tags:{},chips:new Set(),log:[],catalog:false,group:false,rename:false,summary:false};}
+function build(i){const s=blank();for(const c in CASES)s.count[c]=0;
+ for(let k=0;k<=i;k++){const st=STEPS[k];(st.fx||[]).forEach(([e,c])=>{s.count[c]++;s.eng.add(e);s.on.add('c-'+c);s.on.add('k-'+CASES[c].cat);s.on.add('t-'+CATS[CASES[c].cat].tool);});st.run(s);}
+ return s;}
+
+/* ---------- Rendu ---------- */
+const disp={};for(const c in CASES)disp[c]={n:0,h:0};
+const hrs=(c,n)=>Math.round(n*CASES[c].h/CASES[c].n);
+let prevSt={},tw=null;
+function setCounters(f){for(const c in CASES){const d=disp[c],N=nodes['c-'+c];
+ N.tn.textContent=Math.round(d.n);N.th.textContent=Math.round(d.h);
+ N.bn.setAttribute('width',Math.min(1,d.n/SEUIL_N)*52);N.bh.setAttribute('width',Math.min(1,d.h/SEUIL_H)*52);
+ N.bn.classList.toggle('full',d.n>=SEUIL_N);N.bh.classList.toggle('full',d.h>=SEUIL_H);}}
+function tweenCounters(s,ms){cancelAnimationFrame(tw);const from={},to={};
+ for(const c in CASES){from[c]={...disp[c]};to[c]={n:s.count[c],h:hrs(c,s.count[c])};}
+ if(!ms){for(const c in CASES)disp[c]=to[c];setCounters();return;}
+ const t0=performance.now();const f=t=>{const k=Math.max(0,Math.min(1,(t-t0)/ms));
+  for(const c in CASES){disp[c]={n:from[c].n+(to[c].n-from[c].n)*k,h:from[c].h+(to[c].h-from[c].h)*k};}
+  setCounters();if(k<1)tw=requestAnimationFrame(f);};tw=requestAnimationFrame(f);}
+
+function render(s,i,anim,tween){
+ nodes.root.g.classList.toggle('on',s.on.has('root'));
+ for(const id in nodes){if(id==='root')continue;const g=nodes[id].g;g.classList.toggle('on',s.on.has(id));
+  const st=s.st[id]||'';['lit','watch','drop','proposed','grouped'].forEach(c=>g.classList.toggle(c,st===c));
+  if(anim&&st==='lit'&&prevSt[id]!=='lit'){g.classList.remove('flash');void g.getBBox();g.classList.add('flash');}}
+ prevSt={...s.st};
+ edges.forEach(e=>{e.p.classList.toggle('on',s.on.has(e.to));e.p.classList.toggle('hot',s.hot.has(e.to));});
+ nodes['k-autres'].l.textContent='Notes de frais';
+ for(const id in BR){bnodes[id].classList.toggle('on',s.br.has(id));bedges[id].classList.toggle('on',s.br.has(id));}
+ bracket.classList.toggle('on',s.group);agg.classList.toggle('on',s.group);
+ for(const id in tags){const T=tags[id],txt=s.tags[id];T.g.classList.toggle('on',!!txt);
+  if(txt){T.t.textContent=txt;const w=txt.length*6.1+14;T.r.setAttribute('x',T.x-w);T.r.setAttribute('width',w);T.t.setAttribute('x',T.x-7);}}
+ empEls.forEach((e,k)=>e.classList.toggle('eng',s.eng.has(k)));
+ for(const k in chipEls)chipEls[k].classList.toggle('used',s.chips.has(k));
+ document.getElementById('cap').textContent=i<0?'Appuyez sur Lecture pour voir le graphe se construire.':STEPS[i].cap;
+ document.getElementById('stepno').textContent=i<0?'':'Étape '+(i+1)+'/'+STEPS.length;
+ const L=document.getElementById('log');L.innerHTML='';
+ s.log.slice(-8).reverse().forEach(e=>{const li=document.createElement('li');li.className=e.kind;const b=document.createElement('span');b.className='who';b.textContent=e.who;li.append(b,document.createTextNode(e.text));L.appendChild(li);});
+ document.getElementById('sumpanel').hidden=!s.summary;
+ [...document.getElementById('progress').children].forEach((b,k)=>{b.classList.toggle('done',k<i);b.classList.toggle('cur',k===i);});
+ tweenCounters(s,tween);}
+
+/* ---------- Effets : enregistrements et « moi aussi » ---------- */
+let gen=0;
+function clearFx(){gen++;gFx.innerHTML='';}
+function runFx(st){const my=gen,list=st.fx||[];if(!list.length)return;
+ const spread=list.length>1?Math.min(1800,(st.tween||1200))/speed:0;
+ list.forEach(([e,c,kind],k)=>{const delay=list.length>1?k*spread/(list.length-1):0;setTimeout(()=>{if(my!==gen)return;fly(e,c,kind,my);},delay);});}
+function fly(e,c,kind,my){const E=EMPS[e],C=CASES[c],dot=empEls[e];
+ dot.classList.remove('ping');void dot.getBBox();dot.classList.add('ping');
+ const tx=X.cas+40+(e%7)*28,ty=C.y+CH/2-2,x0=E.x,y0=E.y-8,cx=(x0+tx)/2,cy=Math.max(y0,ty)+20;
+ const g=el('g',{},gFx);const big=kind==='rec';
+ const p=el('circle',{class:'pt'+(big?' rec':''),r:big?6:4},g);const ring=big?el('circle',{class:'ring',r:6},g):null;
+ const dur=(big?1300:900)/speed,t0=performance.now();
+ const f=t=>{if(my!==gen)return;const k=Math.max(0,Math.min(1,(t-t0)/dur)),q=k<.5?2*k*k:1-Math.pow(-2*k+2,2)/2;
+  const x=(1-q)*(1-q)*x0+2*(1-q)*q*cx+q*q*tx,y=(1-q)*(1-q)*y0+2*(1-q)*q*cy+q*q*ty;
+  p.setAttribute('cx',x);p.setAttribute('cy',y);if(ring){ring.setAttribute('cx',x);ring.setAttribute('cy',y);ring.setAttribute('r',6+6*Math.abs(Math.sin(k*9)));ring.setAttribute('opacity',1-k*.6);}
+  if(k<1)requestAnimationFrame(f);else{g.remove();plus(c,big,my);}};
+ requestAnimationFrame(f);}
+function plus(c,big,my){const C=CASES[c];const t=el('text',{class:'plus'+(big?' rec':''),x:big?X.cas+X.casW-12:X.cas+X.casW-14-Math.random()*90,y:C.y-CH/2-4,'text-anchor':'end'},gFx,big?'enregistré':'+1');
+ const t0=performance.now(),f=tt=>{if(my!==gen){t.remove();return;}const k=Math.max(0,Math.min(1,(tt-t0)/900));t.setAttribute('transform',`translate(0,${-12*k})`);t.setAttribute('opacity',1-k);if(k<1)requestAnimationFrame(f);else t.remove();};requestAnimationFrame(f);}
+
+/* ---------- Lecture ---------- */
+let cur=-1,playing=false,timer=null,speed=1;
+const btnPlay=document.getElementById('play');
+const prog=document.getElementById('progress');
+STEPS.forEach((st,k)=>{const b=document.createElement('button');b.type='button';b.setAttribute('aria-label','Aller à l’étape '+(k+1));b.title='Étape '+(k+1);b.onclick=()=>{pause();clearFx();go(k,false);};prog.appendChild(b);});
+function go(i,withFx){cur=i;const s=build(i);clearFx();render(s,i,true,i>=0?((STEPS[i].tween||900)/speed):0);if(withFx&&i>=0)runFx(STEPS[i]);}
+function tick(){if(cur>=STEPS.length-1){playing=false;upd();return;}go(cur+1,true);timer=setTimeout(tick,STEPS[cur].dur/speed);}
+function play(){if(playing)return;if(cur>=STEPS.length-1)return replay();playing=true;upd();tick();}
+function pause(){playing=false;clearTimeout(timer);upd();}
+function replay(){clearTimeout(timer);clearFx();cur=-1;const s=build(-1);render(s,-1,false,0);playing=true;upd();timer=setTimeout(tick,500/speed);}
+function upd(){btnPlay.textContent=playing?'Pause':(cur>=STEPS.length-1?'Revoir':'Lecture');}
+btnPlay.onclick=()=>playing?pause():play();
+document.getElementById('replay').onclick=replay;
+document.getElementById('speed').onclick=e=>{speed=speed===1?2:1;e.currentTarget.textContent='Vitesse '+speed+'×';};
+document.addEventListener('keydown',e=>{if(e.code==='Space'&&e.target===document.body){e.preventDefault();btnPlay.click();}});
+
+// État de repos : le graphe complet, puis lecture automatique depuis le début
+go(STEPS.length-1,false);upd();
+const reduce=window.matchMedia&&matchMedia('(prefers-reduced-motion: reduce)').matches;
+if(!reduce)setTimeout(()=>{if(!playing&&cur===STEPS.length-1)replay();},1800);
+})();
+</script>
+
+
+    <div class="frame tbl"><table>
+      <tr><th>Dans le graphe</th><th>Dans Supabase</th><th>Aujourd'hui</th></tr>
+      <tr><td>Entreprise</td><td><code>company_id</code> sur chaque table (RLS)</td><td>en place</td></tr>
+      <tr><td>Logiciel</td><td><code>dictionnaire</code></td><td>en place</td></tr>
+      <tr><td>Catégorie</td><td>nouvelle table, créée par Twiin quand aucune ne correspond</td><td>à faire</td></tr>
+      <tr><td>Cas</td><td><code>taches</code> regroupées par similarité (pgvector)</td><td>à faire : aujourd'hui une tâche = un enregistrement</td></tr>
+      <tr><td>« Moi aussi »</td><td>lien salarié ↔ cas, sans nouvel enregistrement ni nouvelle analyse</td><td>à faire</td></tr>
+      <tr><td>Partage entre salariés</td><td>une automatisation créée par un salarié, proposée aux autres membres du même cas</td><td>à faire</td></tr>
+      <tr><td>Solutions (conseil, automatisation)</td><td><code>recommendations</code> + <code>tests</code></td><td>en place pour une tâche ; à étendre au cas regroupé</td></tr>
+    </table></div>
+  </section>
+
+  <footer>Page tenue à jour au fil des changements. Code : <code>hbendiab/twiin-holo</code>, branche <code>feat/decouverte-env-test</code>, détails dans <code>docs/README-decouverte.md</code>.</footer>
+</div>
+
+

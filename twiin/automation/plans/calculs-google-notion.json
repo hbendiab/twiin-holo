@@ -1,0 +1,65 @@
+{
+  "name": "Calculs Google → Notion",
+  "schedule_cron": null,
+  "blocks": [
+    {
+      "type": "holo",
+      "name": "Holo — calculer 3×3",
+      "env": "mac",
+      "steps": [
+        "In Google Chrome, open a new tab and go to https://www.google.com. In the search bar, type « calculatrice » and press Enter. The Google calculator should appear in the results. Click the « 3 » button, then the « × » button, then the « 3 » button, then the « = » button. Read the result displayed on the calculator screen."
+      ],
+      "expect": {
+        "resultat": "the number displayed as the result of 3 × 3 on the calculator"
+      }
+    },
+    {
+      "type": "verify",
+      "name": "Vérifier le résultat 3×3",
+      "rules": {
+        "resultat": {
+          "required": true,
+          "pattern": "^9$"
+        }
+      }
+    },
+    {
+      "type": "holo",
+      "name": "Holo — saisir 9 dans Notion",
+      "env": "mac",
+      "steps": [
+        "In Google Chrome, switch to the tab that has the Notion page « Résultat des calculs » open (app.notion.com). Click in the page body where the list of results is. Type « {{Holo — calculer 3×3.resultat}} » and press Enter to add it as a new line. Do not modify any other content on the page."
+      ]
+    },
+    {
+      "type": "holo",
+      "name": "Holo — calculer 3÷3",
+      "env": "mac",
+      "steps": [
+        "In Google Chrome, switch back to the tab with the Google calculator. Click the « C » (clear) button to reset the calculator. Then click the « 3 » button, then the « ÷ » button, then the « 3 » button, then the « = » button. Read the result displayed on the calculator screen."
+      ],
+      "expect": {
+        "resultat": "the number displayed as the result of 3 ÷ 3 on the calculator"
+      }
+    },
+    {
+      "type": "verify",
+      "name": "Vérifier le résultat 3÷3",
+      "rules": {
+        "resultat": {
+          "required": true,
+          "pattern": "^1$"
+        }
+      }
+    },
+    {
+      "type": "holo",
+      "name": "Holo — saisir 1 dans Notion",
+      "env": "mac",
+      "steps": [
+        "In Google Chrome, switch to the tab that has the Notion page « Résultat des calculs » open (app.notion.com). Click in the page body at the end of the existing list. Type « {{Holo — calculer 3÷3.resultat}} » and press Enter to add it as a new line. Do not modify any other content on the page."
+      ]
+    }
+  ],
+  "id": "twiincalculsgoog"
+}

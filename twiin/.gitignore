@@ -55,3 +55,29 @@ workflows/audit2/
 workflows/automations-programmees.json
 desktop/node_modules/
 tuto/video/public/pitch/
+
+workflows/voice-venv/
+workflows/tuto-sessions/
+
+workflows/sauvegarde-*/
+
+# Corbeille des enregistrements (captures d'écran du Mac) : jamais publiée
+workflows/corbeille/
+
+desktop/build/
+desktop/config-pilote.env
+desktop/dist/
+relais/.vercel/
+
+# Télécommande : appairage du téléphone et pont H (dev)
+workflows/telecommande.json
+workflows/holo-venv/
+automation/cibles/
+workflows/titres-courts.json
+workflows/marque.json
+workflows/marque-logo.*
+tuto/video/public/marque*
+workflows/categories-tutos.json
+workflows/connexions.json
+workflows/equipe.json
+workflows/guide-phrases.json

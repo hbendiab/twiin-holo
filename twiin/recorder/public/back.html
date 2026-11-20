@@ -39,7 +39,7 @@
 <body>
   <header class="topbar">
     <a class="brand" href="/"><span id="logoCells"></span><span>Tw<b>ii</b>n</span></a>
-    <nav class="nav"><a href="/">Analyser une tâche</a><a href="/videos.html">Mes vidéos</a><a href="/automatisations.html">Mes automatisations</a><a href="/back.html" aria-current="page">Back</a></nav>
+    <nav class="nav"><a href="/#enregistrer">Analyser une tâche</a><a href="/videos.html">Mes vidéos</a><a href="/automatisations.html">Mes automatisations</a><a href="/back.html" aria-current="page">Back</a><a href="/mise-en-service.html">Mise en service</a></nav>
     <button id="themeBtn" type="button">Thème sombre</button>
   </header>
   <h1>Back</h1>
@@ -67,6 +67,38 @@
     </div>
   </details>
   <div class="grid" id="root"></div>
+
+  <details class="panel" id="decouverte" style="margin-top:14px" open>
+    <summary><h2>Environnement de test et casse · découverte</h2><span class="meta">jumeau, parcours, automatisations, solution (Lucas)</span></summary>
+    <div class="content" id="dOut"><p class="meta">Chargement…</p></div>
+  </details>
+
+<script>
+// Détail interne de la découverte (jamais montré à l'employé) : /api/discovery/internal
+window.addEventListener("load", async function discovery() {
+  const out = document.getElementById('dOut');
+  const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  try {
+    const d = await (await fetch('/api/discovery/internal')).json();
+    if (!d.phase) { out.innerHTML = '<p class="meta">Pas encore de découverte : enregistre et analyse une tâche.</p>'; return; }
+    const its = d.iterations || [];
+    const cls = (its.find((r) => r.classification) || {}).classification;
+    const sol = d.solution;
+    out.innerHTML = `
+      <p class="meta">Phase : <b>${esc(d.phase)}</b> · ${esc(d.message || '')} · fidélité du jumeau : ${esc(d.fidelite || '?')}
+        ${d.twin_seconds ? ` · jumeau construit en ${d.twin_seconds} s` : ''}</p>
+      ${cls ? `<h3>Accès aux outils → mode « ${esc(cls.mode)} »</h3><table><tr><th>Outil</th><th>Accès</th><th>Raison</th></tr>
+        ${(cls.outils || []).map((o) => `<tr><td>${esc(o.nom)}</td><td>${esc(o.acces)}</td><td>${esc(o.raison)}</td></tr>`).join('')}</table>` : ''}
+      <h3>Essais (${its.length})</h3>
+      <table><tr><th>#</th><th>Solution</th><th>Modèle</th><th>Trafic</th><th>Réussite</th><th>Durée</th><th>Appels Holo</th><th>Faux réussi</th><th>Chemin</th></tr>
+        ${its.map((r) => `<tr><td>${r.iteration ?? ''}</td><td>${esc(r.label || r.start || 'libre')}</td><td>${esc(r.model)}</td><td>${esc(r.variant)}</td>
+          <td>${Math.round((r.success_rate || 0) * 100)} %</td><td>${Math.round(r.seconds || 0)} s</td><td>${r.calls ?? ''}</td>
+          <td>${r.false_success ? 'oui' : ''}</td><td class="mono" style="font-size:12px">${esc(r.route || '')}</td></tr>`).join('')}</table>
+      ${sol ? `<h3>Solution proposée : ${esc(sol.kind === 'automate' ? 'automatiser' : 'accélérer')} (confiance ${esc(sol.confidence)})</h3>
+        <p>${esc(sol.texte)}</p><ul>${(sol.raisons || []).map((x) => `<li>${esc(x)}</li>`).join('')}</ul>` : ''}`;
+  } catch (e) { out.innerHTML = `<p class="meta">Découverte indisponible : ${esc(e.message)}</p>`; }
+});
+</script>
 
   <details class="panel" id="tester" style="margin-top:14px">
     <summary><h2>Tester et casser · test par Holo</h2><span class="meta">en préparation (Lucas) · retiré du parcours employé</span></summary>

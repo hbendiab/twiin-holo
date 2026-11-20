@@ -84,8 +84,10 @@
   "web_accessible_resources": [
     {
       "resources": [
-        "logo-twiin.webp",
-        "logo-twiin.png"
+        "img/ilo.png",
+        "img/iris.png",
+        "logo-twiin.png",
+        "logo-twiin.webp"
       ],
       "matches": [
         "<all_urls>"

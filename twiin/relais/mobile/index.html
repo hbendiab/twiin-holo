@@ -1,0 +1,376 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
+<meta name="theme-color" content="#ffffff">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Twiin">
+<meta name="robots" content="noindex">
+<title>Twiin Télécommande</title>
+<style>
+  /* Même DA que le SaaS Twiin : fond blanc, lavande (Noomo) en deuxième couleur, cases en verre, action principale en lavande soutenu */
+  :root {
+    --bg: #ffffff; --ink: #161615; --dim: #6f6f6a; --line: #dce2f0;
+    --brand: #c9d2e7; --strong: #56669c; --tint: #f3f5fb; --chip: #e6ebf5; --ok: #1f8a5b; --err: #d6403f;
+    --glass: linear-gradient(135deg, rgba(255,255,255,.96) 0%, rgba(243,245,251,.92) 50%, rgba(222,228,242,.88) 100%);
+    --glass-shadow: inset 0 1px 0 #fff, 2px 3px 0 -1px rgba(201,210,231,.8), 0 14px 28px -22px rgba(56,66,110,.5);
+    --mono: ui-monospace, "SF Mono", Menlo, monospace;
+    --safe-b: env(safe-area-inset-bottom, 0px); --safe-t: env(safe-area-inset-top, 0px);
+    color-scheme: light;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #0e0e0d; --ink: #f5f5f2; --dim: #9a9a95; --line: #2b3247; --brand: #3a4260; --strong: #aab7e0; --tint: #151823; --chip: #222839;
+      --glass: linear-gradient(135deg, rgba(58,66,96,.55), rgba(26,29,43,.75)); --glass-shadow: inset 0 1px 0 rgba(255,255,255,.07), 0 14px 28px -20px rgba(0,0,0,.7); color-scheme: dark; }
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--ink); font: 16px/1.4 -apple-system, BlinkMacSystemFont, "SF Pro Text", Inter, system-ui, sans-serif; letter-spacing: -.006em; }
+  body { display: flex; flex-direction: column; min-height: 100dvh; overflow: hidden; }
+
+  header { display: flex; align-items: center; gap: 10px; padding: calc(12px + var(--safe-t)) 16px 10px; }
+  .logo { display: flex; align-items: center; gap: 9px; font-weight: 600; font-size: 21px; letter-spacing: -.035em; }
+  .tw-twins { display: inline-flex; gap: 3px; }
+  .tw-orb { --s: 22px; width: var(--s); height: var(--s); border-radius: 50%; display: block; position: relative; overflow: hidden;
+    background: radial-gradient(circle at 32% 26%, #fff 0 9%, transparent 22%), radial-gradient(120% 70% at 50% 108%, #f4f4f1 0 22%, transparent 46%),
+      conic-gradient(from 20deg at 50% 55%, #1b1b1a, #8d8d88, #f2f2ee, #5c5c58, #d9d9d4, #2a2a28, #b6b6b1, #1b1b1a); }
+  .status { margin-left: auto; display: flex; align-items: center; gap: 7px; font: 500 11.5px var(--mono); color: var(--ink); background: var(--chip); padding: 6px 11px; border-radius: 999px; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--dim); }
+  .status.on .dot { background: var(--ok); }
+  .status.busy .dot { background: var(--strong); animation: pulse 1s infinite; }
+  .status.off .dot { background: var(--err); }
+  @keyframes pulse { 50% { opacity: .35; } }
+
+  .screen { position: relative; margin: 4px 16px 0; border-radius: 10px; overflow: hidden; border: 1px solid var(--line); background: #0d0f16; aspect-ratio: 16/10; flex-shrink: 0;
+    box-shadow: 2px 3px 0 -1px rgba(201,210,231,.8), 0 14px 28px -22px rgba(56,66,110,.5); }
+  .screen img { width: 100%; height: 100%; object-fit: contain; display: block; opacity: 0; transition: opacity .25s; }
+  .screen img.show { opacity: 1; }
+  .screen .empty { position: absolute; inset: 0; display: grid; place-items: center; text-align: center; color: #b8bdcc; font-size: 14px; padding: 20px; }
+  .screen .live { position: absolute; top: 10px; left: 10px; font: 600 10.5px var(--mono); letter-spacing: .08em; padding: 4px 8px; border-radius: 6px; background: rgba(0,0,0,.55); color: #fff; display: none; }
+  .screen .live::before { content: ""; display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: #ff4d4d; margin-right: 6px; transform: translateY(-1px); animation: pulse 1s infinite; }
+  body.running .screen .live { display: block; }
+  body.running .screen { border-color: var(--strong); box-shadow: 0 0 0 2px rgba(86,102,156,.35), 0 14px 30px -18px rgba(56,66,110,.6); }
+
+  .feed { flex: 1; overflow-y: auto; padding: 14px 16px 8px; display: flex; flex-direction: column; gap: 8px; scroll-behavior: smooth; }
+  .msg { white-space: pre-line; max-width: 88%; padding: 10px 14px; border-radius: 12px; font-size: 15px; animation: in .25s ease-out; overflow-wrap: anywhere; }
+  @keyframes in { from { opacity: 0; transform: translateY(6px); } }
+  .msg.me { align-self: flex-end; background: var(--strong); color: #fff; border-bottom-right-radius: 4px; }
+  @media (prefers-color-scheme: dark) { .msg.me { color: #0e0e0d; } }
+  .msg.step { align-self: flex-start; background: transparent; color: var(--dim); font-size: 13.5px; padding: 2px 4px 2px 22px; position: relative; }
+  .msg.step::before { content: ""; position: absolute; left: 7px; top: 9px; width: 6px; height: 6px; border-radius: 50%; background: var(--strong); opacity: .7; }
+  .msg.done { align-self: flex-start; background: var(--glass); border: 1px solid var(--line); box-shadow: var(--glass-shadow); border-bottom-left-radius: 4px; }
+  .msg.error { align-self: flex-start; background: rgba(214,64,63,.08); border: 1px solid rgba(214,64,63,.3); color: var(--err); }
+  .msg.cancelled { align-self: flex-start; color: var(--dim); font-size: 13.5px; }
+
+  .doc { align-self: flex-start; display: flex; align-items: center; gap: 12px; padding: 12px 14px; border-radius: 10px; background: var(--glass);
+    border: 1px solid var(--line); box-shadow: var(--glass-shadow); max-width: 92%; animation: in .25s ease-out; }
+  .doc svg { width: 26px; height: 26px; flex: none; fill: none; stroke: var(--strong); stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
+  .doc .nom { font-size: 14.5px; font-weight: 600; word-break: break-all; } .doc .info { font: 500 11.5px var(--mono); color: var(--dim); }
+  .doc button { margin-left: auto; font: inherit; font-size: 14px; font-weight: 600; border: 0; padding: 9px 14px; border-radius: 10px; background: var(--strong); color: #fff; flex: none; }
+  .doc button:disabled { opacity: .5; }
+  .save .saved { width: 100%; margin: 0 0 2px; font: 500 11.5px var(--mono); color: var(--dim); }
+  .save { align-self: flex-start; display: flex; gap: 8px; flex-wrap: wrap; animation: in .25s ease-out; }
+  .save button { font: inherit; font-size: 14px; font-weight: 600; color: #fff; border: 0; padding: 10px 14px; border-radius: 10px; background: var(--strong);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.22), 0 10px 20px -12px rgba(56,66,110,.7); }
+  .save button.no { background: var(--chip); color: var(--ink); box-shadow: none; font-weight: 500; }
+  .chips { display: flex; gap: 8px; overflow-x: auto; padding: 0 16px 10px; scrollbar-width: none; }
+  .chips::-webkit-scrollbar { display: none; }
+  .chip { flex-shrink: 0; font: inherit; font-size: 13.5px; color: var(--ink); background: var(--chip); border: 0; padding: 9px 13px; border-radius: 10px; }
+  body.running .chips { display: none; }
+
+  .bar { display: flex; align-items: flex-end; gap: 8px; padding: 10px 12px calc(10px + var(--safe-b)); border-top: 1px solid var(--line);
+    background: color-mix(in srgb, var(--bg) 88%, transparent); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); }
+  textarea { flex: 1; resize: none; font: inherit; font-size: 16px; color: var(--ink); background: var(--tint); border: 1px solid var(--line); border-radius: 12px; padding: 11px 14px; max-height: 120px; outline: none; }
+  textarea:focus { border-color: var(--strong); box-shadow: 0 0 0 3px rgba(86,102,156,.15); }
+  .btn { flex-shrink: 0; width: 46px; height: 46px; border-radius: 12px; border: 0; display: grid; place-items: center; color: var(--ink); font-size: 18px; }
+  .btn svg { width: 22px; height: 22px; }
+  .send { color: #fff; background: var(--strong); box-shadow: inset 0 1px 0 rgba(255,255,255,.22), 0 10px 20px -12px rgba(56,66,110,.7); }
+  @media (prefers-color-scheme: dark) { .send { color: #0e0e0d; } }
+  .send:disabled { opacity: .4; }
+  .mic { background: var(--chip); position: relative; }
+  .mic.rec { background: var(--err); color: #fff; }
+  .mic.rec::after { content: ""; position: absolute; inset: -6px; border-radius: 16px; border: 2px solid var(--err); animation: ring 1.2s infinite; }
+  @keyframes ring { from { transform: scale(.9); opacity: 1; } to { transform: scale(1.25); opacity: 0; } }
+  .stop { display: none; background: var(--err); color: #fff; width: auto; padding: 0 18px; border-radius: 12px; font-weight: 700; font-size: 15px; gap: 6px; grid-auto-flow: column; }
+  body.running .stop { display: grid; }
+  body.running .send, body.running .mic { display: none; }
+
+  .pair { flex: 1; display: grid; place-items: center; padding: 24px; text-align: center; }
+  .pair h1 { font-size: 24px; margin: 0 0 10px; letter-spacing: -.03em; font-weight: 600; }
+  .pair p { color: var(--dim); margin: 0 auto; max-width: 320px; }
+  .twins { display: flex; gap: 10px; justify-content: center; margin-bottom: 22px; }
+  .twins .tw-orb { --s: 56px; animation: float 3s ease-in-out infinite; }
+  .twins .tw-orb.ilo { animation-delay: -1.5s; }
+  @keyframes float { 50% { transform: translateY(-8px); } }
+  body:not(.paired) .app { display: none; }
+  body.paired .pair { display: none; }
+  .app { flex: 1; display: flex; flex-direction: column; min-height: 0; }
+  @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
+</style>
+</head>
+<body>
+  <header>
+    <div class="logo" aria-label="Twiin"><span class="tw-twins" aria-hidden="true"><i class="tw-orb iris"></i><i class="tw-orb ilo"></i></span>Twiin</div>
+    <div class="status" id="status"><span class="dot"></span><span id="statusText">…</span></div>
+  </header>
+
+  <section class="pair" id="pair">
+    <div>
+      <div class="twins" aria-hidden="true"><i class="tw-orb iris"></i><i class="tw-orb ilo"></i></div>
+      <h1>Ton Mac, dans ta poche</h1>
+      <p id="pairText">Sur ton Mac, ouvre Twiin, clique sur « Contrôler depuis mon téléphone », puis scanne le QR code avec l'appareil photo.</p>
+    </div>
+  </section>
+
+  <main class="app">
+    <div class="screen" id="screen">
+      <img id="frame" alt="Écran du Mac">
+      <div class="empty" id="empty">L'écran de ton Mac apparaîtra ici dès que Twiin agit.</div>
+      <span class="live">EN DIRECT</span>
+    </div>
+    <div class="feed" id="feed" aria-live="polite"></div>
+    <div class="chips" id="chips">
+      <button class="chip">Quelles sont mes dernières tâches dans Twiin ?</button>
+      <button class="chip">Où en sont mes automatisations et vidéos ?</button>
+      <button class="chip">Ouvre Twiin et montre-moi mes automatisations</button>
+      <button class="chip">Lance mon automatisation la plus récente</button>
+      <button class="chip">Quelles applis sont ouvertes sur mon Mac ?</button>
+      <button class="chip">Mets la musique en pause</button>
+    </div>
+    <form class="bar" id="bar">
+      <textarea id="input" rows="1" placeholder="Dis à Twiin quoi faire…" enterkeyhint="send"></textarea>
+      <button type="button" class="btn mic" id="mic" aria-label="Dicter"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg></button>
+      <button type="submit" class="btn send" id="send" aria-label="Envoyer"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg></button>
+      <button type="button" class="btn stop" id="stop"><svg viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>Stop</button>
+    </form>
+  </main>
+
+<script>
+(() => {
+  const $ = (id) => document.getElementById(id);
+  const store = { get: (k) => { try { return localStorage.getItem(k); } catch { return null; } },
+    set: (k, v) => { try { v == null ? localStorage.removeItem(k) : localStorage.setItem(k, v); } catch {} } };
+
+  // Jeton d'appairage : dans le fragment du QR code (#t=…), jamais envoyé dans une URL, gardé sur ce téléphone.
+  const m = /[#&]t=([\w.-]+)/.exec(location.hash);
+  const mq = /[#&]m=([^&]+)/.exec(location.hash); // noms propres à bien reconnaître à la dictée (ta fiche Twiin)
+  // Vocabulaire de la dictée : les noms du QR code, puis les mots que tu corriges toi-même avant d'envoyer
+  let mots = []; try { mots = JSON.parse(store.get('twiin.mots') || '[]'); } catch { mots = []; }
+  const ajouterMots = (liste) => {
+    for (const w of liste) if (w && w.length <= 40 && !mots.includes(w)) mots.push(w);
+    mots = mots.slice(-50); store.set('twiin.mots', JSON.stringify(mots));
+  };
+  if (mq) { try { ajouterMots(decodeURIComponent(mq[1]).split('|')); } catch { /* rien */ } }
+  const mk = /[#&]k=([\w-]{43})/.exec(location.hash); // clé de chiffrement des documents envoyés par le Mac (reste sur ce téléphone)
+  if (mk) store.set('twiin.cle', mk[1]);
+  if (m) { store.set('twiin.jeton', m[1]); history.replaceState(null, '', location.pathname); }
+  const jeton = store.get('twiin.jeton');
+
+  let sessionId = null, from = 0, running = false, polling = 0, faitEcran = false, enregistrement = false;
+  const ENREGISTRER = 'Enregistre cette tâche dans Twiin.';
+  // Après une tâche faite à l'écran : proposer de l'enregistrer dans Twiin (elle sera masquée, puis analysée sur le Mac)
+  // Fin d'une tâche faite à l'écran : Twiin l'a déjà enregistrée ; on propose la suite (automatiser, vidéo), en un geste.
+  const AUTOMATISER = 'Automatise cette tâche dans Twiin.', VIDEO = 'Crée la vidéo de formation de cette tâche dans Twiin.';
+  function proposer() {
+    const box = document.createElement('div');
+    box.className = 'save';
+    const info = document.createElement('p');
+    info.className = 'saved'; info.textContent = 'Tâche enregistrée dans Twiin · Mes enregistrements';
+    const auto = document.createElement('button'), video = document.createElement('button');
+    auto.textContent = 'Automatiser cette tâche';
+    video.textContent = 'Créer la vidéo'; video.className = 'no';
+    auto.onclick = () => { box.remove(); send(AUTOMATISER); };
+    video.onclick = () => { box.remove(); send(VIDEO); };
+    box.append(info, auto, video);
+    $('feed').append(box);
+    $('feed').scrollTop = $('feed').scrollHeight;
+  }
+
+  // Un document envoyé par le Mac : chiffré de bout en bout ; on le récupère, on le déchiffre ici, et on le télécharge.
+  const recus = new Set();
+  function document_(e) {
+    if (recus.has(e.id)) return;
+    recus.add(e.id);
+    const d = document.createElement('div');
+    d.className = 'doc';
+    d.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/></svg>'
+      + '<div><div class="nom"></div><div class="info"></div></div><button type="button">Télécharger</button>';
+    d.querySelector('.nom').textContent = e.nom;
+    d.querySelector('.info').textContent = `${e.taille} Ko · disponible 1 h`;
+    const b = d.querySelector('button');
+    b.onclick = async () => {
+      b.disabled = true; b.textContent = 'Déchiffrement…';
+      try {
+        const cle = store.get('twiin.cle');
+        if (!cle) throw new Error('Rescanne le QR code affiché par Twiin sur ton Mac pour recevoir des documents.');
+        const r = await fetch(`/mobile/fichier?id=${e.id}`, { headers: { authorization: `Bearer ${jeton}` } });
+        if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || `Erreur ${r.status}`);
+        const brut = new Uint8Array(await r.arrayBuffer());
+        const k = await crypto.subtle.importKey('raw', Uint8Array.from(atob(cle.replace(/-/g, '+').replace(/_/g, '/')), (c) => c.charCodeAt(0)), 'AES-GCM', false, ['decrypt']);
+        const clair = new Uint8Array(await crypto.subtle.decrypt({ name: 'AES-GCM', iv: brut.slice(0, 12) }, k, brut.slice(12)));
+        const lg = new DataView(clair.buffer).getUint32(0);
+        const ent = JSON.parse(new TextDecoder().decode(clair.slice(4, 4 + lg)));
+        const url = URL.createObjectURL(new Blob([clair.slice(4 + lg)], { type: ent.type || 'application/octet-stream' }));
+        const a = document.createElement('a'); a.href = url; a.download = ent.nom || e.nom; document.body.append(a); a.click(); a.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 60000);
+        b.textContent = 'Téléchargé';
+      } catch (err) { b.disabled = false; b.textContent = 'Télécharger'; add('error', err.message.includes('decrypt') || err.name === 'OperationError' ? 'Document illisible : rescanne le QR code de ton Mac.' : err.message); }
+    };
+    $('feed').append(d);
+    $('feed').scrollTop = $('feed').scrollHeight;
+  }
+
+  function setStatus(kind, text) { $('status').className = `status ${kind}`; $('statusText').textContent = text; }
+  function add(kind, text) {
+    const d = document.createElement('div');
+    d.className = `msg ${kind}`;
+    d.textContent = text;
+    $('feed').append(d);
+    while ($('feed').children.length > 120) $('feed').firstChild.remove();
+    $('feed').scrollTop = $('feed').scrollHeight;
+  }
+  function setRunning(on) {
+    running = on;
+    document.body.classList.toggle('running', on);
+    setStatus(on ? 'busy' : 'on', on ? 'Twiin agit…' : 'Mac connecté');
+  }
+
+  async function api(action, body, opts = {}) {
+    const r = await fetch(`/mobile/${action}`, { method: body === undefined ? 'GET' : 'POST', headers: { authorization: `Bearer ${jeton}`, ...(opts.headers || {}),
+      ...(opts.type ? { 'content-type': opts.type } : body !== undefined ? { 'content-type': 'application/json' } : {}) },
+      body: opts.raw ?? (body !== undefined ? JSON.stringify(body) : undefined) });
+    const d = await r.json().catch(() => ({}));
+    if (r.status === 401) { store.set('twiin.jeton', null); document.body.classList.remove('paired'); $('pairText').textContent = d.error; setStatus('off', 'Non appairé'); }
+    if (!r.ok) throw new Error(d.error || `Erreur ${r.status}`);
+    return d;
+  }
+
+  async function poll(id) {
+    const mine = ++polling;
+    while (running && sessionId === id && mine === polling) {
+      try {
+        const p = await api('poll', { sessionId: id, from });
+        if (sessionId !== id) return;
+        from = p.next;
+        for (const e of p.events) { if (e.kind === 'fichier') document_(e); else add(e.kind, e.text); if (e.desktop) faitEcran = true; }
+        if (p.frame) showFrame(p.frame.data || p.frame.url);
+        if (p.finished) {
+          if (p.closed) { sessionId = null; from = 0; }
+          setRunning(false);
+          if (navigator.vibrate) navigator.vibrate(60);
+          if (faitEcran && !enregistrement && !p.closed) proposer();
+          if (!p.closed) ecouter(id); // Twiin peut encore écrire ici (automatisation ou vidéo prête)
+          return;
+        }
+      } catch (e) {
+        add('error', e.message);
+        await new Promise((r) => setTimeout(r, 3000));
+        if (!jeton || !document.body.classList.contains('paired')) return;
+      }
+    }
+  }
+  // Entre deux demandes, on reste à l'écoute de la conversation : quand le Mac finit une automatisation ou une vidéo,
+  // Twiin y écrit, l'agent l'annonce, et le message s'affiche ici (avec une vibration).
+  async function ecouter(id) {
+    const mine = ++polling;
+    while (!running && sessionId === id && mine === polling && document.body.classList.contains('paired')) {
+      try {
+        const p = await api('poll', { sessionId: id, from });
+        if (sessionId !== id || running || mine !== polling) return;
+        from = p.next;
+        for (const e of p.events) { if (e.kind === 'fichier') document_(e); else if (e.kind !== 'step') add(e.kind, e.text); }
+        if (p.events.some((e) => e.kind === 'done') && navigator.vibrate) navigator.vibrate([40, 60, 40]);
+        if (p.closed) { sessionId = null; from = 0; return; }
+      } catch { await new Promise((r) => setTimeout(r, 8000)); }
+    }
+  }
+  function showFrame(src) {
+    if (src.startsWith('/')) { // image servie par H : on la demande avec le jeton
+      fetch(src, { headers: { authorization: `Bearer ${jeton}` } }).then((r) => (r.status === 200 ? r.blob() : null)).then((b) => b && setImg(URL.createObjectURL(b))).catch(() => {});
+    } else setImg(src);
+  }
+  function setImg(src) {
+    const img = $('frame');
+    const old = img.src;
+    img.onload = () => { img.classList.add('show'); $('empty').style.display = 'none'; if (old.startsWith('blob:')) URL.revokeObjectURL(old); };
+    img.src = src;
+  }
+
+  let dicte = null; // dernier texte dicté : ce que tu y corriges (un nom, un prénom) est retenu pour la prochaine fois
+  async function send(text) {
+    text = text.trim();
+    if (!text || running) return;
+    if (dicte) {
+      const avant = new Set(dicte.split(/[\s,.;:!?«»"]+/));
+      ajouterMots(text.split(/[\s,.;:!?«»"]+/).filter((w) => /^\p{Lu}[\p{L}'-]{2,}$/u.test(w) && !avant.has(w)));
+      dicte = null;
+    }
+    document.querySelectorAll('.save').forEach((b) => b.remove());
+    enregistrement = text === ENREGISTRER;
+    if (!enregistrement) faitEcran = false;
+    add('me', text);
+    $('input').value = ''; grow();
+    setRunning(true);
+    try {
+      const d = await api('send', { text, sessionId });
+      if (!d.continued) from = 0; // nouvelle session : on relit depuis le début
+      sessionId = d.sessionId;
+      poll(sessionId);
+    } catch (e) { add('error', e.message); setRunning(false); }
+  }
+
+  $('bar').addEventListener('submit', (e) => { e.preventDefault(); send($('input').value); });
+  $('input').addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send($('input').value); } });
+  const grow = () => { const t = $('input'); t.style.height = 'auto'; t.style.height = `${Math.min(t.scrollHeight, 120)}px`; };
+  $('input').addEventListener('input', grow);
+  document.querySelectorAll('.chip').forEach((c) => c.addEventListener('click', () => send(c.textContent)));
+  $('stop').addEventListener('click', async () => {
+    const id = sessionId;
+    sessionId = null; from = 0; setRunning(false); add('cancelled', 'Arrêté.');
+    if (id) api('cancel', { sessionId: id }).catch(() => {});
+  });
+
+  // Dictée : on enregistre, le relais transcrit (l'audio n'est pas gardé) ; le texte s'affiche pour être relu avant l'envoi.
+  let rec = null, chunks = [];
+  $('mic').addEventListener('click', async () => {
+    if (rec) { rec.stop(); return; }
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      chunks = [];
+      rec = new MediaRecorder(stream);
+      rec.ondataavailable = (e) => e.data.size && chunks.push(e.data);
+      rec.onstop = async () => {
+        stream.getTracks().forEach((t) => t.stop());
+        $('mic').classList.remove('rec');
+        const type = rec.mimeType || 'audio/webm';
+        rec = null;
+        const blob = new Blob(chunks, { type });
+        if (blob.size < 1500) return;
+        $('input').placeholder = 'Je t\'écoute… transcription';
+        try {
+          const d = await api('stt', null, { raw: blob, type, headers: { 'x-twiin-mots': encodeURIComponent(mots.join('|')) } });
+          if (d.text) { $('input').value = d.text; dicte = d.text; grow(); $('input').focus(); }
+          else add('error', 'Je n\'ai rien entendu, réessaie.');
+        } catch (e) { add('error', e.message); }
+        $('input').placeholder = 'Dis à Twiin quoi faire…';
+      };
+      rec.start();
+      $('mic').classList.add('rec');
+      if (navigator.vibrate) navigator.vibrate(20);
+    } catch { add('error', 'Micro indisponible : autorise-le dans les réglages du navigateur, ou écris ta demande.'); }
+  });
+
+  // Démarrage
+  if (!jeton) { setStatus('off', 'Non appairé'); return; }
+  document.body.classList.add('paired');
+  setStatus('', 'Connexion…');
+  api('ping').then((d) => {
+    const h = Math.max(0, Math.round((d.exp * 1000 - Date.now()) / 3600000));
+    setStatus('on', 'Mac connecté');
+    add('done', `Connecté à ton Mac pour encore ${h} h. Dis-moi quoi faire : j'agis sur l'écran, tu regardes ici.`);
+  }).catch(() => {});
+})();
+</script>
+<script src="/mobile/jumeaux.js"></script>
+</body>
+</html>

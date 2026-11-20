@@ -27,6 +27,7 @@ let frames = [];
 let ticks = 0;
 let startedAt = 0;
 let recording = false;
+let ajouterA = null; // enregistrement à compléter (tâche oubliée) : pris en compte au prochain démarrage seulement
 let sessionId = null;        // dossier de l'enregistrement côté serveur (images + journal d'actions)
 let sharedScreens = [];      // { n, label } de tous les écrans partagés pendant l'enregistrement
 let journalNext = 0, journalTimer = null;
@@ -63,11 +64,11 @@ function findIcons(text, max = 3) {
 const fmtDur = (x) => (x == null ? '—' : x >= 60 ? `${Math.floor(x / 60)} min ${String(Math.round(x % 60)).padStart(2, '0')} s` : `${Math.round(x)} s`);
 const iconImg = (e, cls = 'ticon') => `<img class="${cls}" src="icons/${e.file}" alt="" title="${escapeHtml(e.label)}">`;
 const iconsHtml = (text, max) => findIcons(text, max).map((e) => iconImg(e)).join('');
-// Bandeau « outils utilisés » : logo + nom, pour une liste d'étapes
+// Bandeau « outils utilisés » : le logo seul (le nom au survol et pour les lecteurs d'écran), pour une liste d'étapes
 function appsStrip(texts) {
   const seen = new Map();
   for (const t of texts) for (const e of findIcons(t, 5)) if (!seen.has(e.key)) seen.set(e.key, e);
-  return [...seen.values()].map((e) => `<span class="app-pill">${iconImg(e)}${escapeHtml(e.label)}</span>`).join('');
+  return [...seen.values()].map((e) => `<span class="app-pill logo-seul" title="${escapeHtml(e.label)}" role="img" aria-label="${escapeHtml(e.label)}">${iconImg(e)}</span>`).join('');
 }
 
 // --- Thème : clair par défaut, sombre au choix (mémorisé sur ce navigateur) -----------------------------------------
@@ -121,7 +122,10 @@ function makeCells(container) {
   };
 }
 const drawLogo = () => {}; // le logo est la vidéo des deux sphères (shell.js)
-const drawAnalysis = makeCells(document.getElementById('analysisCells'));
+// Attente de l'analyse : Iris et Ilo (les mêmes jumeaux que partout, rendus par jumeaux.js), qui parlent pendant qu'ils analysent
+const analysisTwins = document.getElementById('analysisCells');
+if (analysisTwins) analysisTwins.innerHTML = '<span class="tw-twins" aria-hidden="true"><i class="tw-orb iris"></i><i class="tw-orb ilo"></i></span>';
+const drawAnalysis = () => analysisTwins?.classList.toggle('parle', analysisMotion.mode === 'working');
 let analysisMotion = { mode: 'idle', since: 0 }; // working : la cellule s'étire ; done : elle se divise
 function animateCells(now) {
   drawLogo(0.42 + 0.1 * Math.sin(now / 1400));   // le logo « respire » : deux lobes collés
@@ -136,12 +140,15 @@ if (REDUCED_MOTION) { drawLogo(0.45); drawAnalysis(0.3); } else requestAnimation
 // --- Attente de l'analyse : étapes réelles, cochées au fil de l'eau (le serveur dit où il en est) -------------------
 const analysisEl = document.getElementById('analysis');
 const phasesEl = document.getElementById('phases');
-const PHASES = [
+const PHASES_BASE = [
   ['upload', 'Envoi des dernières images'],
-  ['ocr', 'Lecture du texte de l\'écran, sur ton Mac'],
+  ['ocr', 'Lecture du texte de l\'écran, sur ton ordinateur'],
   ['model', 'Découpage en étapes par le modèle'],
   ['parse', 'Mise en forme du résultat'],
 ];
+// avec la voix : une étape de plus, juste après l'envoi
+const PHASES_VOICE = [PHASES_BASE[0], ['transcription', 'Transcription de ta voix, sur ton Mac'], ...PHASES_BASE.slice(1)];
+let PHASES = PHASES_BASE;
 let phaseTimer = null, phaseStart = 0, phaseCurrent = null;
 function showPhase(phase) {
   if (phase !== phaseCurrent) { phaseCurrent = phase; phaseStart = Date.now(); }
@@ -191,7 +198,50 @@ function endAnalysisPanel(ok, message) {
 startBtn.addEventListener('click', startRecording);
 addBtn.addEventListener('click', () => addScreen().catch((e) => (statusEl.textContent = `Écran non ajouté : ${e.message}`)));
 stopBtn.addEventListener('click', stopRecording);
+const pauseBtn = document.getElementById('pauseBtn');
+pauseBtn.addEventListener('click', async () => {
+  try {
+    const r = await fetch('/api/actions/pause', { method: 'POST' });
+    const d = await r.json();
+    if (d.error) throw new Error(d.error);
+    pauseBtn.textContent = d.paused ? 'Reprendre' : 'Pause';
+    // pendant la pause, l'interface n'observe plus l'écran : plus de captures côté navigateur non plus
+    if (recording) {
+      if (d.paused) clearInterval(intervalId);
+      else intervalId = setInterval(tick, TICK_MS);
+    }
+    statusEl.textContent = d.paused ? 'Enregistrement en pause : rien n\'est noté pendant la pause.' : 'Enregistrement repris.';
+  } catch (e) {
+    statusEl.textContent = `Pause impossible : ${e.message}`;
+  }
+});
 reBtn.addEventListener('click', () => analyzeRequest('/api/reanalyze', null, 'Nouvelle analyse du dernier enregistrement…'));
+
+// Changer de section (Audit, Recommandation…) pendant un enregistrement : on demande d'abord. Si l'employé
+// confirme, l'enregistrement est arrêté proprement (et analysé) ; sinon on reste sur la page d'enregistrement.
+window.addEventListener('hashchange', async () => {
+  if (!recording || location.hash === '#enregistrer') return;
+  if (!confirm('Un enregistrement est en cours. Changer de section l\'arrête. Continuer ?')) {
+    history.replaceState(null, '', '#enregistrer');
+    return;
+  }
+  await stopRecording();
+}, true);
+
+// Quitter la page pendant un enregistrement : on prévient, sinon l'enregistrement se perd.
+window.addEventListener('beforeunload', (e) => { if (recording) { e.preventDefault(); e.returnValue = ''; } });
+
+// Au chargement : si un journal d'actions tourne encore sur le serveur (page rechargée pendant un enregistrement),
+// on l'arrête. Sans l'interface, il continuerait à noter les clics en arrière-plan.
+(async () => {
+  try {
+    const s = await (await fetch('/api/actions/status')).json();
+    if (s.running && !recording) {
+      await fetch('/api/actions/stop', { method: 'POST' });
+      statusEl.textContent = 'Un enregistrement resté ouvert a été arrêté. Ses données sont gardées.';
+    }
+  } catch { /* serveur indisponible : rien à faire */ }
+})();
 
 async function addScreen() {
   statusEl.textContent = nextScreen > 1 ? 'Choisis l\'écran à ajouter…' : 'Choisis l\'écran à enregistrer…';
@@ -222,6 +272,125 @@ function renderScreens() {
     .join('');
 }
 
+// --- Capture vocale : interrupteur (désactivé par défaut, choix mémorisé), micro du navigateur, envoi à la fin ------
+const voiceSwitch = document.getElementById('voiceSwitch');
+try { voiceSwitch.checked = localStorage.getItem('twiin.voice') === '1'; } catch { /* stockage indisponible : désactivé */ }
+voiceSwitch.addEventListener('change', () => {
+  try { localStorage.setItem('twiin.voice', voiceSwitch.checked ? '1' : '0'); } catch { /* rien */ }
+});
+// La voix ne peut pas marcher partout (faster-whisper à installer, modèle à télécharger) : le serveur le dit, la page grise
+// l'interrupteur avec la raison, au lieu de laisser l'employé croire que sa voix sera prise en compte.
+let voiceUnavailable = false;
+const voiceNoteEl = document.getElementById('voiceNote');
+const installBox = document.getElementById('voiceInstallBox');
+const installBtn = document.getElementById('voiceInstallBtn');
+const installInfo = document.getElementById('voiceInstallInfo');
+let voiceStatus = null, installMsg = '', installPoll = null;
+// La transcription est 100 % locale (Whisper sur ce Mac). Si elle n'est pas installée, le serveur l'installe seul au
+// lancement : la page montre l'avancement, et propose « Réessayer » seulement si l'installation a échoué.
+function refreshVoiceNote() {
+  const st = voiceStatus;
+  let text = '';
+  if (voiceUnavailable) text = `Voix indisponible : ${voiceUnavailable}.`;
+  else if (st && voiceSwitch.checked) text = 'Ta voix est transcrite sur ton Mac : l\'audio n\'en sort pas.';
+  voiceNoteEl.textContent = text;
+  voiceNoteEl.hidden = !text;
+  if (!st) return;
+  const running = st.install?.state === 'running';
+  installBox.hidden = st.ready;                                   // rien à montrer quand tout est installé
+  installBtn.hidden = st.ready || running || !st.canChange;       // « Réessayer » : seulement après un échec (ou si l'installation auto est coupée)
+  installInfo.textContent = installMsg;
+  installInfo.hidden = !installMsg;
+}
+function applyVoiceStatus(st) {
+  voiceStatus = st;
+  voiceUnavailable = st.ready ? false : (st.reason || 'non disponible sur cet ordinateur'); // texte de la raison (faux = disponible)
+  if (voiceUnavailable && !recording) voiceSwitch.checked = false;  // le choix mémorisé n'est pas modifié ; jamais en plein enregistrement
+  if (!recording) voiceSwitch.disabled = !!voiceUnavailable;
+  const i = st.install;
+  installMsg = i?.state === 'running' ? installProgress(i) : i?.state === 'error' ? `${i.message}.` : i?.state === 'done' ? i.message : '';
+  if (i?.state === 'running' && !installPoll) installPoll = setInterval(pollInstall, 1500);
+  refreshVoiceNote();
+}
+function installProgress(i) {
+  if (i.step === 'model' && i.modelBytes != null) return `Téléchargement du modèle : ${Math.round(i.modelBytes / 1e6)} / ~${i.modelTotalMb} Mo…`;
+  return i.message || 'Installation en cours…';
+}
+function loadVoiceStatus() {
+  return fetch('/api/audio/status').then((r) => r.json()).then(applyVoiceStatus).catch(() => { /* serveur injoignable : on ne bloque rien */ });
+}
+async function pollInstall() {
+  try {
+    const i = await (await fetch('/api/audio/install/status')).json();
+    if (i.state === 'running') { installMsg = installProgress(i); refreshVoiceNote(); return; }
+  } catch { return; } // coupure passagère : on réessaie au prochain tour
+  clearInterval(installPoll); installPoll = null;
+  await loadVoiceStatus(); // état final (installée / erreur expliquée), l'interrupteur se réactive si tout est prêt
+}
+installBtn.addEventListener('click', async () => {
+  installBtn.disabled = true;
+  installMsg = 'Installation en cours…'; refreshVoiceNote();
+  try {
+    const r = await fetch('/api/audio/install', { method: 'POST' });
+    const i = await r.json();
+    if (!r.ok) throw new Error(i.error || 'refusé');
+    if (i.state === 'running' && !installPoll) installPoll = setInterval(pollInstall, 1500);
+    else if (i.state !== 'running') await loadVoiceStatus();
+  } catch (e) {
+    installMsg = `L'installation n'a pas pu démarrer (${e.message}).`;
+  }
+  refreshVoiceNote();
+});
+loadVoiceStatus();
+voiceSwitch.addEventListener('change', refreshVoiceNote);
+let voice = null; // { rec, stream, chunks, startedAt, stopped: Promise }
+let voiceWarning = ''; // problème de micro / d'envoi : reste affiché (la ligne d'état est réécrite chaque seconde)
+
+// Demande le micro (avant de démarrer les horloges, car la fenêtre d'autorisation peut prendre du temps).
+async function openMic() {
+  if (!voiceSwitch.checked) return null;
+  try {
+    return await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } });
+  } catch (e) {
+    voiceWarning = `Micro non disponible (${e.name || e.message}) : enregistrement sans la voix.`;
+    console.warn(voiceWarning);
+    statusEl.textContent = voiceWarning;
+    return null;
+  }
+}
+
+function startVoice(stream) {
+  if (!stream) return;
+  const mime = ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4'].find((m) => MediaRecorder.isTypeSupported(m));
+  const rec = new MediaRecorder(stream, mime ? { mimeType: mime } : undefined);
+  const v = { rec, stream, chunks: [], startedAt: 0, stopped: null };
+  rec.addEventListener('dataavailable', (e) => { if (e.data.size) v.chunks.push(e.data); });
+  rec.addEventListener('start', () => { v.startedAt = Date.now(); }); // heure réelle du premier échantillon, même horloge que les images
+  v.stopped = new Promise((resolve) => rec.addEventListener('stop', resolve));
+  rec.start(1000);
+  voice = v;
+}
+
+// Arrête le micro et envoie l'audio au serveur. Ne bloque jamais l'analyse : renvoie true si l'audio est bien parti.
+async function stopVoice(session) {
+  const v = voice;
+  voice = null;
+  if (!v) return false;
+  try {
+    if (v.rec.state !== 'inactive') v.rec.stop();
+    await v.stopped;
+    v.stream.getTracks().forEach((t) => t.stop());
+    if (!session || !v.chunks.length || !v.startedAt) return false;
+    const blob = new Blob(v.chunks, { type: v.rec.mimeType || 'audio/webm' });
+    const r = await fetch(`/api/audio?session=${encodeURIComponent(session)}&startedAt=${v.startedAt}`,
+      { method: 'POST', headers: { 'Content-Type': blob.type }, body: blob });
+    return r.ok;
+  } catch (e) {
+    console.warn('Audio non envoyé :', e);
+    return false;
+  }
+}
+
 async function startRecording() {
   frames = [];
   framesEl.innerHTML = '';
@@ -235,6 +404,9 @@ async function startRecording() {
     statusEl.textContent = '';
     return;
   }
+  voiceWarning = '';
+  const micStream = await openMic();
+  voiceSwitch.disabled = true;
   recording = true;
   document.body.classList.add('recording');
   setStep(2);
@@ -244,10 +416,13 @@ async function startRecording() {
   ticks = 0;
   startedAt = Date.now();
   uploads = []; uploadErrors = 0;
+  startVoice(micStream);
   await startJournal(); // crée le dossier de l'enregistrement côté serveur avant la première image
   startBtn.disabled = true;
   addBtn.disabled = false;
   stopBtn.disabled = false;
+  pauseBtn.disabled = false;
+  pauseBtn.textContent = 'Pause';
 
   tick(); // premières images tout de suite
   intervalId = setInterval(tick, TICK_MS);
@@ -259,8 +434,9 @@ async function startJournal() {
   journalNext = 0;
   try {
     const r = await fetch('/api/actions/start', { method: 'POST', headers: { 'Content-Type': 'application/json' },
-                                                 body: JSON.stringify({ startedAt }) });
+                                                 body: JSON.stringify({ startedAt, ajouterA }) });
     sessionId = (await r.json()).session || null;
+    ajouterA = null; // ne vaut que pour cet enregistrement
   } catch { sessionId = null; }
   journalTimer = setInterval(pollJournal, 1000);
 }
@@ -282,7 +458,7 @@ async function pollJournal() {
       const t = `${Math.max(0, e.ts - startedAt / 1000).toFixed(1)} s`;
       const where = [sharedNumber(e.display), e.app].filter(Boolean).join(' · ');
       if (e.type === 'start') text = e.clicks_and_keys ? 'Journal démarré (clics, saisies, raccourcis, apps).'
-        : '⚠️ Clics et clavier non autorisés (Réglages Système → Surveillance de l\'entrée) : seuls les changements d\'app sont notés.';
+        : 'Clics et clavier non autorisés (Réglages Système → Surveillance de l\'entrée) : seuls les changements d\'app sont notés.';
       else if (e.type === 'app') text = `${where} au premier plan${e.window ? ` — ${e.window}` : ''}`;
       else if (e.type === 'click') text = `${where} · clic sur ${e.element || 'un élément'}`;
       else if (e.type === 'typing') text = `${where} · saisie (${e.keys ?? '?'} frappes) dans ${e.element || 'le champ actif'}`;
@@ -370,7 +546,7 @@ function tick() {
   ticks++;
   const now = Date.now();
   for (const scr of screens) observe(scr, now);
-  statusEl.textContent = `● Enregistrement en cours · ${fmtDur((Date.now() - startedAt) / 1000)}${screens.length > 1 ? ` · ${screens.length} écrans` : ''}`;
+  statusEl.textContent = `● Enregistrement en cours · ${fmtDur((Date.now() - startedAt) / 1000)}${screens.length > 1 ? ` · ${screens.length} écrans` : ''}${voiceWarning ? ` · ${voiceWarning}` : ''}`;
 }
 
 function keepFrame(scr, thumb, now) {
@@ -413,6 +589,9 @@ async function stopRecording() {
   stopBtn.disabled = true;
   addBtn.disabled = true;
   statusEl.textContent = '';
+  const hadVoice = !!voice;
+  const sid = sessionId; // le micro s'arrête tout de suite (l'audio finit au clic), l'envoi se fait en parallèle
+  const voiceSent = stopVoice(sid);
   await stopJournal();               // lit les dernières actions (et force les dernières images)
   await new Promise((r) => setTimeout(r, 900));
   for (const scr of screens) if (scr.video?.videoWidth) keepFrame(scr, thumbnail(scr.video), Date.now()); // état final
@@ -426,28 +605,95 @@ async function stopRecording() {
   startBtn.disabled = false;
   addBtn.disabled = true;
   stopBtn.disabled = true;
+  voiceSwitch.disabled = !!voiceUnavailable;
+  pauseBtn.disabled = true;
+  pauseBtn.textContent = 'Pause';
 
   setPrimary(startBtn);
   if (!frames.length) {
+    await voiceSent;
     statusEl.textContent = 'Aucune image gardée.';
     return;
   }
 
   statusEl.textContent = '';
-  startAnalysisPanel('upload');
+  PHASES = hadVoice ? PHASES_VOICE : PHASES_BASE;
 
   if (sessionId) {
-    await Promise.allSettled(uploads);
-    if (uploadErrors) statusEl.textContent = `⚠️ ${uploadErrors} image(s) non enregistrée(s) côté serveur. Analyse quand même…`;
-    await analyzeRequest('/api/generate-workflows', { session: sessionId, startedAt, screens: sharedScreens }, null, nScreens);
+    await Promise.allSettled([...uploads, voiceSent]);
+    if (hadVoice && !(await voiceSent)) {
+      voiceWarning = 'La voix n\'a pas pu être enregistrée côté serveur (enregistrement trop court ?) : analyse sans elle.';
+      console.warn(voiceWarning);
+      statusEl.textContent = voiceWarning;
+    }
+    if (uploadErrors) statusEl.textContent = `${uploadErrors} image(s) non enregistrée(s) sur l'ordinateur.`;
+    // Relecture AVANT envoi : images déjà masquées, l'employé retire ce qu'il ne veut pas envoyer (rien n'est parti)
+    const choix = await relire(sessionId);
+    if (!choix) return; // tout supprimé : rien n'a été envoyé
+    startAnalysisPanel('upload');
+    await analyzeRequest('/api/generate-workflows', { session: sessionId, startedAt, screens: sharedScreens, textOnly: choix.textOnly }, null, nScreens);
   } else {
+    if (hadVoice) { voiceWarning = 'La voix n\'a pas pu être enregistrée (pas de dossier côté serveur) : analyse sans elle.'; await voiceSent; }
+    startAnalysisPanel('upload');
     await analyzeRequest('/api/generate-workflows', { frames, startedAt, screens: sharedScreens }, null, nScreens);
   }
+}
+
+// ── Relecture avant envoi ─────────────────────────────────────────────────────────────────────────────────────────
+// Les données sensibles repérées à l'écran (e-mails, téléphones, IBAN, clés…) sont déjà masquées sur les images, en local.
+// L'employé voit chaque image et retire celles qu'il ne veut pas envoyer ; il peut aussi n'envoyer que le texte.
+// Renvoie { textOnly } pour analyser, ou null si tout a été supprimé.
+function relire(session) {
+  return new Promise(async (resolve) => {
+    const box = document.createElement('section');
+    box.className = 'panel review';
+    box.setAttribute('aria-live', 'polite');
+    box.innerHTML = '<div class="rv-wait"><span class="spin"></span>Twiin masque les informations sensibles, sur ton ordinateur…</div>';
+    document.getElementById('analysis').before(box);
+    box.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    let d;
+    try { d = await (await fetch(`/api/session/${encodeURIComponent(session)}/review`)).json(); } catch (e) { d = { error: e.message }; }
+    if (d.error) { box.remove(); statusEl.textContent = d.error; return resolve({ textOnly: false }); }
+    const remove = new Set();
+    const types = Object.entries(d.masque?.types || {}).map(([k, n]) => `${n} ${k}`).join(', ');
+    const draw = () => {
+      const left = d.frames.length - remove.size;
+      box.innerHTML = `
+        <h3>Vérifie tes images avant l'analyse</h3>
+        <p class="rv-lead">Rien n'est encore parti de ton ordinateur. ${d.masque?.zones
+          ? `<b>${d.masque.zones} information${d.masque.zones > 1 ? 's' : ''} sensible${d.masque.zones > 1 ? 's' : ''} masquée${d.masque.zones > 1 ? 's' : ''}</b> automatiquement (${escapeHtml(types)}).`
+          : 'Aucune information sensible repérée automatiquement.'} Clique sur une image pour la retirer.</p>
+        <div class="rv-grid">${d.frames.map((f) => `<button type="button" class="rv-item" data-i="${f.index}" aria-pressed="${remove.has(f.index)}"
+            title="${remove.has(f.index) ? 'Remettre cette image' : 'Retirer cette image'}"><img src="${f.src}" alt="Image ${f.index + 1}">
+            <span class="rv-t">${fmtDur(f.seconds || 0)}</span><span class="rv-x">${remove.has(f.index) ? 'Retirée' : '×'}</span></button>`).join('')}</div>
+        <label class="check rv-text"><input type="checkbox" id="rvText" ${box.dataset.text === '1' ? 'checked' : ''}> Envoyer seulement le texte lu (aucune image ne quitte l'ordinateur, analyse un peu moins précise)</label>
+        <div class="controls"><button type="button" class="primary" id="rvGo" ${!left && box.dataset.text !== '1' ? 'disabled' : ''}>Analyser${box.dataset.text === '1' ? ' le texte' : ` ${left} image${left > 1 ? 's' : ''}`}</button>
+          <button type="button" class="quiet danger" id="rvDel">Tout supprimer</button></div>`;
+      box.querySelectorAll('.rv-item').forEach((b) => b.onclick = () => { const i = Number(b.dataset.i); remove.has(i) ? remove.delete(i) : remove.add(i); draw(); });
+      box.querySelector('#rvText').onchange = (e) => { box.dataset.text = e.target.checked ? '1' : ''; draw(); };
+      setPrimary(box.querySelector('#rvGo'));
+      box.querySelector('#rvGo').onclick = async () => {
+        if (remove.size) await fetch(`/api/session/${encodeURIComponent(session)}/review`, { method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ remove: [...remove] }) });
+        box.remove();
+        resolve({ textOnly: box.dataset.text === '1' });
+      };
+      box.querySelector('#rvDel').onclick = async () => {
+        if (!confirm('Supprimer cet enregistrement ? Ses images et son journal sont effacés de ton ordinateur, rien n\'est envoyé.')) return;
+        await fetch(`/api/session/${encodeURIComponent(session)}/review`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ all: true }) });
+        box.remove();
+        statusEl.textContent = 'Enregistrement supprimé. Rien n\'a été envoyé.';
+        resolve(null);
+      };
+    };
+    draw();
+  });
 }
 
 async function analyzeRequest(url, body, message, nScreens) {
   if (message) statusEl.textContent = message;
   reBtn.disabled = true;
+  if (url.includes('reanalyze')) PHASES = PHASES_BASE;
   if (analysisEl.hidden || phaseCurrent === null) startAnalysisPanel(url.includes('reanalyze') ? 'ocr' : 'upload');
   try {
     const res = await fetch(url, {
@@ -457,11 +703,38 @@ async function analyzeRequest(url, body, message, nScreens) {
     });
     const data = await res.json();
     if (data.error) throw new Error(data.error);
+    if (data._discovery) {
+      // Les étapes et conseils restent cachés tant que l'employé n'a pas confirmé que Twiin a bien compris.
+      window.__pendingWorkflows = data.workflows || [];
+      resultsEl.innerHTML = '';
+      endAnalysisPanel(true, 'Twiin étudie ta tâche en détail pour bien la comprendre (quelques minutes). Il te posera une question juste après.');
+      statusEl.textContent = 'Twiin étudie ta tâche…';
+      return;
+    }
     renderWorkflows(data.workflows || [], { autoReco: true });
+    if (data.ajout) {
+      // bandeau bien visible : les étapes ont été ajoutées à une autre tâche, avec un lien pour l'ouvrir
+      const a = data.ajout;
+      const bandeau = document.createElement('div');
+      bandeau.className = 'ajout-bandeau';
+      bandeau.style.cssText = 'margin:0 0 18px;padding:14px 18px;border-radius:14px;background:var(--accent-soft,rgba(120,160,255,.15));border:1px solid var(--accent,#7aa2ff);font-size:15px;line-height:1.4';
+      bandeau.innerHTML = `<b>Étapes ajoutées à « ${escapeHtml(a.titre)} »</b><br>` +
+        `${a.etapes_ajoutees} étape(s) ajoutée(s) à la fin, soit ${a.etapes_total + a.etapes_ajoutees} au total. ` +
+        `<a href="/?session=${encodeURIComponent(a.cible)}#enregistrer" style="font-weight:600">Ouvrir la tâche complète →</a> · ` +
+        `<a href="/?session=${encodeURIComponent(a.cible)}&ajout=1#enregistrer" style="font-weight:600">Ajouter un enregistrement à cette tâche</a>`;
+      resultsEl.prepend(bandeau);
+    } else if (data.workflows?.[0]?.session) {
+      // enregistrement normal : on peut compléter cette tâche directement, sans passer par « Mes enregistrements »
+      const sid = data.workflows[0].session;
+      resultsEl.prepend(bandeauAjout(sid));
+    }
     const m = data._meta || {};
     const n = data.workflows?.length ?? 0;
-    endAnalysisPanel(true, `${n} tâche${n > 1 ? 's' : ''} trouvée${n > 1 ? 's' : ''}. Relis les étapes ci-dessous.`);
-    statusEl.textContent = ''; // le détail technique (modèle, jetons, coût) est dans le Back
+    // la voix a été perdue ou n'a rien donné : on le dit clairement, sinon l'employé croirait qu'elle a servi
+    if (m.voice?.status === 'failed') voiceWarning = `La voix n'a pas pu être transcrite (${m.voice.reason || 'erreur de transcription'}) : l'analyse s'est faite sans elle.`;
+    else if (m.voice?.status === 'empty') voiceWarning = 'Aucune parole détectée dans l\'enregistrement : l\'analyse s\'est faite sans la voix.';
+    endAnalysisPanel(true, `${n} tâche${n > 1 ? 's' : ''} trouvée${n > 1 ? 's' : ''}. Relis les étapes ci-dessous.${voiceWarning ? ' ' + voiceWarning : ''}`);
+    statusEl.textContent = voiceWarning; // seulement l'avertissement micro/voix ; le détail technique (modèle, jetons, coût) est dans le Back
   } catch (err) {
     statusEl.textContent = `Erreur : ${err.message}`;
     endAnalysisPanel(false, `${err.message} Tu peux cliquer sur « Réanalyser le dernier enregistrement ».`);
@@ -471,7 +744,7 @@ async function analyzeRequest(url, body, message, nScreens) {
   }
 }
 
-// --- Workflow modifiable → « ✨ Améliorer » → « ▶ Rejouer sur mon Mac » (suivi en direct) ---------------------
+// --- Workflow modifiable → « ✨ Améliorer » → « ▶ Rejouer sur mon ordinateur » (suivi en direct) ---------------------
 // Barre du parcours : étapes faites (vert) et étape en cours (bleu)
 // Une page par étape : setStep(n) marque le parcours ET affiche la page de l'étape n (adresse /#audit, /#enregistrer…).
 // « Tester et casser » est sorti du parcours employé (il vit dans le Back, travail de Lucas) : 3 étapes.
@@ -520,17 +793,33 @@ function routeFromHash() {
   if (k >= 0) setStep(k + 1, { scroll: false });
 }
 window.addEventListener('hashchange', routeFromHash);
-{ // au chargement : la page demandée dans l'adresse (/#tester…), sinon l'audit
+{ // au chargement : la page demandée dans l'adresse (/#enregistrer…), sinon l'audit (page d'accueil)
   const k = hashView();
   setStep(k >= 0 ? k + 1 : 1, { scroll: false });
 }
+
+// Appelé par discovery.js quand l'employé confirme « Oui, c'est bien ça ».
+// Appelé par discovery.js après le « oui » : on passe directement à l'étape Reco et on lance la recommandation.
+window.twiinGoReco = () => {
+  setStep(3); // setStep lance la recommandation automatique de chaque tâche affichée
+};
+window.twiinShowResults = async () => {
+  let wfs = window.__pendingWorkflows;
+  if (!wfs) { try { wfs = (await (await fetch('/api/candidates')).json()).workflows || []; } catch { wfs = []; } }
+  window.__pendingWorkflows = null;
+  renderWorkflows(wfs, { autoReco: true });
+  statusEl.textContent = 'Voici les étapes comprises par Twiin.';
+};
 
 function renderWorkflows(workflows, { example = false, silent = false, autoReco = false } = {}) {
   // silent : la dernière tâche, rechargée à l'ouverture de la page, sans changer d'écran
   if (workflows.length && !silent) setStep(Math.max(2, Number(document.body.dataset.view) || 2)); // ouvert depuis la Reco : on y reste
   resultsEl.innerHTML = '';
+  resultsEl.classList.remove('steps-stale');
   document.getElementById('example').hidden = true;
-  workflows.forEach((wf) => resultsEl.appendChild(workflowCard(wf, example)));
+  // silent = tâche d'un enregistrement précédent (rechargée à l'ouverture) : ses étapes sont repliées par défaut
+  workflows.forEach((wf) => resultsEl.appendChild(workflowCard(wf, example, silent)));
+  if (!example) renderAppPicks();
   document.getElementById('noTask').hidden = resultsEl.children.length > 0 || Number(document.body.dataset.view) !== LAST_VIEW;
   if (!silent) setPrimary(resultsEl.querySelector('.btn-go-reco'));
   // Reco automatique : préparée dès la fin de l'analyse, prête quand l'employé ouvre la page Recommandation
@@ -538,17 +827,91 @@ function renderWorkflows(workflows, { example = false, silent = false, autoReco 
   if (Number(document.body.dataset.view) === LAST_VIEW) resultsEl.querySelectorAll('.workflow').forEach((c) => c._autoReco?.());
 }
 
-function workflowCard(wf, example = false) {
+// Applis vues pendant l'enregistrement : les bulles d'applis de la tâche servent aussi de cases. L'employé clique sur une bulle pour
+// ignorer une appli ouverte par erreur (re-clic : elle revient). Twiin préremplit (applis très brèves, sans saisie ni
+// copier-coller) ; le choix est pris en compte par les chiffres, la recommandation, et par les étapes à la prochaine analyse.
+let appPicksToken = 0;
+let choiceVersion = 0; // +1 à chaque changement de bulle : une réponse partie avant le changement n'est plus affichée
+function renderAppPicks() {
+  const token = ++appPicksToken;
+  resultsEl.querySelectorAll('.workflow:not(.is-example)').forEach((card) => { card._picksReady = renderCardPicks(card, token); });
+}
+async function renderCardPicks(card, token) {
+  const session = card.dataset.session;
+  const q = session ? `?session=${encodeURIComponent(session)}` : '';
+  let data;
+  try { data = await (await fetch(`/api/apps${q}`)).json(); } catch { card._exclSig = null; return; } // choix inconnu : pas de cache de recommandation
+  if (token !== appPicksToken) return;
+  resultsEl.classList.toggle('steps-stale', !!data.stale);
+  card._exclSig = [...(data.excluded || [])].sort().join('|'); // fait partie de la clé de cache de la recommandation
+  const strip = card.querySelector('.apps-strip');
+  if (!strip || !data.apps || data.apps.length < 2) return; // une seule appli : rien à choisir, la bande d'origine reste
+  const off = new Set(data.excluded);
+  const fmt = (x) => (x >= 60 ? `${Math.floor(x / 60)} min ${x % 60} s` : `${x} s`);
+  strip.dataset.picks = '1'; // refreshIcons ne réécrit plus cette bande
+  strip.innerHTML = '';
+  const hint = document.createElement('span');
+  hint.className = 'apps-hint';
+  hint.textContent = 'Clique sur une appli pour l\'ignorer';
+  data.apps.forEach((a) => {
+    const pill = document.createElement('span');
+    pill.className = 'app-pill pick';
+    pill.setAttribute('role', 'checkbox');
+    pill.tabIndex = 0;
+    // le logo suffit : le nom de l'appli seulement quand on n'a pas son logo (il reste au survol et pour les lecteurs d'écran)
+    pill.innerHTML = `${iconsHtml(a.app, 1) || escapeHtml(a.app)}<span class="t">${fmt(a.time_s)}</span>`;
+    pill.setAttribute('aria-label', a.app);
+    const paint = () => {
+      pill.setAttribute('aria-checked', String(!off.has(a.app)));
+      pill.classList.toggle('off', off.has(a.app));
+      pill.title = off.has(a.app) ? `Ignorée${a.reason ? ` (${a.reason})` : ''}` : 'Fait partie de la tâche';
+    };
+    const toggle = async () => {
+      if (off.has(a.app)) off.delete(a.app); else off.add(a.app);
+      paint();
+      try {
+        const r = await fetch('/api/apps', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ excluded: [...off], session }) });
+        if (!r.ok) throw new Error((await r.json()).error || 'erreur');
+        // La recommandation affichée ne tient plus compte du choix : elle est recalculée. Les étapes, elles, attendent une
+        // nouvelle analyse (classe steps-stale, qui survit aux rechargements de boutons).
+        choiceVersion++;
+        resultsEl.classList.add('steps-stale');
+        resultsEl.querySelectorAll('.workflow').forEach((c) => {
+          if (c.dataset.session !== session) return;
+          c._exclSig = [...off].sort().join('|');
+          c._resetReco?.();
+        });
+        hint.textContent = 'Enregistré : chiffres et recommandation recalculés. Pour les étapes : « Réanalyser ».';
+      } catch (err) {
+        if (off.has(a.app)) off.delete(a.app); else off.add(a.app); // le choix n'est pas passé : on revient en arrière
+        paint();
+        hint.textContent = `Choix non enregistré : ${err.message}`;
+      }
+    };
+    pill.addEventListener('click', toggle);
+    pill.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggle(); } });
+    paint();
+    strip.appendChild(pill);
+  });
+  strip.appendChild(hint);
+}
+
+function workflowCard(wf, example = false, collapsed = false) {
   const card = document.createElement('div');
-  card.className = 'workflow';
+  card.className = example ? 'workflow is-example' : 'workflow';
+  card.dataset.session = wf.session || ''; // enregistrement de CETTE tâche (applis à choisir, mesures)
+  card._picksReady = Promise.resolve(); // la recommandation attend que le choix d'applis soit connu (voir renderAppPicks)
+  card._exclSig = ''; // applis ignorées en une clé (cache de la recommandation) ; null = inconnu
+  // tâche ouverte depuis « Mes enregistrements » : ses modifications sont enregistrées dans son enregistrement
+  if (wf._idx !== undefined && wf.session) { card.dataset.sid = wf.session; card.dataset.idx = String(wf._idx); }
   let original = { name: wf.name, summary: wf.summary, steps: [...(wf.steps || [])] };
   const nSteps = (wf.steps || []).length;
   card.innerHTML = `
-    <input class="wf-name" value="${escapeHtml(wf.name || 'Workflow')}" title="Nom de la tâche (modifiable)">
+    <input class="wf-name" data-court value="${escapeHtml(wf.name || 'Workflow')}" title="Nom de la tâche (modifiable)">
     <div class="apps-strip"></div>
     <p class="wf-summary" hidden>${escapeHtml(wf.summary || '')}</p>
     <div class="part-relire">
-      <div class="card-step">${nSteps} étapes · corrige si besoin</div>
+      <div class="card-step steps-toggle" role="button" tabindex="0" style="cursor:pointer"></div>
       <ol class="steps"></ol>
       <div class="wf-actions relire-actions"><button class="icon-btn add-step">+ Ajouter une étape</button>
         <button class="btn-go-reco" type="button">Voir la recommandation →</button></div>
@@ -556,10 +919,10 @@ function workflowCard(wf, example = false) {
 
     <section class="card-section part-test">
       <div class="card-step big"><span class="num-inline">3</span> Tester et casser</div>
-      <p class="card-help">Holo refait la tâche sur ton Mac pour vérifier que Twiin l'a bien comprise. Bientôt : plusieurs variantes
+      <p class="card-help">Holo refait la tâche sur ton ordinateur pour vérifier que Twiin l'a bien comprise. Bientôt : plusieurs variantes
         testées sur une copie de tes fichiers, et Twiin garde celle qui passe.</p>
       <div class="wf-actions">
-        <button class="btn-replay" title="Holo refait la tâche sur ton Mac pour vérifier que Twiin l'a bien comprise">Tester la tâche avec Holo</button>
+        <button class="btn-replay" title="Holo refait la tâche sur ton ordinateur pour vérifier que Twiin l'a bien comprise">Tester la tâche avec Holo</button>
         <button class="btn-improve" title="Rend les étapes plus précises pour Holo, sans changer la tâche">Préciser les étapes pour Holo</button>
         <button class="btn-original" hidden>Revenir aux étapes d'origine</button>
         <button class="btn-skip-test" title="Passer directement à la recommandation">Passer le test</button>
@@ -573,6 +936,16 @@ function workflowCard(wf, example = false) {
       <div class="wf-actions"><button class="btn-reco" hidden>Réessayer</button></div>
     </section>`;
   const stepsEl = card.querySelector('.steps');
+  // Menu déroulant : cliquer sur le titre replie ou déplie la liste des étapes (repliée pour une tâche précédente)
+  const toggleEl = card.querySelector('.steps-toggle');
+  const setStepsOpen = (open) => {
+    stepsEl.hidden = !open;
+    toggleEl.setAttribute('aria-expanded', String(open));
+    toggleEl.textContent = `${open ? '▾' : '▸'} ${nSteps} étapes · corrige si besoin`;
+  };
+  toggleEl.addEventListener('click', () => setStepsOpen(stepsEl.hidden));
+  toggleEl.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setStepsOpen(stepsEl.hidden); } });
+  setStepsOpen(!collapsed);
   const stripEl = card.querySelector('.apps-strip');
   // Logo de l'outil de chaque étape. Une étape qui ne cite aucun outil reprend celui de l'étape d'avant (logo pâle).
   const refreshIcons = () => {
@@ -587,7 +960,7 @@ function workflowCard(wf, example = false) {
       else if (last) { slot.innerHTML = iconImg(last); slot.classList.add('inherited'); }
       else slot.innerHTML = '';
     });
-    stripEl.innerHTML = appsStrip(texts);
+    if (!stripEl.dataset.picks) stripEl.innerHTML = appsStrip(texts); // bulles-cases : gérées par renderAppPicks
   };
   const setSteps = (steps) => {
     stepsEl.innerHTML = '';
@@ -622,6 +995,22 @@ function workflowCard(wf, example = false) {
     steps: [...stepsEl.querySelectorAll('textarea')].map((t) => t.value.trim()).filter(Boolean),
   });
   setSteps(original.steps);
+  // sauvegarde automatique (après une courte pause de frappe) quand la tâche vient d'un enregistrement précédent
+  if (card.dataset.sid) {
+    let minuteur = null;
+    const enregistrer = async () => {
+      const w = current();
+      try {
+        const r = await fetch(`/api/sessions/${encodeURIComponent(card.dataset.sid)}/analysis/workflows/${card.dataset.idx}`,
+          { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: w.name, summary: w.summary, steps: w.steps }) });
+        if (!r.ok) throw new Error((await r.json()).error || 'erreur');
+        statusEl.textContent = 'Modifications enregistrées dans cet enregistrement.';
+      } catch (e) {
+        statusEl.textContent = `Modifications non enregistrées : ${e.message}`;
+      }
+    };
+    card.addEventListener('input', () => { clearTimeout(minuteur); minuteur = setTimeout(enregistrer, 800); });
+  }
   card.querySelector('.add-step').onclick = () => addStep('').focus();
 
   // ✨ Améliorer : fiabilité pour Holo + process optimisé, avec la liste des changements
@@ -631,6 +1020,10 @@ function workflowCard(wf, example = false) {
   const origBtn = card.querySelector('.btn-original');
   const changesEl = card.querySelector('.changes');
   improveBtn.onclick = async () => {
+    if (resultsEl.classList.contains('steps-stale')) { // le choix d'applis a changé : les étapes attendent une nouvelle analyse
+      changesEl.hidden = false; changesEl.textContent = 'Le choix d\'applis a changé : clique sur « Réanalyser » pour mettre les étapes à jour.';
+      return;
+    }
     setStep(3);
     improveBtn.disabled = true;
     improveBtn.textContent = 'Précision des étapes…';
@@ -651,7 +1044,7 @@ function workflowCard(wf, example = false) {
       const todo = data.workflow.steps.filter((x) => /à compléter/i.test(x)).length;
       changesEl.innerHTML = `<h4>Préparé pour Holo (${before.steps.length} → ${data.workflow.steps.length} étapes` +
         (data.cost_usd != null ? ` · ≈ ${data.cost_usd.toFixed(4)} $` : '') + `)</h4><ul>${items || '<li>Aucun changement proposé.</li>'}</ul>` +
-        (todo ? `<p class="todo-msg">⚠️ ${todo} étape(s) contiennent une valeur « À compléter » (surlignée) : complète-la avant de rejouer.</p>` : '') +
+        (todo ? `<p class="todo-msg">${todo} étape(s) contiennent une valeur « À compléter » (surlignée) : complète-la avant de rejouer.</p>` : '') +
         `<p style="font-size:12px;margin-top:8px">Tu peux encore modifier les étapes ci-dessus avant de rejouer.</p>`;
       changesEl.hidden = false;
       origBtn.hidden = false;
@@ -670,9 +1063,14 @@ function workflowCard(wf, example = false) {
   const recoBtn = card.querySelector('.btn-reco');
   const recoEl = card.querySelector('.reco');
   let recoState = 'none'; // none | running | done
-  card._autoReco = () => { if (recoState === 'none') recoBtn.onclick(); };
+  card._autoReco = async () => { await card._picksReady; if (recoState === 'none') recoBtn.onclick(); };
+  card._resetReco = () => { // le choix d'applis a changé : la recommandation affichée n'est plus la bonne, elle est recalculée
+    recoState = 'none'; recoEl.hidden = true; recoEl.innerHTML = '';
+    if (Number(document.body.dataset.view) === LAST_VIEW) card._autoReco();
+  };
   card.querySelector('.btn-go-reco').onclick = () => { setStep(3); card._autoReco(); };
   recoBtn.onclick = async () => {
+    const version = choiceVersion;
     recoState = 'running';
     recoBtn.hidden = true;
     recoEl.hidden = false;
@@ -682,11 +1080,12 @@ function workflowCard(wf, example = false) {
         .then((r) => r.json()).then((d) => { if (d.error) throw new Error(d.error); return d; });
       // Même tâche, mêmes étapes : la recommandation déjà calculée sur ce navigateur est reprise (pas de nouvel appel au modèle)
       const now = current();
-      const key = `twiin-reco-${now.session || ''}-${[...JSON.stringify([now.name, now.steps])].reduce((h, c) => (h * 31 + c.charCodeAt(0)) | 0, 0)}`;
+      const key = `twiin-reco-${now.session || ''}-${card._exclSig || ''}-${[...JSON.stringify([now.name, now.steps])].reduce((h, c) => (h * 31 + c.charCodeAt(0)) | 0, 0)}`;
       let cached = null;
-      try { cached = JSON.parse(localStorage.getItem(key)); } catch { /* rien */ }
+      if (card._exclSig !== null) try { cached = JSON.parse(localStorage.getItem(key)); } catch { /* rien */ }
       const [adv, ver] = cached || await Promise.all([post('/api/process-advice'), post('/api/verdict')]);
-      if (!cached) try { localStorage.setItem(key, JSON.stringify([adv, ver])); } catch { /* stockage plein ou bloqué */ }
+      if (version !== choiceVersion) return; // le choix d'applis a changé pendant le calcul : cette réponse ne vaut plus
+      if (!cached && card._exclSig !== null) try { localStorage.setItem(key, JSON.stringify([adv, ver])); } catch { /* stockage plein ou bloqué */ }
       const auto = /automat/i.test(ver.verdict || '');
       // la recommandation est gardée (Supabase), rattachée à la tâche
       if (!cached) fetch('/api/recommendations', { method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -696,7 +1095,7 @@ function workflowCard(wf, example = false) {
                           ['Copier-coller', st.copies + st.pastes]].map(([k, v]) => `<div class="tile"><span>${k}</span><b>${v}</b></div>`).join('') : '';
       const recos = (adv.recommendations || []).map((x) => `<li><b>${escapeHtml(x.title || '')}</b>${x.gain ? ` <span class="gain">${escapeHtml(x.gain)}</span>` : ''}
           <div>${escapeHtml(x.suggestion || '')}</div></li>`).join('');
-      const plan = (ver.plan || []).map((p) => `<li>${iconsHtml(p.tool, 1)}<b>${escapeHtml(p.tool || '')}</b> : ${escapeHtml(p.what || '')}</li>`).join('');
+      const plan = (ver.plan || []).map((p) => `<li>${iconsHtml(p.tool, 1) ? `${iconsHtml(p.tool, 1)}<span title="${escapeHtml(p.tool || '')}">${escapeHtml(p.what || '')}</span>` : `<b>${escapeHtml(p.tool || '')}</b> : ${escapeHtml(p.what || '')}`}</li>`).join('');
       const gain = [ver.time_saved ? `Gain estimé : ${escapeHtml(ver.time_saved)}` : '', ver.frequency_hint ? escapeHtml(ver.frequency_hint) : ''].filter(Boolean).join(' · ');
       const bTuto = `<button class="btn-tuto" type="button">Créer la vidéo de formation</button>`;
       const bAuto = `<button class="btn-n8n" type="button">Créer l'automatisation</button>`;
@@ -721,6 +1120,7 @@ function workflowCard(wf, example = false) {
       recoEl.querySelector('.btn-n8n').onclick = () => createN8n(current(), ver, branch);
       recoState = 'done';
     } catch (e) {
+      if (version !== choiceVersion) return; // réponse périmée : un nouveau calcul est en cours
       recoEl.innerHTML = `<div class="verdict-card"><h3>Recommandation impossible</h3><p class="meta">${escapeHtml(e.message)}</p></div>`;
       recoBtn.hidden = false;
       recoState = 'none';
@@ -735,16 +1135,17 @@ function workflowCard(wf, example = false) {
     origBtn.hidden = true;
   };
 
-  // ▶ Rejouer sur mon Mac
+  // ▶ Rejouer sur mon ordinateur
   const replayBtn = card.querySelector('.btn-replay');
   const replayEl = card.querySelector('.replay');
   replayBtn.onclick = async () => {
+    if (resultsEl.classList.contains('steps-stale')) return;
     const wfNow = current();
     if (!wfNow.steps.length) return alert('Aucune étape à rejouer.');
     const todo = wfNow.steps.map((x, i) => (/à compléter/i.test(x) ? i + 1 : null)).filter(Boolean);
-    if (todo.length) return alert(`Complète d'abord les étapes ${todo.join(', ')} : elles contiennent une valeur « ⚠️ À compléter ». ` +
+    if (todo.length) return alert(`Complète d'abord les étapes ${todo.join(', ')} : elles contiennent une valeur « À compléter ». ` +
       `Sinon Holo inventerait la valeur.`);
-    const ok = confirm(`Holo va refaire « ${wfNow.name} » (${wfNow.steps.length} étape(s)) sur ton Mac.\n\n` +
+    const ok = confirm(`Holo va refaire « ${wfNow.name} » (${wfNow.steps.length} étape(s)) sur ton ordinateur.\n\n` +
       `• Il prend la souris et le clavier : ne touche à rien pendant le rejeu.\n` +
       `• VS Code sera masqué ; ferme ce qui est privé.\n` +
       `• Holo écrit exactement là où les étapes l'indiquent (cellules, pages) : vérifie que ce ne sont pas tes données d'origine.\n` +
@@ -792,24 +1193,24 @@ function followReplay(el, done) {
           const li = document.createElement('li');
           li.className = 'running';
           li.dataset.index = e.index;
-          li.innerHTML = `<b>⏳</b> ${iconsHtml(e.step, 2)}${escapeHtml(e.step.slice(0, 160))}${e.step.length > 160 ? '…' : ''}`;
+          li.innerHTML = `<b>…</b> ${iconsHtml(e.step, 2)}${escapeHtml(e.step.slice(0, 160))}${e.step.length > 160 ? '…' : ''}`;
           ol.appendChild(li);
         } else if (e.type === 'step_end') {
           const li = [...ol.querySelectorAll('li')].reverse().find((x) => x.dataset.index == e.index);
           if (li) {
             li.className = e.ok ? 'ok' : 'ko';
-            li.querySelector('b').textContent = `${e.ok ? '✅' : '❌'} ${e.seconds} s`;
+            li.querySelector('b').textContent = `${e.ok ? 'OK' : 'Échec'} · ${e.seconds} s`;
             const ans = document.createElement('span');
             ans.className = 'answer';
             ans.textContent = `Holo : ${(e.answer || '(pas de réponse)').slice(0, 600)}`;
             li.appendChild(ans);
           }
-        } else if (e.type === 'stalled') status.textContent = `⚠️ Holo ne répond plus sur l'étape ${e.index}…`;
+        } else if (e.type === 'stalled') status.textContent = `Holo ne répond plus sur l'étape ${e.index}…`;
         else if (e.type === 'restart') { restarts = e.count; status.textContent = `↻ Reprise n°${e.count} de l'étape ${e.index}`; }
         else if (e.type === 'end') {
           const tok = Object.entries(e.usage || {}).map(([m, u]) => `${m} : ${u.input_tokens} tokens entrée / ${u.output_tokens} sortie`).join(' · ');
-          status.textContent = `${e.ok ? '✅ Terminé' : `■ ${e.status}`} en ${Math.floor(e.seconds / 60)} min ${e.seconds % 60} s` +
-            (e.restarts ? ` · ${e.restarts} reprise(s)` : '') + (e.blocked?.length ? ` · 🛑 ${e.blocked.length} action(s) refusée(s)` : '');
+          status.textContent = `${e.ok ? 'Terminé' : `■ ${e.status}`} en ${Math.floor(e.seconds / 60)} min ${e.seconds % 60} s` +
+            (e.restarts ? ` · ${e.restarts} reprise(s)` : '') + (e.blocked?.length ? ` · ${e.blocked.length} action(s) refusée(s)` : '');
           meta.innerHTML = (meta.innerHTML ? meta.innerHTML + ' · ' : '') + `${screens} changement(s) d'écran · ${escapeHtml(tok)}` +
             `<br>Holo dit avoir réussi : vérifie le résultat à l'écran.`;
         }
@@ -831,7 +1232,7 @@ const TUTO_PHASES = [
 ];
 async function createTuto(wf, example, el) {
   el.hidden = false;
-  el.innerHTML = `<div class="tuto"><h4>Tuto vidéo · ${escapeHtml(wf.name)}</h4><ol class="phases"></ol>
+  el.innerHTML = `<div class="tuto"><h4>Tuto vidéo · <span data-court>${escapeHtml(wf.name)}</span></h4><ol class="phases"></ol>
     <p class="phase-note">Compte 1 à 3 minutes. La vidéo s'affichera ici.</p><div class="tuto-video"></div></div>`;
   const phases = el.querySelector('.phases'), note = el.querySelector('.phase-note'), box = el.querySelector('.tuto-video');
   try {
@@ -868,11 +1269,11 @@ async function createTuto(wf, example, el) {
 }
 
 // --- ⚡ Créer l'automatisation n8n + écran de suivi (plan → import → test nœud par nœud) ------------------------
-const BLOCK_ICON = { holo: '🤖 Holo', row: '🧮 Code', verify: '✅ Vérification', sheets_append: '📊 Google Sheets', http: '🌐 API' };
+const BLOCK_ICON = { holo: 'Holo', row: 'Code', verify: 'Vérification', sheets_append: 'Google Sheets', http: 'API' };
 
 async function createN8n(wf, verdict, el) {
   const ok = confirm(`Twiin va créer l'automatisation n8n de « ${wf.name} », l'importer dans ton n8n local et la TESTER une fois.\n\n` +
-    `Si elle contient des blocs Holo, Holo prendra la souris et le clavier de ton Mac pendant le test : ne touche à rien ` +
+    `Si elle contient des blocs Holo, Holo prendra la souris et le clavier de ton ordinateur pendant le test : ne touche à rien ` +
     `(double Échap pour l'arrêter). L'automatisation restera INACTIVE : c'est toi qui l'actives dans n8n.\n\nContinuer ?`);
   if (!ok) return;
   el.hidden = false;
@@ -902,19 +1303,23 @@ async function createN8n(wf, verdict, el) {
           for (const b of e.plan.blocks) {
             const li = document.createElement('li');
             const logo = { holo: 'Holo', sheets_append: 'Google Sheets' }[b.type] || `${b.name} ${b.url || ''}`;
-            li.innerHTML = `<span class="ico">⏳</span> ${iconsHtml(logo, 1)}<b>${escapeHtml(b.name)}</b> <span class="kind">${BLOCK_ICON[b.type] || b.type}</span><span class="out"></span>`;
+            li.innerHTML = `<span class="ico">…</span> ${iconsHtml(logo, 1)}<b>${escapeHtml(b.name)}</b> <span class="kind">${BLOCK_ICON[b.type] || b.type}</span><span class="out"></span>`;
             plan.appendChild(li);
             rows.set(b.name, li);
           }
         } else if (e.type === 'imported') {
           st.textContent = 'Importé dans n8n. Test en cours…';
-          links.innerHTML = `<a href="${e.url}" target="_blank">Ouvrir le workflow dans n8n</a>`;
+          links.innerHTML = `<a class="link-btn" href="/automatisations.html#${encodeURIComponent(e.id || '')}">Voir mon automatisation</a> · `
+            + `<a href="${e.url}" target="_blank">Ouvrir le workflow dans n8n</a>`;
+        } else if (e.type === 'info') {
+          // la raison exacte d'un blocage (ex. n8n a refusé le lancement) est affichée sous le plan
+          links.insertAdjacentHTML('beforeend', `<p class="note warn">${escapeHtml(e.text)}</p>`);
         } else if (e.type === 'executing') {
           links.innerHTML += ` · <a href="${e.url}" target="_blank">Voir l'exécution n° ${e.execution} dans n8n</a>`;
         } else if (e.type === 'node') {
           const li = rows.get(e.name);
           if (li) {
-            li.querySelector('.ico').textContent = e.status === 'success' ? '✅' : '❌';
+            li.querySelector('.ico').textContent = e.status === 'success' ? '✓' : '✕';
             const sec = e.ms != null ? `${Math.round(e.ms / 100) / 10} s` : '';
             let out = e.error ? `Erreur : ${e.error}` : '';
             if (!out && e.output) {
@@ -928,14 +1333,36 @@ async function createN8n(wf, verdict, el) {
         } else if (e.type === 'done') {
           if (e.ok) setStep(4);
           if (e.ok) links.innerHTML = `<a class="link-btn" href="/automatisations.html#${encodeURIComponent(e.id || '')}">Régler et suivre dans Mes automatisations</a> · ` + links.innerHTML;
-          st.textContent = e.ok ? '✅ Automatisation créée et testée avec succès. Elle est en pause : choisis quand elle tourne dans « Mes automatisations ».'
-                                : `❌ Le test a échoué (${e.status}). Ouvre l'exécution dans n8n pour voir le nœud en erreur.`;
+          st.textContent = e.ok ? 'Automatisation créée et testée avec succès. Elle est en pause : choisis quand elle tourne dans « Mes automatisations ».'
+                                : (links.innerHTML ? `Le test a échoué (${e.status}). Ouvre l'exécution dans n8n pour voir le nœud en erreur.`
+                                                   : `Automatisation non créée : ${e.status}`);
+          if (!e.ok && !/workflow\//.test(links.innerHTML)) {
+            links.innerHTML = `<a class="link-btn" href="/automatisations.html#${encodeURIComponent(e.id || '')}">Voir dans Mes automatisations</a>`
+              + (/google sheets|credential|connexion/i.test(e.status || '') ? ` · <a href="http://localhost:5678/home/credentials" target="_blank">Ajouter la connexion dans n8n</a>` : '');
+          }
+          // Relancer l'étape échouée : n8n repart du nœud qui a planté, sans refaire les étapes réussies
+          if (!e.ok && e.id && e.execution) {
+            links.insertAdjacentHTML('beforeend', ` · <button type="button" class="btn-relance" data-wf="${escapeHtml(e.id)}">Relancer l'étape échouée</button>`);
+            links.querySelector('.btn-relance').onclick = async (ev) => {
+              const b = ev.currentTarget;
+              b.disabled = true; b.textContent = 'Relance…';
+              try {
+                const r = await fetch(`/api/automations/${encodeURIComponent(e.id)}/retry`, { method: 'POST' });
+                const d = await r.json();
+                if (d.error) throw new Error(d.error);
+                st.textContent = 'Relance lancée à partir de l\'étape qui a échoué. Suis-la dans n8n ou dans « Mes automatisations ».';
+              } catch (err) {
+                st.textContent = `Relance impossible : ${err.message}`;
+              }
+              b.disabled = false; b.textContent = 'Relancer l\'étape échouée';
+            };
+          }
         }
       }
       const last = (hs || []).at(-1);
       holo.textContent = !(holoRunning && last) ? '' : holoEnv === 'cloud'
-        ? `☁ Holo travaille dans le navigateur cloud de H (tu peux continuer à utiliser ton Mac) : ${(last.step || last.answer || '').slice(0, 140)}…`
-        : `🤖 Holo travaille sur ton Mac, ne touche à rien : ${(last.step || last.answer || '').slice(0, 140)}…`;
+        ? `Holo travaille dans le navigateur cloud de H (tu peux continuer à utiliser ton ordinateur) : ${(last.step || last.answer || '').slice(0, 140)}…`
+        : `Holo travaille sur ton ordinateur, ne touche à rien : ${(last.step || last.answer || '').slice(0, 140)}…`;
       if (!running && next > 0 && /terminé|succès|échoué|Erreur/.test(st.textContent)) clearInterval(timer);
     } catch { /* on réessaie */ }
   }, 1500);
@@ -987,16 +1414,118 @@ document.getElementById('lastBtn').addEventListener('click', () => {
   renderWorkflows(lastWorkflows);
   statusEl.textContent = 'Dernière tâche analysée : reprends à l\'étape 2.';
 });
-// À l'ouverture : la dernière tâche analysée revient toute seule (étapes à relire, Recommandation)
-fetch('/api/candidates').then((r) => r.json()).then(async (d) => {
-  if (!d.workflows?.length || resultsEl.children.length) return;
-  lastWorkflows = d.workflows;
-  await iconsReady;
-  if (!resultsEl.children.length && !recording) renderWorkflows(d.workflows, { silent: true });
-}).catch(() => {});
+// À l'ouverture : si Twiin étudie une tâche (découverte), on attend sa question « Ai-je bien compris ? » ;
+// sinon la dernière tâche analysée revient toute seule (étapes à relire, Recommandation). « Mes tâches » liste les autres.
+Promise.all([fetch('/api/candidates').then((r) => r.json()), fetch('/api/discovery').then((r) => r.json()).catch(() => ({ phase: 'idle' }))])
+  .then(async ([d, disc]) => {
+    const pending = ['upload', 'twin', 'dev_test', 'awaiting_confirmation'].includes(disc.phase);
+    if (pending) statusEl.textContent = 'Twiin étudie ta tâche… une question va bientôt apparaître.';
+    renderMyTasks(d.workflows || []);
+    // une page ouverte avec ?session= (enregistrement choisi dans « Mes enregistrements ») n'est pas remplacée par la dernière analyse
+    if (pending || !d.workflows?.length || resultsEl.children.length || new URLSearchParams(location.search).get('session')) return;
+    lastWorkflows = [d.workflows[0]];
+    await iconsReady;
+    if (!resultsEl.children.length && !recording) {
+      renderWorkflows([d.workflows[0]], { silent: true });
+      // même ligne « ajouter un enregistrement » que juste après une analyse (la dernière tâche rechargée à l'ouverture)
+      const sid = d.workflows[0]?.session;
+      if (sid) {
+        resultsEl.prepend(bandeauAjout(sid));
+      }
+    }
+  }).catch(() => {});
+// « Mes tâches » : chaque tâche analysée, rouvrable, et réanalysable tant que ses images sont sur le poste.
+function renderMyTasks(list) {
+  const box = document.getElementById('myTasks'), ul = document.getElementById('myTasksList');
+  if (!box || !list.length) return;
+  box.hidden = false;
+  const PLUS = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>';
+  ul.innerHTML = list.map((w, i) => {
+    // les applis de la tâche, devinées à partir de son nom et de ses étapes (YouTube, Excel, Gmail…)
+    const logos = findIcons(`${w.name || ''} ${(w.steps || []).join(' ')}`, 3);
+    const date = w.created_at ? new Date(w.created_at).toLocaleString('fr-FR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '';
+    return `<li class="card task-card">
+      <span class="tc-logos" aria-hidden="true">${logos.length ? logos.map((x) => `<img src="icons/${x.file}" alt="" title="${escapeHtml(x.label)}">`).join('') : '<span class="tc-vide"></span>'}</span>
+      <span class="tc-txt"><b data-court>${escapeHtml(w.name || 'Tâche')}</b>
+        <span class="tc-meta">${(w.steps || []).length} étapes${date ? ` · ${date}` : ''}</span></span>
+      <span class="tc-actions">
+        <button type="button" class="primary" data-open="${i}">Rouvrir</button>
+        ${w.session ? `<a class="btn tc-ajout" href="/?session=${encodeURIComponent(w.session)}&ajout=1#enregistrer">${PLUS}Ajouter un passage oublié</a>` : ''}
+        <button type="button" class="quiet" data-re="${i}" ${w.has_images === false ? 'disabled title="Images de cet enregistrement absentes de ce poste"' : ''}>Réanalyser</button>
+      </span></li>`;
+  }).join('');
+  ul.querySelectorAll('[data-open]').forEach((b) => b.onclick = () => {
+    renderWorkflows([list[+b.dataset.open]]);
+    statusEl.textContent = 'Tâche rouverte : relis les étapes, puis passe à la Reco.';
+  });
+  ul.querySelectorAll('[data-re]').forEach((b) => b.onclick = () =>
+    analyzeRequest('/api/reanalyze', { session: list[+b.dataset.re].session }, `Nouvelle analyse de « ${list[+b.dataset.re].name} »…`));
+}
+
+// Un passage oublié ou raté : bien visible, accroché à la tâche (au-dessus de ses étapes)
+function bandeauAjout(sid) {
+  const barre = document.createElement('div');
+  barre.className = 'ajout-bandeau ajout-cta';
+  barre.innerHTML = `<span class="ac-ico" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></span>
+    <span class="ac-txt"><b>Un passage a été oublié ou a raté ?</b><span>Enregistre juste ce passage : il sera ajouté à la fin de cette tâche.</span></span>
+    <a class="btn primary" href="/?session=${encodeURIComponent(sid)}&ajout=1#enregistrer">Ajouter un passage</a>`;
+  return barre;
+}
 
 function escapeHtml(str) {
   const div = document.createElement('div');
   div.textContent = str ?? '';
   return div.innerHTML;
 }
+
+// Ouvert depuis « Mes enregistrements » (?session=ID) : le même écran que juste après un enregistrement,
+// avec les étapes modifiables et sauvegardées dans l'enregistrement.
+iconsReady.then(async () => {
+  const params = new URLSearchParams(location.search);
+  const sid = params.get('session');
+  if (!sid) return;
+  if (params.get('ajout')) {
+    // tâche oubliée : le prochain enregistrement complète celui-ci, sans rien afficher d'autre
+    ajouterA = sid;
+    const d = await (await fetch(`/api/sessions/${encodeURIComponent(sid)}`)).json().catch(() => ({}));
+    statusEl.textContent = `Tu ajoutes une tâche oubliée à « ${d.titre || 'cet enregistrement'} ». Clique sur « Enregistrer ma tâche » : à l'arrêt, ses étapes seront ajoutées à la fin.`;
+    return;
+  }
+  try {
+    const d = await (await fetch(`/api/sessions/${encodeURIComponent(sid)}`)).json();
+    if (d.error) throw new Error(d.error);
+    const wfs = d.analyse_complete?.result?.workflows || [];
+    if (!wfs.length) {
+      statusEl.textContent = 'Cet enregistrement n\'a pas encore été analysé. Lance l\'analyse depuis « Mes enregistrements ».';
+      return;
+    }
+    // même affichage que juste après un enregistrement : la recommandation se prépare automatiquement
+    renderWorkflows(wfs.map((w, i) => ({ ...w, session: sid, _idx: i })), { autoReco: true });
+    statusEl.textContent = `Enregistrement « ${d.titre} » ouvert. Tes modifications sont enregistrées automatiquement.`;
+    // « Automatiser cette tâche » / « Créer la vidéo » depuis « Mes enregistrements » : dès que la recommandation est
+    // prête, on lance directement l'action demandée (même écran de suivi que d'habitude)
+    const faire = params.get('faire');
+    const cible = faire === 'automatiser' ? '.btn-n8n' : faire === 'video' ? '.btn-tuto' : null;
+    if (cible) {
+      statusEl.textContent = faire === 'automatiser' ? `Préparation de l'automatisation de « ${d.titre} »…` : `Préparation de la vidéo de « ${d.titre} »…`;
+      const t0 = Date.now();
+      const guetter = () => {
+        const b = document.querySelector(cible);
+        if (b) { b.scrollIntoView({ behavior: 'smooth', block: 'center' }); setTimeout(() => b.click(), 400); return; }
+        if (Date.now() - t0 < 120000) setTimeout(guetter, 500);
+      };
+      guetter();
+    }
+  } catch (e) {
+    statusEl.textContent = `Ouverture impossible : ${e.message}`;
+  }
+});
+
+// Durées affichées partout dans le SaaS : des heures entières (« 12 h »), jamais de virgule ; sous une heure, des minutes
+function fmtTemps(minutes) {
+  const m = Math.max(0, Number(minutes) || 0);
+  if (m >= 59.5) return `${Math.round(m / 60)} h`;
+  if (m < 1) return '0 h';
+  return `${m > 10 ? Math.round(m / 5) * 5 : Math.round(m)} min`;
+}
+const fmtHeures = (h) => fmtTemps((Number(h) || 0) * 60);

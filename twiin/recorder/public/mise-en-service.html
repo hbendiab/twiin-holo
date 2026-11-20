@@ -1,0 +1,400 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Twiin · Mise en service</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Google+Sans+Flex:wght@300;400;500;600;700&display=swap">
+<link rel="stylesheet" href="pages.css">
+<link rel="stylesheet" href="theme.css">
+<style>
+  /* Mise en service : tout ce qui concerne l'entreprise, réglé une fois (DSI, communication) */
+  .ms-sec { margin: 0 0 22px; padding: 26px 28px; border-radius: var(--r-panel, 10px); background: var(--glass-fill, var(--panel)); border: 1px solid var(--brand-rule, var(--rule));
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.8), 0 16px 34px -28px rgba(56, 66, 110, .45); }
+  .ms-sec > header { display: flex; align-items: baseline; gap: 12px; margin: 0 0 18px; }
+  .ms-sec h2 { margin: 0; font-size: 22px; font-weight: 600; letter-spacing: -0.025em; }
+  .ms-num { font: 500 12px var(--mono, ui-monospace, monospace); color: var(--brand-strong); }
+  .lab { margin: 0 0 8px; font: 500 11.5px var(--mono, ui-monospace, monospace); text-transform: uppercase; letter-spacing: .06em; }
+  .grille { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 20px 28px; }
+  .champ input[type=text], .champ select { width: 100%; font: inherit; font-size: 15px; padding: 10px 12px; border-radius: var(--r-card, 8px);
+    border: 1px solid var(--brand-rule, var(--rule)); background: var(--canvas, #fff); color: var(--ink); box-sizing: border-box; }
+  .logo-ligne { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+  .logo-fond { width: 132px; height: 72px; border-radius: var(--r-card, 8px); display: grid; place-items: center; border: 1px dashed var(--brand-rule, var(--rule)); background: #fff; }
+  .logo-fond.sombre { background: #161615; border-style: solid; border-color: #161615; }
+  .logo-fond img { max-width: 108px; max-height: 52px; object-fit: contain; }
+  .logo-fond em { font: 500 11px var(--mono, monospace); font-style: normal; color: #9a9a95; }
+  input[type=file] { position: absolute; width: 1px; height: 1px; opacity: 0; }
+  .couleur { display: flex; align-items: center; gap: 12px; }
+  .couleur input[type=color] { width: 52px; height: 44px; border: 1px solid var(--brand-rule, var(--rule)); border-radius: var(--r-card, 8px); padding: 3px; background: transparent; cursor: pointer; }
+  .couleur code { font: 500 14px var(--mono, monospace); }
+  .couleur .eff { font-size: 13px; padding: 6px 10px; }
+  .palette { display: grid; grid-template-columns: repeat(auto-fill, minmax(118px, 1fr)); gap: 10px; margin-top: 20px; }
+  .nuance { border-radius: var(--r-card, 8px); overflow: hidden; border: 1px solid var(--brand-rule, var(--rule)); background: var(--canvas, #fff); }
+  .nuance i { display: block; height: 54px; }
+  .nuance span { display: block; padding: 7px 10px 8px; font-size: 12.5px; line-height: 1.3; }
+  .nuance code { font: 500 11.5px var(--mono, monospace); opacity: .7; }
+  .lisible { margin: 14px 0 0; font: 500 12px var(--mono, monospace); text-transform: uppercase; letter-spacing: .05em; }
+  .lisible.ok { color: var(--ok, #1f8a5b); } .lisible.ko { color: #b8762a; }
+  .formes { display: flex; gap: 10px; flex-wrap: wrap; }
+  .forme { display: grid; justify-items: center; gap: 8px; padding: 12px 16px 10px; border: 1px solid var(--brand-rule, var(--rule)); border-radius: 10px; background: var(--canvas, #fff); cursor: pointer; font-size: 13px; }
+  .forme[aria-pressed="true"] { outline: 2px solid var(--brand-strong); outline-offset: -1px; }
+  .forme i { width: 44px; height: 30px; background: var(--brand, #c9d2e7); }
+  .apercus { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.25fr); gap: 20px; align-items: start; }
+  @media (max-width: 960px) { .apercus { grid-template-columns: minmax(0, 1fr); } }
+  .ap-carte { padding: 22px; border-radius: var(--r-panel, 10px); border: 1px solid var(--brand-rule); background: var(--brand-tint); }
+  .ap-carte h3 { margin: 0 0 6px; font-size: 22px; letter-spacing: -0.02em; }
+  .ap-carte .ap-puces { display: flex; gap: 8px; flex-wrap: wrap; margin: 12px 0 16px; }
+  .ap-carte .ap-puces span { padding: 6px 12px; border-radius: 999px; background: var(--brand-chip); font: 500 12px var(--mono, monospace); text-transform: uppercase; }
+  .ap-carte .ap-btn { display: inline-block; padding: 11px 18px; border-radius: var(--r-card, 8px); background: var(--brand-strong); color: #fff; font-weight: 600; }
+  .ap-carte a { color: var(--brand-strong); margin-left: 14px; font-weight: 500; }
+  .ap-video { position: relative; aspect-ratio: 16 / 9; border-radius: 12px; overflow: hidden; border: 1px solid var(--brand-rule); background: #fff; }
+  .ap-video .fond { position: absolute; inset: 0; }
+  .ap-video .tete { position: absolute; top: 7%; left: 6%; display: flex; align-items: center; gap: 8px; font-size: clamp(11px, 1.2vw, 15px); font-weight: 600; }
+  .ap-video .tete img { max-height: 1.5em; max-width: 6em; object-fit: contain; }
+  .ap-video .corps { position: absolute; left: 6%; top: 0; bottom: 0; width: 58%; display: flex; flex-direction: column; justify-content: center; align-items: flex-start; gap: 8px; }
+  .ap-video .kick { font: 500 clamp(8px, .9vw, 11px) var(--mono, monospace); text-transform: uppercase; letter-spacing: .06em; padding: 4px 9px; border-radius: 999px; }
+  .ap-video .titre { font-size: clamp(20px, 3vw, 38px); font-weight: 600; letter-spacing: -0.045em; line-height: 1.02; color: #161615; }
+  .ap-video .duo { position: absolute; right: 8%; top: 50%; translate: 0 -50%; display: flex; gap: 6px; }
+  .sph { display: block; width: var(--s, 70px); height: var(--s, 70px); border-radius: 50%; position: relative;
+    background: radial-gradient(circle at 32% 26%, #fff 0 9%, transparent 22%), radial-gradient(120% 70% at 50% 108%, #f4f4f1 0 22%, transparent 46%),
+      conic-gradient(from 20deg at 50% 55%, #1b1b1a, #8d8d88, #f2f2ee, #5c5c58, #d9d9d4, #2a2a28, #b6b6b1, #1b1b1a);
+    box-shadow: inset 0 -3px 6px rgba(0,0,0,.45), 0 10px 18px -10px rgba(30,34,60,.55); }
+  .sph::before, .sph::after { content: ""; position: absolute; top: 36%; width: 14%; height: 24%; border-radius: 50%; background: #0b0b0b; }
+  .sph::before { left: 29%; } .sph::after { left: 57%; }
+  .duo-mini { display: inline-flex; gap: 2px; } .duo-mini img { width: 1.3em; height: 1.3em; }
+  .tuiles-ap { position: absolute; right: 6%; top: 50%; translate: 0 -50%; width: 34%; aspect-ratio: 1; }
+  .tuiles-ap span { position: absolute; width: 46%; aspect-ratio: 1; border-radius: 24%; background: #fff; border: 1px solid #dce2f0; display: grid; place-items: center;
+    box-shadow: 0 14px 24px -14px rgba(56,66,110,.5); }
+  .tuiles-ap span:nth-child(1) { left: 2%; top: 6%; rotate: -5deg; } .tuiles-ap span:nth-child(2) { right: 0; top: 14%; rotate: 5deg; } .tuiles-ap span:nth-child(3) { left: 24%; bottom: 0; rotate: -3deg; }
+  .tuiles-ap img { width: 60%; height: 60%; object-fit: contain; }
+  .actions-bas { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; position: sticky; bottom: 0; padding: 14px 0; background: linear-gradient(transparent, var(--canvas, #fff) 30%); z-index: 2; }
+  .actions-bas .etat { font-size: 13.5px; color: var(--text-dim); }
+  .ms-demo { margin: 0 0 22px; }
+  .ms-presets { display: flex; gap: 10px; flex-wrap: wrap; }
+  .preset { display: inline-flex; align-items: center; gap: 10px; padding: 10px 16px 10px 10px !important; border-radius: 999px !important;
+    background: var(--canvas, #fff) !important; border: 1px solid var(--brand-rule, var(--rule)) !important; box-shadow: none !important; font-weight: 600 !important; color: var(--ink) !important; }
+  .preset img { height: 26px; max-width: 120px; object-fit: contain; display: block; }
+  .preset[data-p] { padding: 10px 18px !important; min-height: 48px; }
+  .preset[aria-pressed="true"] { outline: 2px solid var(--brand-strong); outline-offset: 1px; }
+  /* autorisations (DSI) */
+  .ms-kpi { margin: 0; font-size: 44px; font-weight: 600; letter-spacing: -0.04em; color: var(--brand-strong); }
+  .fam { display: grid; gap: 12px; margin-top: 14px; }
+  .fcard { background: var(--canvas, #fff); border: 1px solid var(--brand-rule, var(--rule)); border-radius: var(--r-card, 8px); padding: 16px 18px; display: grid; gap: 8px; }
+  .fcard h3 { margin: 0; font-size: 16px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+  .fcard p { margin: 0; font-size: 14px; color: var(--text-dim); }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+  .chips span { font-size: 12px; padding: 3px 10px; border-radius: 999px; background: var(--brand-chip); }
+  .con-ligne { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; padding: 14px 0; border-top: 1px solid var(--brand-rule); }
+  .con-ligne:first-child { border-top: 0; padding-top: 0; }
+  .con-ligne img { width: 34px; height: 34px; object-fit: contain; }
+  .con-ligne .nom { flex: 1; min-width: 180px; font-weight: 600; }
+  .con-ligne .nom small { display: block; font-weight: 400; font-size: 13px; color: var(--text-dim); }
+  .etiq { font: 500 11.5px var(--mono, monospace); text-transform: uppercase; letter-spacing: .05em; padding: 6px 11px; border-radius: 999px; }
+  .etiq.on { background: color-mix(in srgb, var(--ok, #1f8a5b) 14%, transparent); color: var(--ok, #1f8a5b); }
+  .etiq.off { background: var(--brand-chip); }
+  .con-app { display: grid; gap: 10px; margin-top: 16px; padding: 16px; border-radius: var(--r-card, 8px); background: var(--brand-tint); }
+  .con-app input { font: inherit; font-size: 14px; padding: 9px 11px; border-radius: 8px; border: 1px solid var(--brand-rule); background: var(--canvas, #fff); color: var(--ink); }
+  .con-app code { font: 500 12.5px var(--mono, monospace); padding: 2px 6px; border-radius: 6px; background: var(--canvas, #fff); user-select: all; }
+  .con-msg { margin: 12px 0 0; font-weight: 500; } .con-msg.ok { color: var(--ok, #1f8a5b); } .con-msg.ko { color: #c0392b; }
+  .eq-membres { display: flex; gap: 8px; flex-wrap: wrap; margin: 0 0 14px; }
+  .eq-m { display: inline-flex; align-items: center; gap: 8px; padding: 6px 8px 6px 6px; border-radius: 999px; background: var(--canvas, #fff); border: 1px solid var(--brand-rule); font-weight: 500; }
+  .eq-m .av { width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center; background: var(--brand-strong); color: #fff; font-size: 12px; font-weight: 700; }
+  .eq-m button { all: unset; cursor: pointer; width: 20px; height: 20px; border-radius: 50%; display: grid; place-items: center; color: var(--text-dim); }
+  .eq-m button:hover { background: var(--brand-chip); }
+  .eq-ajout { display: flex; gap: 8px; flex-wrap: wrap; }
+  .eq-ajout input { font: inherit; font-size: 14px; padding: 9px 11px; border-radius: 8px; border: 1px solid var(--brand-rule); background: var(--canvas, #fff); color: var(--ink); }
+  ol.how { margin: 4px 0 0; padding-left: 20px; font-size: 13.5px; display: grid; gap: 4px; }
+</style>
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="/"><span id="logoCells"></span><span>Tw<b>ii</b>n</span></a>
+    <button id="themeBtn" type="button">Thème sombre</button>
+  </header>
+
+  <h1>Mise en service</h1>
+
+  <section class="ms-demo" aria-label="Marques d'exemple">
+    <p class="lab">Essayer la marque de…</p>
+    <div class="ms-presets" id="presets"></div>
+  </section>
+
+  <form id="charte" autocomplete="off">
+    <section class="ms-sec" aria-labelledby="h-id">
+      <header><span class="ms-num">01</span><h2 id="h-id">Identité</h2></header>
+      <div class="grille">
+        <label class="champ"><p class="lab">Nom de l'entreprise</p><input type="text" name="nom" maxlength="60" placeholder="Ex. BNP Paribas"></label>
+        <div class="champ"><p class="lab">Logo</p>
+          <div class="logo-ligne">
+            <span class="logo-fond" id="logoClair"><em>Fond clair</em></span>
+            <span class="logo-fond sombre" id="logoSombre"><em>Fond foncé</em></span>
+            <label class="btn" id="logoBtn">Choisir un logo<input type="file" name="logo" accept="image/png,image/jpeg,image/svg+xml,image/webp"></label>
+            <button type="button" class="quiet" id="logoSuppr" hidden>Retirer</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="ms-sec" aria-labelledby="h-coul">
+      <header><span class="ms-num">02</span><h2 id="h-coul">Charte colorimétrique</h2></header>
+      <div class="grille">
+        <div class="champ"><p class="lab">Couleur principale</p>
+          <div class="couleur"><input type="color" name="couleur" value="#56669c" aria-label="Couleur principale"><code id="cP"></code></div></div>
+        <div class="champ"><p class="lab">Couleur secondaire</p>
+          <div class="couleur"><input type="color" name="couleur2" value="#c9d2e7" aria-label="Couleur secondaire"><code id="cS"></code>
+            <button type="button" class="quiet eff" id="c2Auto">Automatique</button></div></div>
+      </div>
+      <div class="palette" id="palette"></div>
+      <p class="lisible" id="lisible"></p>
+    </section>
+
+    <section class="ms-sec" aria-labelledby="h-gra">
+      <header><span class="ms-num">03</span><h2 id="h-gra">Charte graphique</h2></header>
+      <div class="grille">
+        <label class="champ"><p class="lab">Police</p><select name="police" id="police"></select></label>
+        <div class="champ"><p class="lab">Formes</p>
+          <div class="formes" id="formes">
+            <button type="button" class="forme" data-forme="carre" aria-pressed="false"><i style="border-radius:3px"></i>Carrées</button>
+            <button type="button" class="forme" data-forme="doux" aria-pressed="true"><i style="border-radius:8px"></i>Douces</button>
+            <button type="button" class="forme" data-forme="arrondi" aria-pressed="false"><i style="border-radius:16px"></i>Arrondies</button>
+          </div></div>
+      </div>
+    </section>
+
+    <section class="ms-sec" aria-labelledby="h-ap">
+      <header><span class="ms-num">04</span><h2 id="h-ap">Aperçu</h2></header>
+      <div class="apercus">
+        <div class="ap-carte"><p class="lab">Dans Twiin</p><h3>Veille concurrence</h3>
+          <div class="ap-puces"><span>Active</span><span>Chaque lundi</span></div>
+          <span class="ap-btn">Lancer maintenant</span><a>Voir le résultat</a></div>
+        <div><p class="lab">Couverture des vidéos</p>
+          <div class="ap-video" id="apVideo"><div class="fond"></div>
+            <div class="tete"><span class="duo-mini"><img src="img/iris.png" alt=""><img src="img/ilo.png" alt=""></span>Twiin<span id="apX"></span></div>
+            <div class="corps"><span class="kick">Tuto · 4 étapes</span><span class="titre">Veille concurrence</span></div>
+            <div class="tuiles-ap"><span><img src="icons/linkedin.png" alt=""></span><span><img src="icons/google-sheets.png" alt=""></span><span><img src="icons/microsoft-onenote.png" alt=""></span></div></div></div>
+      </div>
+    </section>
+
+    <div class="actions-bas">
+      <button type="submit" class="primary">Appliquer à toute l'entreprise</button>
+      <button type="button" class="quiet" id="revenir">Revenir à la DA Twiin</button>
+      <span class="etat" id="etat" role="status"></span>
+    </div>
+  </form>
+
+  <section class="ms-sec" aria-labelledby="h-dsi">
+    <header><span class="ms-num">05</span><h2 id="h-dsi">Logiciels et autorisations</h2></header>
+    <div id="out"><p class="meta">Chargement…</p></div>
+  </section>
+
+  <section class="ms-sec" id="connexions" aria-labelledby="h-con">
+    <header><span class="ms-num">06</span><h2 id="h-con">Connexions aux comptes</h2></header>
+    <div id="conOut"><p class="meta">Chargement…</p></div>
+  </section>
+
+  <section class="ms-sec" id="equipe" aria-labelledby="h-eq">
+    <header><span class="ms-num">07</span><h2 id="h-eq">Équipe</h2></header>
+    <div id="eqOut"><p class="meta">Chargement…</p></div>
+  </section>
+
+<script src="shell.js" defer></script>
+<script src="common.js"></script>
+<script>
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const $ = (id) => document.getElementById(id);
+const f = $('charte');
+let m = {}, logoData = null, logoUrl = null, auto2 = true, forme = 'doux';
+
+// Marques d'exemple pour la démo : logo officiel (Wikimedia Commons, rangé dans marques/), couleurs et police approchantes
+const PRESETS = [
+  { nom: 'H Company', logo: 'h-company', couleur: '#151515', couleur2: '#e7e4dc', police: 'Inter', forme: 'carre' },
+  { nom: 'BNP Paribas', logo: 'bnp-paribas', couleur: '#00915a', couleur2: '#d9efe4', police: 'Open Sans', forme: 'doux' },
+  { nom: "L'Oréal", logo: 'loreal', couleur: '#111111', couleur2: '#ece4d4', police: 'Montserrat', forme: 'carre' },
+  { nom: 'Microsoft', logo: 'microsoft', couleur: '#0078d4', couleur2: '#deecf9', police: 'Noto Sans', forme: 'doux' },
+  { nom: 'Decathlon', logo: 'decathlon', couleur: '#3643ba', couleur2: '#dfe3ff', police: 'Roboto', forme: 'arrondi' },
+  { nom: 'LVMH', logo: 'lvmh', couleur: '#1d1d1b', couleur2: '#eadfc8', police: 'Manrope', forme: 'carre' },
+  { nom: 'Meetic', logo: 'meetic', couleur: '#e5106c', couleur2: '#fde2ee', police: 'Poppins', forme: 'arrondi' },
+];
+const enDataUrl = async (src) => { const b = await (await fetch(src)).blob(); return new Promise((ok) => { const r = new FileReader(); r.onload = () => ok(r.result); r.readAsDataURL(b); }); };
+function dessinerPresets() {
+  $('presets').innerHTML = PRESETS.map((p, i) => `<button type="button" class="preset" data-p="${i}" aria-pressed="${(m.nom || '') === p.nom}" style="--s2:${p.couleur2}">
+    <img src="marques/${p.logo}.png" alt="${esc(p.nom)}"></button>`).join('')
+    + `<button type="button" class="preset" data-p="twiin" aria-pressed="${!m.nom && !m.couleur}" style="--s2:#c9d2e7"><i style="background:#56669c"></i>Twiin</button>`;
+  $('presets').querySelectorAll('.preset').forEach((b) => b.onclick = () => {
+    if (b.dataset.p === 'twiin') return envoyer({ effacer: true }, 'DA Twiin rétablie.');
+    const p = PRESETS[+b.dataset.p];
+    enDataUrl(`marques/${p.logo}.png`).then((logo) => envoyer({ ...p, logo }, `Marque ${p.nom} appliquée au SaaS et aux prochaines vidéos.`));
+  });
+}
+
+// La marque est appliquée en direct à la page (aperçu) ; « Appliquer » l'enregistre pour toute l'entreprise
+function brouillon() {
+  return { nom: f.nom.value.trim(), couleur: f.couleur.value, couleur2: auto2 ? null : f.couleur2.value,
+           police: f.police.value || null, forme, logo: logoData || logoUrl };
+}
+function peindre() {
+  const M = window.TwiinMarque, b = brouillon();
+  if (!M) return;
+  M.appliquer(b, { garder: false });
+  const v = M.teintes(b);
+  if (auto2) f.couleur2.value = v['--brand'];
+  $('cP').textContent = b.couleur.toUpperCase(); $('cS').textContent = (auto2 ? `${v['--brand']} · auto` : b.couleur2).toUpperCase();
+  $('c2Auto').hidden = auto2;
+  const noms = { '--brand-strong': 'Boutons, liens', '--brand': 'Secondaire', '--brand-chip': 'Puces', '--brand-tint': 'Fonds', '--brand-rule': 'Filets', '--brand-ink': 'Texte sur couleur' };
+  $('palette').innerHTML = Object.entries(noms).map(([k, n]) => `<div class="nuance"><i style="background:${v[k]}"></i><span>${n}<br><code>${v[k].toUpperCase()}</code></span></div>`).join('');
+  const c = M.contraste(v['--brand-strong'], '#ffffff');
+  const ajuste = v['--brand-strong'].toLowerCase() !== b.couleur.toLowerCase();
+  $('lisible').className = `lisible ${ajuste ? 'ko' : 'ok'}`;
+  $('lisible').textContent = ajuste ? `Couleur principale trop claire pour du texte : Twiin l'assombrit (${v['--brand-strong'].toUpperCase()}, contraste ${c.toFixed(1)} : 1)`
+    : `Lisible sur blanc · contraste ${c.toFixed(1)} : 1`;
+  document.querySelectorAll('.forme').forEach((x) => x.setAttribute('aria-pressed', String(x.dataset.forme === forme)));
+  // aperçu de la couverture vidéo
+  const fort = b.couleur, voile = `${b.couleur2 || v['--brand']}`;
+  $('apVideo').querySelector('.fond').style.background = `radial-gradient(60% 70% at 88% 18%, ${voile}aa 0%, transparent 70%), radial-gradient(50% 60% at 8% 100%, ${voile}aa 0%, transparent 65%), #fff`;
+  const k = $('apVideo').querySelector('.kick'); k.style.color = fort; k.style.background = `${fort}1a`;
+  $('apVideo').style.fontFamily = b.police ? `"${b.police}", sans-serif` : '';
+  const src = logoData || logoUrl;
+  $('apX').innerHTML = src || b.nom ? `<span style="opacity:.4;font-weight:400">×</span>${src ? `<img src="${src}" alt="">` : esc(b.nom)}` : '';
+  for (const id of ['logoClair', 'logoSombre']) $(id).innerHTML = src ? `<img src="${src}" alt="Logo">` : `<em>${id === 'logoClair' ? 'Fond clair' : 'Fond foncé'}</em>`;
+  $('logoSuppr').hidden = !src;
+  $('logoBtn').firstChild.textContent = src ? 'Changer le logo' : 'Choisir un logo';
+}
+
+async function charger() {
+  m = await (await fetch('/api/marque')).json().catch(() => ({}));
+  f.police.innerHTML = (m.polices || ['Google Sans Flex']).map((p) => `<option value="${p === 'Google Sans Flex' ? '' : esc(p)}">${p === 'Google Sans Flex' ? 'Google Sans Flex (Twiin)' : esc(p)}</option>`).join('');
+  f.nom.value = m.nom || '';
+  f.couleur.value = m.couleur || '#56669c';
+  auto2 = !m.couleur2; if (m.couleur2) f.couleur2.value = m.couleur2;
+  f.police.value = m.police && m.police !== 'Google Sans Flex' ? m.police : '';
+  forme = m.forme || 'doux';
+  logoUrl = m.logo; logoData = null;
+  dessinerPresets();
+  peindre();
+}
+f.addEventListener('input', (e) => { if (e.target.name === 'couleur2') auto2 = false; peindre(); });
+f.police.addEventListener('change', () => {
+  const p = f.police.value;
+  if (p && !document.querySelector(`link[data-police="${p}"]`)) {
+    const l = document.createElement('link'); l.rel = 'stylesheet'; l.dataset.police = p; l.href = window.TwiinMarque.policeUrl(p); document.head.append(l);
+  }
+  peindre();
+});
+$('c2Auto').onclick = () => { auto2 = true; peindre(); };
+$('formes').onclick = (e) => { const b = e.target.closest('.forme'); if (b) { forme = b.dataset.forme; peindre(); } };
+f.logo.onchange = () => {
+  const file = f.logo.files[0];
+  if (!file) return;
+  if (file.size > 2e6) { $('etat').textContent = 'Logo trop lourd (2 Mo au plus).'; return; }
+  const rd = new FileReader();
+  rd.onload = async () => {
+    logoData = rd.result;
+    const c = await window.TwiinMarque.dominante(logoData);
+    if (c) f.couleur.value = c; // la couleur du logo, modifiable
+    peindre();
+  };
+  rd.readAsDataURL(file);
+};
+$('logoSuppr').onclick = () => { logoData = null; logoUrl = null; peindre(); };
+async function envoyer(corps, ok) {
+  $('etat').textContent = 'Enregistrement…';
+  const r = await fetch('/api/marque', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(corps) })
+    .then((x) => x.json()).catch(() => ({ error: 'Le serveur ne répond pas.' }));
+  if (r.error) { $('etat').textContent = r.error; return; }
+  window.TwiinMarque.appliquer(r);
+  await charger();
+  $('etat').textContent = ok;
+}
+f.onsubmit = (e) => {
+  e.preventDefault();
+  const b = brouillon();
+  envoyer({ nom: b.nom, couleur: b.couleur, couleur2: b.couleur2, police: b.police, forme: b.forme === 'doux' ? null : b.forme,
+            logo: logoData ? logoData : logoUrl ? undefined : null }, 'Appliqué au SaaS et aux prochaines vidéos.');
+};
+$('revenir').onclick = () => envoyer({ effacer: true }, 'DA Twiin rétablie.');
+addEventListener('load', () => { const t = setInterval(() => { if (window.TwiinMarque) { clearInterval(t); charger(); } }, 50); });
+
+// Connexions aux comptes : Google (Gmail, Sheets, Drive) en un clic, sans configurer n8n
+async function connexions() {
+  const out = $('conOut');
+  const q = new URLSearchParams(location.search);
+  const d = await (await fetch('/api/connexions')).json().catch(() => null);
+  if (!d) { out.innerHTML = '<p class="meta">Indisponible : le serveur ne répond pas.</p>'; return; }
+  const g = d.google, LOGOS = { gmailOAuth2: 'gmail', googleSheetsOAuth2Api: 'google-sheets', googleDriveOAuth2Api: 'google-drive' };
+  const msg = { ok: ['ok', 'Compte Google connecté : Gmail, Sheets et Drive sont prêts pour les automatisations.'], refus: ['ko', 'Connexion annulée sur la page Google.'],
+    expire: ['ko', 'La demande a expiré : recommence.'], erreur: ['ko', `Connexion impossible : ${q.get('detail') || 'erreur inconnue'}`] }[q.get('google')];
+  out.innerHTML = `${g.services.map((x) => `<div class="con-ligne"><img src="icons/${LOGOS[x.type]}.png" alt="">
+      <span class="nom">${esc(x.label)}<small>${x.connexions.length ? esc(x.connexions.join(', ')) : 'Pas encore connecté'}</small></span>
+      <span class="etiq ${x.connexions.length ? 'on' : 'off'}">${x.connexions.length ? 'Connecté' : 'À connecter'}</span></div>`).join('')}
+    <div class="acts" style="display:flex;gap:10px;flex-wrap:wrap;margin-top:6px">
+      ${g.app_configuree ? `<a class="btn primary" href="/api/google/connecter">${g.services.some((x) => x.connexions.length) ? 'Connecter un autre compte Google' : 'Connecter Google'}</a>` : ''}
+      <button type="button" class="quiet" id="conAppBtn">${g.app_configuree ? 'Application Google de l\'entreprise' : 'Configurer l\'application Google (DSI, une fois)'}</button></div>
+    ${msg ? `<p class="con-msg ${msg[0]}">${esc(msg[1])}</p>` : ''}
+    <form class="con-app" id="conApp" ${g.app_configuree ? 'hidden' : ''}>
+      <p class="lab" style="margin:0">Application OAuth Google de l'entreprise</p>
+      <p style="margin:0;font-size:14px">Dans Google Cloud (APIs et services → Identifiants), crée un « ID client OAuth » de type Application Web, active les API Gmail, Sheets et Drive,
+        et ajoute cette URL de redirection autorisée : <code>${esc(g.retour)}</code></p>
+      ${g.app_configuree ? `<p style="margin:0;font-size:13px">Application actuelle : …${esc(g.client_id_fin)}</p>` : ''}
+      <input name="client_id" placeholder="ID client (…apps.googleusercontent.com)" autocomplete="off" required>
+      <input name="client_secret" type="password" placeholder="Code secret du client" autocomplete="off" required>
+      <div><button type="submit" class="primary">Enregistrer</button> <span class="meta" id="conAppMsg"></span></div></form>`;
+  $('conAppBtn').onclick = () => { $('conApp').hidden = !$('conApp').hidden; };
+  $('conApp').onsubmit = async (e) => {
+    e.preventDefault();
+    const r = await fetch('/api/connexions/google/app', { method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ client_id: e.target.client_id.value, client_secret: e.target.client_secret.value }) }).then((x) => x.json()).catch(() => ({ error: 'Le serveur ne répond pas.' }));
+    if (r.error) { $('conAppMsg').textContent = r.error; return; }
+    history.replaceState(null, '', location.pathname + '#connexions');
+    connexions();
+  };
+  if (q.get('google')) $('connexions').scrollIntoView({ block: 'start' });
+}
+// Équipe : nom, membres (chacun choisit ensuite son espace dans la barre de navigation)
+async function equipe() {
+  const d = await (await fetch('/api/equipe')).json().catch(() => null);
+  if (!d) { $('eqOut').innerHTML = '<p class="meta">Indisponible.</p>'; return; }
+  $('eqOut').innerHTML = `<label class="champ" style="display:block;max-width:420px;margin-bottom:16px"><p class="lab">Nom de l'équipe</p><input type="text" id="eqNom" value="${esc(d.nom)}" maxlength="60"></label>
+    <p class="lab">Membres · ${d.membres.length}</p>
+    <div class="eq-membres">${d.membres.map((m) => `<span class="eq-m"><span class="av">${esc(m.prenom[0] || '?').toUpperCase()}</span>${esc(m.prenom)}<button type="button" data-suppr="${esc(m.id)}" aria-label="Retirer ${esc(m.prenom)}">×</button></span>`).join('')}</div>
+    <form class="eq-ajout" id="eqAjout"><input name="prenom" placeholder="Prénom" maxlength="40" required aria-label="Prénom du nouveau membre"><button type="submit">Ajouter</button></form>`;
+  $('eqNom').onchange = () => fetch('/api/equipe/nom', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ nom: $('eqNom').value }) }).then(() => window.TwiinEspace?.recharger());
+  $('eqOut').querySelectorAll('[data-suppr]').forEach((b) => b.onclick = async () => { await fetch(`/api/equipe/membres/${encodeURIComponent(b.dataset.suppr)}`, { method: 'DELETE' }); equipe(); window.TwiinEspace?.recharger(); });
+  $('eqAjout').onsubmit = async (e) => {
+    e.preventDefault();
+    await fetch('/api/equipe/membres', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ prenom: e.target.prenom.value }) });
+    equipe(); window.TwiinEspace?.recharger();
+  };
+}
+addEventListener('load', () => { connexions(); equipe(); if (location.hash === '#equipe') setTimeout(() => $('equipe').scrollIntoView(), 300); });
+
+// Logiciels et autorisations : déduits des audits des postes (pour la DSI, une fois pour toute l'entreprise)
+addEventListener('load', async () => {
+  const out = $('out');
+  const pill = (ok) => ok ? '<span class="pill on">Connecté</span>' : '<span class="pill bad">À autoriser</span>';
+  try {
+    const d = await (await fetch('/api/setup')).json();
+    if (d.error) throw new Error(d.error);
+    if (!d.audit) { out.innerHTML = '<p class="meta">Pas encore d\'audit de poste : fais d\'abord l\'audit dans Mon travail.</p>'; return; }
+    out.innerHTML = `
+      <p class="lab">Logiciels métier couverts</p><p class="ms-kpi">${d.coverage} %</p>
+      <div class="fam">
+        ${d.families.map((x) => `<div class="fcard">
+          <h3>${esc(x.label)} ${pill(x.connected)}</h3>
+          <p>${esc(x.how)}</p>
+          <div class="chips">${x.tools.map((t) => `<span>${esc(t)}</span>`).join('')}</div>
+          ${x.connected ? `<p>Connexion n8n : ${x.credentials.map(esc).join(', ')}</p>` : `<ol class="how">
+            <li>La DSI crée l'autorisation chez ${esc(x.label.split(' ')[0])} (une fois).</li>
+            <li>Elle colle l'identifiant et le secret dans le n8n de l'entreprise : <a href="${d.n8n_credentials_url}" target="_blank" rel="noopener">ouvrir les connexions n8n</a>.</li>
+            <li>Twiin les réutilise pour toutes les automatisations et tous les salariés.</li></ol>`}
+        </div>`).join('')}
+        ${d.others.length ? `<div class="fcard"><h3>Autres outils avec API</h3>
+          <div class="chips">${d.others.map((o) => `<span>${esc(o.name)} · ${o.connected ? 'connecté' : 'à autoriser'}</span>`).join('')}</div></div>` : ''}
+        ${d.screen.length ? `<div class="fcard"><h3>Logiciels sans API</h3>
+          <p>Holo les utilise à l'écran, avec le coffre de mots de passe de l'entreprise.</p>
+          <div class="chips">${d.screen.map((t) => `<span>${esc(t)}</span>`).join('')}</div></div>` : ''}
+      </div>`;
+  } catch (e) { out.innerHTML = `<p class="meta">Indisponible : ${esc(e.message)}</p>`; }
+});
+</script>
+</body>
+</html>

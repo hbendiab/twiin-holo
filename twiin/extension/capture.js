@@ -5,12 +5,27 @@
 const Capture = (() => {
   const MIN_GAP_MS = 1500, SETTLE_MAX_MS = 3000, HEARTBEAT_MS = 60000;
   const CHANGE_THRESHOLD = 3, STABLE_THRESHOLD = 1.5, MODEL_MAX_DIMENSION = 1024, OCR_MAX_DIMENSION = 1600;
-  const S = { recording: false, analyzing: false, phase: null, startedAt: 0, frames: 0, screens: [], thumbs: [], error: null, result: null };
-  let base = 'http://localhost:3000', token = null, onUpdate = () => {};
+  const S = { recording: false, paused: false, ajout: null, analyzing: false, phase: null, hadVoice: false, startedAt: 0, frames: 0, screens: [], thumbs: [], error: null, result: null, review: null };
+  let base = 'http://localhost:3000', token = null, onUpdate = () => {}, transport = null;
   let shared = [], nextScreen = 1, sessionId = null, journalNext = 0, uploads = [], uploadErrors = 0, busy = false, stopping = false;
 
-  const hdr = (json = true) => ({ ...(json ? { 'Content-Type': 'application/json' } : {}), ...(token ? { Authorization: `Bearer ${token}` } : {}) });
-  const post = (path, body) => fetch(base + path, { method: 'POST', headers: hdr(), body: JSON.stringify(body || {}) });
+  // Appels au serveur Twiin. Dans l'extension, ils passent par le service worker (transport), comme le reste du panneau :
+  // un appel direct depuis le panneau vers localhost peut rester bloqué par Chrome (accès au réseau local).
+  // Chaque appel a un délai maximum : une étape bloquée devient une erreur affichée, jamais une attente sans fin.
+  const call = async (path, { method = 'GET', body, timeout = 60000 } = {}) => {
+    if (transport) {
+      const r = await Promise.race([transport(path, { method, body }), new Promise((res) => setTimeout(() => res({ error: 'Twiin ne répond pas (délai dépassé).' }), timeout))]);
+      return r || { error: 'Pas de réponse de Twiin.' };
+    }
+    try {
+      const r = await fetch(base + path, { method, signal: AbortSignal.timeout(timeout),
+        headers: { ...(body ? { 'Content-Type': 'application/json' } : {}), ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+        body: body ? JSON.stringify(body) : undefined });
+      const j = await r.json().catch(() => ({}));
+      return r.ok ? j : { error: j.error || `Erreur ${r.status}` };
+    } catch (e) { return { error: e.name === 'TimeoutError' ? 'Twiin ne répond pas (délai dépassé).' : 'Twiin n\'est pas joignable.' }; }
+  };
+  const post = (path, body, timeout) => call(path, { method: 'POST', body: body || {}, timeout });
   const emit = () => onUpdate(S);
 
   // Écran choisi : depuis un clic (sélecteur standard de Chrome) ou sans clic (sélecteur de l'extension)
@@ -39,30 +54,42 @@ const Capture = (() => {
   async function start(opts) {
     if (S.recording) return addScreen(opts);
     const stream = await ask(opts); // avant tout le reste : le clic de l'employé n'est valable qu'un instant
-    Object.assign(S, { recording: true, analyzing: false, phase: null, startedAt: Date.now(), frames: 0, screens: [], thumbs: [], error: null, result: null });
+    const mic = await globalThis.Voice?.open(); // voix : seulement si voice.js est chargé et l'interrupteur activé
+    Object.assign(S, { recording: true, paused: false, ajout: opts?.ajouterA ? { id: opts.ajouterA, titre: opts.titre || '' } : null,
+      analyzing: false, phase: null, hadVoice: false, startedAt: Date.now(), frames: 0, screens: [], thumbs: [], error: null, result: null, review: null });
     shared = []; nextScreen = 1; uploads = []; uploadErrors = 0; journalNext = 0;
     addStream(stream);
-    try { sessionId = (await (await post('/api/actions/start', { startedAt: S.startedAt })).json()).session || null; } catch { sessionId = null; }
+    // « Ajouter un passage oublié » : ces étapes s'ajouteront à la fin de la tâche ajouterA (comme dans le SaaS)
+    sessionId = (await post('/api/actions/start', { startedAt: S.startedAt, ajouterA: S.ajout?.id || null }, 15000)).session || null;
     if (!sessionId) { S.error = 'Twiin ne répond pas sur ce Mac : enregistrement impossible.'; await stop({ cancel: true }); }
+    if (sessionId && S.recording) globalThis.Voice?.start(mic); else mic?.getTracks().forEach((t) => t.stop()); // micro seulement si l'enregistrement a démarré
     emit();
   }
   async function addScreen(opts) { addStream(await ask(opts)); }
+  // Pause / reprise : pendant la pause, rien n'est observé ni noté (ni images, ni clics)
+  async function pause() {
+    if (!S.recording) return;
+    const d = await post('/api/actions/pause', {}, 5000);
+    if (d.error) { S.error = d.error; return emit(); }
+    S.paused = !!d.paused;
+    globalThis.Voice?.state?.recording && (S.paused ? globalThis.Voice?.pause?.() : globalThis.Voice?.resume?.());
+    emit();
+  }
 
   // Cadence : un worker, pour ne pas être ralenti si le panneau passe en arrière-plan
   new Worker('ticker.js').onmessage = async () => {
-    if (!S.recording || busy || stopping) return;
+    if (!S.recording || S.paused || busy || stopping) return;
     busy = true;
     try { const now = Date.now(); await Promise.all(S.screens.map((s) => observe(s, now))); await pollJournal(); } finally { busy = false; }
   };
   async function pollJournal() {
-    try {
-      const { events, next } = await (await fetch(`${base}/api/actions?since=${journalNext}`, { headers: hdr(false) })).json();
-      journalNext = next;
-      for (const e of events) forceCaptureAfter(e);
-    } catch { /* serveur occupé : on réessaie */ }
+    const d = await call(`/api/actions?since=${journalNext}`, { timeout: 5000 });
+    if (!d.events) return; // serveur occupé : on réessaie à la seconde suivante
+    journalNext = d.next;
+    for (const e of d.events) forceCaptureAfter(e);
   }
   function forceCaptureAfter(e) { // une saisie ou un clic change parfois peu de pixels : image forcée juste après
-    if (!S.recording || !['typing', 'shortcut', 'click', 'key'].includes(e.type)) return;
+    if (!S.recording || S.paused || !['typing', 'shortcut', 'click', 'key'].includes(e.type)) return;
     const sh = shared.find((x) => new RegExp(`^screen:${e.display}:`).test(x.label));
     for (const scr of sh ? S.screens.filter((s) => s.n === sh.n) : S.screens) {
       clearTimeout(scr.forceTimer);
@@ -73,7 +100,7 @@ const Capture = (() => {
     }
   }
 
-  const grab = (scr) => scr.cap.grabFrame().catch(() => null);
+  const grab = (scr) => Promise.race([scr.cap.grabFrame().catch(() => null), new Promise((res) => setTimeout(() => res(null), 1500))]);
   function snapshot(bmp, maxDim, quality) {
     const c = document.createElement('canvas');
     const scale = Math.min(1, maxDim / Math.max(bmp.width, bmp.height));
@@ -107,7 +134,7 @@ const Capture = (() => {
       screen: scr.n, screen_label: scr.label, dataUrl: snapshot(bmp, MODEL_MAX_DIMENSION, 0.7), ocrUrl: snapshot(bmp, OCR_MAX_DIMENSION, 0.85) };
     S.thumbs = [...S.thumbs, snapshot(bmp, 200, 0.6)].slice(-6); // aperçu dans le panneau
     bmp.close();
-    if (sessionId) uploads.push(post('/api/frames', { session: sessionId, frame }).then((r) => { if (!r.ok) uploadErrors++; }).catch(() => { uploadErrors++; }));
+    if (sessionId) uploads.push(post('/api/frames', { session: sessionId, frame }, 30000).then((r) => { if (r.error || r.offline) uploadErrors++; }));
     emit();
   }
 
@@ -115,10 +142,10 @@ const Capture = (() => {
     if (!S.recording || stopping) return;
     stopping = true;
     if (!cancel) { S.analyzing = true; S.phase = 'upload'; } // l'écran d'analyse s'affiche tout de suite
-    S.recording = false;
+    S.recording = false; S.paused = false;
     emit();
     if (!cancel) await pollJournal();
-    await post('/api/actions/stop').catch(() => {});
+    await post('/api/actions/stop', {}, 5000);
     if (!cancel) {
       await new Promise((r) => setTimeout(r, 600));
       for (const s of S.screens) { const bmp = await grab(s); if (bmp) keep(s, bmp, thumbnail(bmp), Date.now()); } // état final
@@ -126,17 +153,41 @@ const Capture = (() => {
     for (const s of S.screens) s.stream.getTracks().forEach((t) => t.stop());
     S.screens = [];
     stopping = false;
+    S.hadVoice = !cancel && !!globalThis.Voice?.state.recording; // le micro tournait : l'analyse aura une étape « voix »
+    const voiceSent = cancel ? globalThis.Voice?.cancel() : globalThis.Voice?.stop(sessionId); // l'audio part pendant l'envoi des images
     if (cancel) { S.analyzing = false; return emit(); }
     if (!S.frames) { Object.assign(S, { analyzing: false, error: 'Aucune image gardée.' }); return emit(); }
 
-    await Promise.allSettled(uploads);
+    await Promise.allSettled([...uploads, voiceSent]);
+    // Relecture AVANT envoi : le serveur masque en local les informations sensibles, puis l'employé retire ce qu'il veut
+    S.phase = 'mask'; emit();
+    const rv = await call(`/api/session/${encodeURIComponent(sessionId)}/review`, { timeout: 3 * 60000 });
+    S.analyzing = false; S.phase = null;
+    if (rv.error) { S.error = rv.error; return emit(); }
+    S.review = { masque: rv.masque || {}, frames: rv.frames || [], remove: new Set(), textOnly: false };
+    emit();
+  }
+
+  // Après la relecture : on retire les images choisies, puis on analyse (images masquées, ou texte seul)
+  async function analyse() {
+    const rv = S.review;
+    if (!rv) return;
+    S.review = null; S.analyzing = true; S.phase = 'upload'; emit();
+    if (rv.remove.size) await post(`/api/session/${encodeURIComponent(sessionId)}/review`, { remove: [...rv.remove] }, 15000);
+    await runAnalysis('/api/generate-workflows', { session: sessionId, startedAt: S.startedAt, screens: shared, textOnly: rv.textOnly }, uploadErrors);
+  }
+
+  // Analyse (nouvelle ou relancée) : suit la progression du serveur, puis garde le résultat ou l'erreur
+  async function runAnalysis(url, body, uploadErrors = 0) {
     const poll = setInterval(async () => {
-      try { const p = await (await fetch(`${base}/api/analysis/progress`, { headers: hdr(false) })).json(); if (p.phase !== 'idle') { S.phase = p.phase; emit(); } } catch { /* rien */ }
+      const p = await call('/api/analysis/progress', { timeout: 5000 });
+      if (p.phase && p.phase !== 'idle') { if (p.phase === 'transcription') S.hadVoice = true; S.phase = p.phase; emit(); }
     }, 1000);
     try {
-      const data = await (await post('/api/generate-workflows', { session: sessionId, startedAt: S.startedAt, screens: shared })).json();
+      const data = await post(url, body, 5 * 60000);
       if (data.error) throw new Error(data.error);
       S.result = { workflows: data.workflows || [], uploadErrors };
+      globalThis.Voice?.report(data._meta?.voice);
     } catch (e) {
       S.error = `L'analyse n'a pas abouti : ${e.message}`;
     } finally {
@@ -145,11 +196,25 @@ const Capture = (() => {
       emit();
     }
   }
+  // « Réanalyser » : relance sur le dernier enregistrement gardé par le serveur (comme la page Twiin)
+  async function reanalyze() {
+    if (S.recording || S.analyzing || stopping) return;
+    Object.assign(S, { analyzing: true, phase: 'ocr', hadVoice: false, frames: 0, error: null, result: null });
+    emit();
+    await runAnalysis('/api/reanalyze', {});
+  }
 
   return {
     state: S,
-    config(o) { if (o.base) base = o.base; if ('token' in o) token = o.token; if (o.onUpdate) onUpdate = o.onUpdate; },
-    start, addScreen, stop, cancel: () => stop({ cancel: true }),
+    config(o) { if (o.base) base = o.base; if ('token' in o) token = o.token; if (o.onUpdate) onUpdate = o.onUpdate; if (o.transport) transport = o.transport; },
+    start, addScreen, pause, reanalyze, stop, cancel: () => stop({ cancel: true }), analyse,
     clear() { S.error = null; S.result = null; emit(); },
+    // Relecture : retirer / remettre une image, texte seul, ou tout supprimer (rien n'est envoyé)
+    toggle(i) { const r = S.review?.remove; if (!r) return; r.has(i) ? r.delete(i) : r.add(i); emit(); },
+    textOnly(on) { if (S.review) { S.review.textOnly = !!on; emit(); } },
+    async discard() {
+      await post(`/api/session/${encodeURIComponent(sessionId)}/review`, { all: true }, 15000);
+      S.review = null; S.result = null; S.error = 'Enregistrement supprimé. Rien n\'a été envoyé.'; emit();
+    },
   };
 })();

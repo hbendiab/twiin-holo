@@ -21,6 +21,8 @@ Les workflows Twiin sont préfixés « Twiin — » et créés INACTIFS : l'acti
 """
 import argparse
 import json
+import os
+import shutil
 import re
 import secrets
 import sqlite3
@@ -33,8 +35,29 @@ from dotenv import dotenv_values
 
 ROOT = Path(__file__).resolve().parents[1]
 ENV = dotenv_values(ROOT / ".env")
+for _k in ("N8N_LOCAL_URL", "N8N_LOCAL_API_KEY", "N8N_LOCAL_MCP_TOKEN", "TWIIN_LOCAL_TOKEN"):  # variables du serveur
+    if not ENV.get(_k) and __import__("os").environ.get(_k):
+        ENV[_k] = __import__("os").environ[_k]
+try:  # sinon, l'environnement LOCAL de n8ncli (n8ncli envs edit LOCAL …) : même clé et même jeton
+    _l = json.loads((Path.home() / ".n8ncli-global.json").read_text(encoding="utf-8"))["environments"]["LOCAL"]
+    ENV.setdefault("N8N_LOCAL_URL", _l.get("instanceUrl"))
+    if not ENV.get("N8N_LOCAL_API_KEY"):
+        ENV["N8N_LOCAL_API_KEY"] = _l.get("apiKey")
+    if not ENV.get("N8N_LOCAL_MCP_TOKEN"):
+        ENV["N8N_LOCAL_MCP_TOKEN"] = _l.get("accessToken")
+except (OSError, KeyError, ValueError):
+    pass
+if not ENV.get("TWIIN_LOCAL_TOKEN"):  # même jeton que le serveur Twiin (créé par lui, gardé sur le poste)
+    try:
+        ENV["TWIIN_LOCAL_TOKEN"] = (ROOT / "workflows" / "runs" / ".twiin_local_token").read_text(encoding="utf-8").strip()
+    except OSError:
+        pass
 N8N_DB = Path.home() / ".n8n" / "database.sqlite"
-TWIIN_URL = "http://127.0.0.1:3000/api/holo/run"
+# Port de la page Twiin : celui où tourne le serveur (variable PORT héritée de server.js), 3000 par défaut.
+TWIIN_PORT = ENV.get("TWIIN_PORT") or os.environ.get("PORT") or "3000"
+TWIIN_URL = f"http://127.0.0.1:{TWIIN_PORT}/api/holo/run"
+# Programme n8n : celui du PATH, sinon celui installé dans automation/n8n-runtime (npm install).
+N8N_BIN = shutil.which("n8n") or str(ROOT / "automation" / "n8n-runtime" / "node_modules" / ".bin" / "n8n")
 SHEETS = {"veille": ENV.get("N8N_SHEET_VEILLE_ID"), "factures": ENV.get("N8N_SHEET_FACTURES_ID")}
 SHEET_TABS = {"veille": ENV.get("N8N_SHEET_VEILLE_GID") or "0", "factures": ENV.get("N8N_SHEET_FACTURES_GID") or "0"}
 PLACEHOLDER = re.compile(r"\{\{\s*([^{}]+?)\s*\}\}")
@@ -59,6 +82,16 @@ def sheets_credential():
     return {"googleSheetsOAuth2Api": {"id": row[0], "name": row[1]}}
 
 
+def credential_ref(ctype, label):
+    """Référence (id + nom, jamais le secret) d'une connexion n8n du type donné (ex. gmailOAuth2)."""
+    con = sqlite3.connect(N8N_DB)
+    row = con.execute("select id, name from credentials_entity where type=? limit 1", (ctype,)).fetchone()
+    con.close()
+    if not row:
+        raise SystemExit(f"Aucune connexion {label} dans n8n : ajoute-la dans n8n (Credentials) puis relance.")
+    return {ctype: {"id": row[0], "name": row[1]}}
+
+
 def js_template(text):
     """« Veille – {{Holo — lire.entreprise}} » → template JS n8n qui lit la valeur du nœud Holo précédent."""
     def repl(m):
@@ -68,7 +101,9 @@ def js_template(text):
         if ref == "execution":
             return "${$execution.id}"
         node, _, key = ref.rpartition(".")
-        return "${(($('" + node.replace("'", "\\'") + "').first().json.data || {})['" + key + "'] ?? '')}"
+        # un bloc Holo range ses valeurs dans .data ; un bloc « row » (Code) les range directement dans .json
+        return ("${(() => { const j = $('" + node.replace("'", "\\'") + "').first().json || {}; "
+                "return ((j.data && typeof j.data === 'object') ? j.data : j)['" + key + "'] ?? ''; })()}")
     esc = text.replace("\\", "\\\\").replace("`", "\\`")
     return "`" + PLACEHOLDER.sub(repl, esc) + "`"
 
@@ -98,7 +133,15 @@ def compile_plan(plan):
         nodes[-1]["position"] = [x, 120]
         nodes[-1]["disabled"] = True
     chain = []
+    # Plusieurs cibles (« branche » sur chaque bloc, ex. une entreprise) : une branche par cible, toutes partent du déclencheur.
+    # n8n (ordre v1) les exécute l'une après l'autre ; si une cible échoue, les suivantes tournent quand même.
+    branches, branche_de = [], {}
     for b in plan["blocks"]:
+        br = b.get("branche")
+        if br is not None and br not in branches:
+            branches.append(br)
+            x = 0
+        n0, c0 = len(nodes), len(chain)
         x += 300
         t = b["type"]
         if t == "holo":
@@ -112,6 +155,46 @@ def compile_plan(plan):
                 "sendBody": True, "specifyBody": "json", "jsonBody": body,
                 "options": {"timeout": 1500000, "response": {"response": {"responseFormat": "json"}}},
             }, x))
+        elif t in ("holo_web", "excel_append"):
+            # Blocs « sans gêner l'employé » : Holo lit une page web dans un navigateur INVISIBLE ; l'écriture dans un
+            # classeur Excel du poste se fait par fichier, sans Holo. Les deux passent par le serveur Twiin local (jeton).
+            if t == "holo_web":
+                url = TWIIN_URL.replace("/api/holo/run", "/api/holo/web")
+                body = json.dumps({"url": b["url"], "label": b.get("label") or b["name"], "columns": b["columns"]}, ensure_ascii=False)
+            else:
+                url = TWIIN_URL.replace("/api/holo/run", "/api/excel/write")
+                body = ("={{ JSON.stringify({ path: " + json.dumps(b.get("path") or "", ensure_ascii=False) + ", name: "
+                        + json.dumps(b.get("workbook") or "", ensure_ascii=False) + ", rows: $json.rows }) }}")
+            nodes.append(node(b["name"], "n8n-nodes-base.httpRequest", 4.2, {
+                "method": "POST", "url": url,
+                "sendHeaders": True, "headerParameters": {"parameters": [{"name": "x-twiin-token", "value": token}]},
+                "sendBody": True, "specifyBody": "json", "jsonBody": body,
+                "options": {"timeout": 600000, "response": {"response": {"responseFormat": "json"}}},
+            }, x))
+        elif t in ("source_read", "holo_fill"):
+            # Saisie « document → logiciel web sans API » : lecture du document sur le poste, puis Holo saisit dans un
+            # navigateur INVISIBLE et le navigateur vérifie les valeurs à l'écran. S'il n'y a rien de nouveau, rien n'est saisi.
+            if t == "source_read":
+                url = TWIIN_URL.replace("/api/holo/run", "/api/source/read")
+                body = json.dumps({"columns": b["columns"], "line_columns": b.get("line_columns") or [], "folder": b.get("folder") or "", "pattern": b.get("pattern") or ""},
+                                  ensure_ascii=False)
+            else:
+                url = TWIIN_URL.replace("/api/holo/run", "/api/holo/fill")
+                body = ("={{ JSON.stringify({ url: " + json.dumps(b["url"]) + ", label: " + json.dumps(b.get("label") or "", ensure_ascii=False)
+                        + ", values: $json.data || {} }) }}")
+            nodes.append(node(b["name"], "n8n-nodes-base.httpRequest", 4.2, {
+                "method": "POST", "url": url,
+                "sendHeaders": True, "headerParameters": {"parameters": [{"name": "x-twiin-token", "value": token}]},
+                "sendBody": True, "specifyBody": "json", "jsonBody": body,
+                # holo_fill : un échec de saisie (code 409) ne coupe pas le workflow, la suite (mail) peut le dire à l'employé
+                "options": {"timeout": 900000, "response": {"response": {"responseFormat": "json", **({"neverError": True} if t == "holo_fill" else {})}}},
+            }, x))
+        elif t == "rows_from":
+            src = ", ".join("$(" + json.dumps(n, ensure_ascii=False) + ").first().json.data || {}" for n in b["sources"])
+            code = (f"const rows = [{src}];\n"
+                    "return [{ json: { rows: rows.filter((r) => Object.values(r).some((v) => v && v !== '—')) } }];")
+            nodes.append(node(b["name"], "n8n-nodes-base.code", 2, {"jsCode": code}, x))
+            nodes[-1]["notes"] = "Rassemble les valeurs lues sur chaque page en lignes de tableau."
         elif t == "row":
             lines = ",\n  ".join(f"{json.dumps(k, ensure_ascii=False)}: {js_template(v)}" for k, v in b["fields"].items())
             nodes.append(node(b["name"], "n8n-nodes-base.code", 2, {"jsCode": f"return [{{ json: {{\n  {lines}\n}} }}];"}, x))
@@ -121,7 +204,9 @@ def compile_plan(plan):
             rules = json.dumps(b.get("rules") or {}, ensure_ascii=False)
             code = (
                 f"const rules = {rules};\n"
+                # un bloc Holo range ses valeurs dans .data : on les remonte au niveau de la ligne pour les vérifier
                 "const row = { ...$json };\n"
+                "if (row.data && typeof row.data === 'object') Object.assign(row, row.data);\n"
                 "const problems = [];\n"
                 "for (const [col, r] of Object.entries(rules)) {\n"
                 "  const v = String(row[col] ?? '').trim();\n"
@@ -130,7 +215,13 @@ def compile_plan(plan):
                 "  for (const f of r.forbid || []) if (v.toLowerCase().includes(f.toLowerCase())) problems.push(`${col} : « ${f} » interdit`);\n"
                 "}\n"
                 "row['Vérification'] = problems.length ? '⚠️ ' + problems.join(' ; ') : '✅ OK';\n"
-                "return [{ json: row }];"
+                + ("if (problems.length) throw new Error('Écriture bloquée, valeurs douteuses : ' + problems.join(' ; '));\n"
+                   if b.get("on_problem", "stop") == "stop" else "")
+                # « skip » : cette cible s'arrête là (rien n'est écrit), la trace reste dans l'exécution, les autres cibles continuent
+                + ("if (problems.length) { try { $execution.customData.set(" + json.dumps(("Écartée · " + str(b.get("branche") or ""))[:50], ensure_ascii=False)
+                   + ", problems.join(' ; ').slice(0, 250)); } catch (e) {}\n  return []; }\n"
+                   if b.get("on_problem") == "skip" else "")
+                + "return [{ json: row }];"
             )
             nodes.append(node(b["name"], "n8n-nodes-base.code", 2, {"jsCode": code}, x))
             nodes[-1]["notes"] = "Vérifie chaque valeur lue par Holo avant de l'écrire (règles : présente, format, mots interdits)."
@@ -149,6 +240,19 @@ def compile_plan(plan):
                                         "type": "string", "canBeUsedToMatch": True} for c in cols]},
                 "options": {},
             }, x, sheets_credential()))
+        elif t == "gmail_send":
+            # Notification par mail à l'employé : l'adresse est lue sur le compte Gmail connecté (jamais écrite dans le plan).
+            gm = credential_ref("gmailOAuth2", "Gmail")
+            nodes.append(node("Adresse Gmail connectée", "n8n-nodes-base.httpRequest", 4.2, {
+                "method": "GET", "authentication": "predefinedCredentialType", "nodeCredentialType": "gmailOAuth2",
+                "url": "https://gmail.googleapis.com/gmail/v1/users/me/profile", "options": {}}, x, gm))
+            chain.append("Adresse Gmail connectée")
+            x += 300
+            nodes.append(node(b["name"], "n8n-nodes-base.gmail", 2.1, {
+                "resource": "message", "operation": "send",
+                "sendTo": "={{ $('Adresse Gmail connectée').first().json.emailAddress }}",
+                "subject": b["subject"], "message": b["message"], "options": {"appendAttribution": False}}, x, gm))
+            nodes[-1]["notes"] = "Prévient l'employé par mail une fois l'automatisation terminée."
         elif t == "http":
             p = {"method": b.get("method", "GET"), "url": b["url"], "options": {"timeout": 60000}}
             if b.get("auth") == "comptarex":  # jeton admin de comptarex (lecture de la vérité, jamais affiché)
@@ -161,12 +265,21 @@ def compile_plan(plan):
         else:
             raise SystemExit(f"Type de bloc inconnu : {t}")
         chain.append(b["name"])
+        for nom in chain[c0:]:
+            branche_de[nom] = br
+        if br is not None:
+            for n in nodes[n0:]:
+                n["position"] = [n["position"][0], 300 + 260 * branches.index(br)]
+                if t != "verify":
+                    n["onError"] = "continueRegularOutput"  # une page introuvable ne fait pas planter les autres cibles
     connections = {}
     starts = [trigger] + (["Planification Hebdomadaire"] if plan.get("schedule_cron") else [])
+    tetes = [next(n for n in chain if branche_de.get(n) == br) for br in branches] if branches else [chain[0]]
     for s in starts:
-        connections[s] = {"main": [[{"node": chain[0], "type": "main", "index": 0}]]}
+        connections[s] = {"main": [[{"node": h, "type": "main", "index": 0} for h in tetes]]}
     for a, b in zip(chain, chain[1:]):
-        connections[a] = {"main": [[{"node": b, "type": "main", "index": 0}]]}
+        if branche_de.get(a) == branche_de.get(b):
+            connections[a] = {"main": [[{"node": b, "type": "main", "index": 0}]]}
     return {"id": plan.get("id") or secrets.token_hex(8)[:16], "name": "Twiin — " + plan["name"], "nodes": nodes,
             "connections": connections, "active": False, "settings": {"executionOrder": "v1", "timezone": "Europe/Paris", "availableInMCP": True}, "pinData": {}}
 
@@ -178,6 +291,9 @@ def mcp(tool, args, timeout=1800):
                       headers={"Authorization": f"Bearer {ENV.get('N8N_LOCAL_MCP_TOKEN', '').strip()}",
                                "Content-Type": "application/json", "Accept": "application/json, text/event-stream"},
                       json={"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": {"name": tool, "arguments": args}})
+    # une réponse refusée (401 : jeton MCP invalide) ne doit pas passer pour un succès vide
+    if r.status_code != 200:
+        raise RuntimeError(f"MCP HTTP {r.status_code} : {r.text[:200]}")
     text = r.content.decode("utf-8", errors="replace")
     payload = next((l[6:] for l in text.splitlines() if l.startswith("data: ")), text)
     d = json.loads(payload)
@@ -197,6 +313,8 @@ def execute_mcp(wid, body=None):
     res, err = mcp("execute_workflow", {"workflowId": wid, "executionMode": "manual", "triggerNodeName": f"POST /twiin-{wid}",
                                         "inputs": {"webhookData": {"method": "POST", "body": body or {"source": "Twiin"}}}})
     if err:
+        # n8n a refusé le lancement : on note la raison dans la page (avant, elle était perdue)
+        ev("info", text=f"n8n a refusé le lancement : {str(res)[:300] or 'réponse vide'}")
         return False, res, None
     exec_id = (res or {}).get("executionId") if isinstance(res, dict) else None
     ev("executing", execution=exec_id, url=f"{ENV.get('N8N_LOCAL_URL') or 'http://localhost:5678'}/workflow/{wid}/executions/{exec_id}")
@@ -251,12 +369,12 @@ def ensure_header(sheet_key, column_letter, title):
 
 
 def run_cli(args, timeout=3600):
-    r = subprocess.run(["n8n", *args], capture_output=True, text=True, timeout=timeout)
+    r = subprocess.run([N8N_BIN, *args], capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=timeout)
     return r.returncode, r.stdout, r.stderr
 
 
 def import_workflow(wf):
-    with tempfile.NamedTemporaryFile("w", suffix=".json", delete=False) as f:
+    with tempfile.NamedTemporaryFile("w", suffix=".json", delete=False, encoding="utf-8") as f:
         json.dump(wf, f, ensure_ascii=False)
     code, out, err = run_cli(["import:workflow", f"--input={f.name}"])
     if code != 0:
@@ -266,8 +384,7 @@ def import_workflow(wf):
 
 def execute(wid):
     # le serveur n8n déjà lancé occupe le port 5679 du « task broker » : l'exécution en ligne de commande en prend un autre
-    import os
-    r = subprocess.run(["n8n", "execute", f"--id={wid}", "--rawOutput"], capture_output=True, text=True, timeout=3600,
+    r = subprocess.run([N8N_BIN, "execute", f"--id={wid}", "--rawOutput"], capture_output=True, text=True, timeout=3600,
                        env={**os.environ, "N8N_RUNNERS_BROKER_PORT": "5690"})
     code, out, err = r.returncode, r.stdout, r.stderr
     text = out.strip()

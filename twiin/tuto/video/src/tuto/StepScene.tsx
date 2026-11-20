@@ -10,7 +10,7 @@ import {
   useCurrentFrame,
   useVideoConfig,
 } from "remotion";
-import { COLORS, FONT, type Scene, type Shot } from "./types";
+import { COLORS, MONO, type Scene, type Shot } from "./types";
 
 // Zone où s'affiche la capture (sous le bandeau, au-dessus des sous-titres)
 const AREA = { x: 80, y: 150, w: 1760, h: 700 };
@@ -50,7 +50,8 @@ const ShotView: React.FC<ShotProps> = ({ shot, duration }) => {
           overflow: "hidden",
           borderRadius: 18,
           border: `2px solid ${COLORS.line}`,
-          boxShadow: "0 30px 80px -30px rgba(0,0,0,0.7)",
+          background: COLORS.panel,
+          boxShadow: "0 40px 80px -40px rgba(56,66,110,0.55)",
           opacity: interpolate(frame, [0, 0.5 * fps], [0, 1], { extrapolateLeft: "clamp", extrapolateRight: "clamp" }),
         }}
       >
@@ -79,24 +80,24 @@ const ShotView: React.FC<ShotProps> = ({ shot, duration }) => {
   );
 };
 
-type Props = { readonly scene: Scene; readonly index: number; readonly total: number };
+type Props = { readonly scene: Scene; readonly index: number; readonly total: number; readonly accent?: string };
 
 // Une étape du tuto : bandeau, captures de Holo, narration en sous-titre, astuce, voix off.
-export const StepScene: React.FC<Props> = ({ scene, index, total }) => {
+export const StepScene: React.FC<Props> = ({ scene, index, total, accent = COLORS.accent }) => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
   const per = Math.max(1, Math.floor(scene.durationInFrames / Math.max(1, scene.shots.length)));
   const overlap = Math.round(0.5 * fps); // fondu entre deux images
 
   return (
-    <AbsoluteFill style={{ backgroundColor: COLORS.bg, fontFamily: FONT }}>
+    <AbsoluteFill style={{ backgroundColor: COLORS.bg, backgroundImage: `radial-gradient(60% 50% at 100% 0%, ${accent}1f 0%, transparent 70%)` }}>
       {scene.audio ? <Audio src={staticFile(scene.audio)} premountFor={fps} /> : null}
 
       <div style={{ position: "absolute", left: 80, top: 56, right: 80, display: "flex", alignItems: "baseline", gap: 28 }}>
-        <div style={{ color: COLORS.accent, fontSize: 34, fontWeight: 700, letterSpacing: "0.12em" }}>
+        <div style={{ color: accent, fontFamily: MONO, fontSize: 28, fontWeight: 500, letterSpacing: "0.08em", padding: "8px 18px", borderRadius: 999, background: `${accent}1a`, alignSelf: "center" }}>
           ÉTAPE {index}/{total}
         </div>
-        <div style={{ color: COLORS.text, fontSize: 64, fontWeight: 800 }}>{scene.title}</div>
+        <div style={{ color: COLORS.text, fontSize: 62, fontWeight: 600, letterSpacing: "-0.035em" }}>{scene.title}</div>
       </div>
 
       {scene.shots.map((shot, i) => (
@@ -124,20 +125,20 @@ export const StepScene: React.FC<Props> = ({ scene, index, total }) => {
           opacity: interpolate(frame, [0.2 * fps, 0.7 * fps], [0, 1], { extrapolateLeft: "clamp", extrapolateRight: "clamp" }),
         }}
       >
-        <div style={{ color: COLORS.text, fontSize: 36, lineHeight: 1.3 }}>{scene.narration}</div>
+        <div style={{ color: COLORS.text, fontSize: 36, lineHeight: 1.3, fontWeight: 500 }}>{scene.narration}</div>
         {scene.tip ? (
           <div
             style={{
               alignSelf: "flex-start",
-              color: COLORS.bg,
-              backgroundColor: COLORS.warn,
+              color: accent,
+              backgroundColor: `${accent}1a`,
               fontSize: 30,
-              fontWeight: 700,
-              padding: "8px 18px",
-              borderRadius: 12,
+              fontWeight: 500,
+              padding: "10px 22px",
+              borderRadius: 999,
             }}
           >
-            💡 {scene.tip}
+            <span style={{ fontFamily: MONO, fontSize: 24, letterSpacing: "0.08em", marginRight: 14 }}>ASTUCE</span>{scene.tip}
           </div>
         ) : null}
       </div>

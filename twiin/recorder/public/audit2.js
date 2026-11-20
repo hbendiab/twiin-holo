@@ -17,6 +17,11 @@
   const RECO = { automatiser: 'À automatiser', simplifier_d_abord: "À simplifier d'abord", ne_pas_automatiser: 'Pas rentable à automatiser', a_preciser: 'À préciser' };
   const RECO_WHY = { simplifier_d_abord: 'trop de cas particuliers ou de décisions au cas par cas', ne_pas_automatiser: "moins d'une heure par semaine",
                      a_preciser: 'fréquence ou durée « je ne sais pas »' };
+  const ICO = {
+    mic: '<svg class="ico-svg" viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>',
+    edit: '<svg class="ico-svg" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h4L19 9l-4-4L4 16v4z"/></svg>',
+    star: '<svg class="ico-svg" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l2.6 5.6 6 .7-4.5 4.1 1.2 6L12 16.6 6.7 19.4l1.2-6L3.4 9.3l6-.7z"/></svg>',
+  };
   const label = (list, v) => (list.find(([k]) => k === v) || [, ''])[1];
 
   // État : réponses (brouillon serveur), questions pré-remplies, outils du temps 1
@@ -25,12 +30,13 @@
 
   // ── voix : la question est lue (si l'employé le veut) ; tout marche au clic sans la voix ─────────────────────────
   let voiceOn = false;
-  try { voiceOn = localStorage.getItem('twiin-a2-voix') === '1'; } catch { /* rien */ }
+  try { const v = localStorage.getItem('twiin-a2-voix'); voiceOn = v === null ? true : v === '1'; } catch { /* rien */ } // Iris et Ilo parlent par défaut
   $('a2Voice').checked = voiceOn;
   $('a2Voice').addEventListener('change', () => { voiceOn = $('a2Voice').checked; try { localStorage.setItem('twiin-a2-voix', voiceOn ? '1' : '0'); } catch { /* rien */ } if (voiceOn) say(); });
   let audio = null, spoken = '';
   function say(text = spoken) {
     if (!text) return;
+    if (window.TwiinNarrateur?.actif()) return window.TwiinNarrateur.dire(text); // voix d'Iris ou d'Ilo, texte synchronisé
     audio?.pause();
     audio = new Audio(`/api/voice/say?text=${encodeURIComponent(text)}`);
     audio.play().catch(() => {});
@@ -170,47 +176,53 @@
 
   const RENDER = {
     async intro() {
-      const reprise = (r().taches || []).length || r().role_metier;
       const nav = st.dirigeant?.sources_autorisees || [];
-      const navOk = nav.includes('historique_navigateur');
+      const navOk = nav.includes('historique_navigateur'); // l'option Chrome n'existe que si l'entreprise l'autorise
+      const deja = !!st.outils?.applications?.length;
+      const ETAPES = [['Tes outils', 'Twiin repère les applis de ton poste, automatiquement.'],
+                      ['Tes tâches', 'Quelques questions, surtout des clics.'],
+                      ['Ton top 3', 'Les tâches qui te coûtent le plus, en heures et en euros.']];
       screenEl.innerHTML = `<div class="a2-intro">${head('On commence par tes outils, puis quelques questions.')}
-        <ol><li><b>Twiin regarde les outils de ton poste</b> : c'est automatique.</li>
-            <li><b>Quelques questions sur tes tâches</b> : surtout des clics, la voix seulement si tu veux.</li>
-            <li><b>Ton résultat</b> : les 3 tâches qui te coûtent le plus de temps, en heures et en euros.</li></ol>
-        <div class="a2-consent">
-          <label class="check"><input type="checkbox" id="a2Usage" ${r().consent_usage !== false ? 'checked' : ''}> Compter les jours d'utilisation de mes applis sur 30 jours
-            (jamais ce que j'y fais)</label>
-          <label class="check"><input type="checkbox" id="a2Nav" ${navOk && r().consent_navigateur !== false ? 'checked' : ''} ${navOk ? '' : 'disabled'}>
-            Repérer les outils pro que j'utilise dans Chrome (seulement les sites métier connus, jamais les pages visitées)
-            ${navOk ? '' : '<small style="color:var(--text-dim)">· non autorisé par ton entreprise</small>'}</label>
+        <ol class="in-steps">${ETAPES.map(([t, d], i) => `<li><span class="n">0${i + 1}</span><b>${t}</b><p>${d}</p></li>`).join('')}</ol>
+        <div class="in-opts">
+          <label class="in-switch"><input type="checkbox" role="switch" id="a2Usage" ${r().consent_usage !== false ? 'checked' : ''}>
+            <span class="sw" aria-hidden="true"></span><span class="txt">Compter mes jours d'utilisation des applis sur 30 jours<em>jamais ce que j'y fais</em></span></label>
+          ${navOk ? `<label class="in-switch"><input type="checkbox" role="switch" id="a2Nav" ${r().consent_navigateur !== false ? 'checked' : ''}>
+            <span class="sw" aria-hidden="true"></span><span class="txt">Repérer mes outils pro utilisés dans Chrome<em>seulement les sites métier connus</em></span></label>`
+            : '<input type="checkbox" id="a2Nav" hidden>'}
         </div>
-        ${reprise ? '<p class="a2-help">Tu avais commencé : tes réponses sont gardées, tu reprends où tu en étais.</p>' : ''}</div>`;
-      $('a2Next').textContent = st.outils?.applications?.length ? 'Refaire l\'audit des outils' : 'Lancer l\'audit';
-      if (st.outils?.applications?.length) {
-        screenEl.insertAdjacentHTML('beforeend', '<div class="a2-input"><button type="button" id="a2Skip">Garder l\'audit déjà fait et continuer →</button></div>');
-        $('a2Skip').onclick = () => go('role');
-      }
+        <div class="in-actions">
+          ${deja ? '<button type="button" id="a2Skip">Garder mes outils déjà repérés</button>' : ''}
+          <button type="button" class="primary" id="a2Go">${deja ? 'Refaire le scan' : 'Commencer'}</button>
+        </div></div>`;
+      $('a2Next').hidden = true; // les deux choix sont dans l'écran, pas besoin du bouton « Suivant »
+      $('a2Go').onclick = () => $('a2Next').click();
+      $('a2Skip')?.addEventListener('click', () => { st.scanAFaire = false; r().consent_usage = $('a2Usage').checked; go('role'); });
     },
     role() {
       const roles = st.roles || [];
       const cur = r().role_metier || '';
-      const autre = cur && !roles.includes(cur);
-      screenEl.innerHTML = `${head('Quel est ton rôle ?', 'Il sert à te proposer des tâches typiques de ton métier.')}
-        <div class="a2-chips">${roles.map((x) => chip(`data-role="${escapeHtml(x)}"`, x, cur === x)).join('')}${chip('data-role="__autre"', 'Autre', autre)}</div>
-        <div class="a2-input" ${autre ? '' : 'hidden'} id="a2RoleOther"><input id="a2RoleText" placeholder="Ton rôle, en quelques mots" value="${autre ? escapeHtml(cur) : ''}"></div>`;
-      screenEl.querySelectorAll('[data-role]').forEach((b) => b.onclick = () => {
-        const v = b.dataset.role;
-        $('a2RoleOther').hidden = v !== '__autre';
-        r().role_metier = v === '__autre' ? $('a2RoleText').value.trim() : v;
-        screenEl.querySelectorAll('[data-role]').forEach((x) => x.setAttribute('aria-pressed', x === b ? 'true' : 'false'));
+      screenEl.innerHTML = `${head('Quel est ton rôle ?')}
+        <div class="a2-combo a2-combo-big"><input id="a2Role" placeholder="Tape ton rôle ou choisis dans la liste" value="${escapeHtml(cur)}"><div class="a2-pop" id="a2RolePop" hidden></div></div>`;
+      const inp = $('a2Role');
+      combo(inp, $('a2RolePop'), {
+        openOnFocus: true,
+        items: (q) => {
+          const exact = roles.some((x) => norm(x) === norm(q)); // rôle déjà choisi : on montre toute la liste
+          const nq = exact ? '' : norm(q);
+          const hits = roles.filter((x) => !nq || norm(x).includes(nq)).map((x) => ({ label: x, html: nq ? mark(x, q) : escapeHtml(x) }));
+          if (q && !roles.some((x) => norm(x) === nq)) hits.push({ free: true, label: q, html: `Utiliser « ${escapeHtml(q)} »` });
+          return hits;
+        },
+        onPick: (it) => { inp.value = it.label; r().role_metier = it.label; inp.blur(); },
       });
-      $('a2RoleText').oninput = () => { r().role_metier = $('a2RoleText').value.trim(); };
+      inp.oninput = () => { r().role_metier = inp.value.trim(); };
     },
     q1() {
       const opts = st.q.q1_outils.options;
       if (!r().outils_confirmes) r().outils_confirmes = opts.map((o) => o.application_id); // cochés par défaut
       const conf = new Set(r().outils_confirmes);
-      screenEl.innerHTML = `${head(st.q.q1_outils.question, 'Ils ont été repérés sur ton poste, les plus utilisés d\'abord. Décoche ceux qui ne servent pas à ton travail.')}
+      screenEl.innerHTML = `${head(st.q.q1_outils.question)}
         <div class="a2-grid">${opts.map((o) => `<button type="button" class="a2-tool" data-app="${o.application_id}" aria-pressed="${conf.has(o.application_id)}">
             ${toolIcon(o.nom)}<span>${escapeHtml(o.nom)}</span>${o.usage?.jours_utilises_30 != null ? `<small>${o.usage.jours_utilises_30} j / 30</small>` : ''}</button>`).join('')}
           ${(r().outils_ajoutes || []).map((o) => `<button type="button" class="a2-tool" data-added="${o.id}" aria-pressed="true">${toolIcon(o.nom)}<span>${escapeHtml(o.nom)}</span><small>ajouté</small></button>`).join('')}
@@ -252,11 +264,11 @@
         const o = t.suggestion_id && opts.find((x) => x.suggestion_id === t.suggestion_id);
         return o ? (o.applis_detectees.length ? o.applis_detectees : o.applis_typiques).slice(0, 3).map(iconOf).join('') : '';
       };
-      screenEl.innerHTML = `${head(st.q.q2_taches.question, 'Ajoute-les une par une : choisis dans la liste ou écris la tienne.')}
+      screenEl.innerHTML = `${head(st.q.q2_taches.question)}
         ${cur.length ? `<ul class="a2-added">${cur.map((t) => `<li><span class="box">✓</span><span class="lib">${escapeHtml(t.libelle)}</span>
             <span class="icons">${icons(t)}</span><button type="button" class="rm" data-rm="${t.id}" aria-label="Retirer ${escapeHtml(t.libelle)}">×</button></li>`).join('')}</ul>` : ''}
         <div class="a2-combo a2-combo-big"><input id="a2Other" placeholder="${cur.length ? 'Ajouter une autre tâche…' : 'Ajouter une tâche…'}"><div class="a2-pop" id="a2TaskPop" hidden></div>
-          <button type="button" id="a2OtherMic" class="quiet" title="Dicter la tâche">🎙</button></div>
+          <button type="button" id="a2OtherMic" class="quiet" title="Dicter la tâche" aria-label="Dicter la tâche">${ICO.mic}</button></div>
         ${cur.length ? '' : '<p class="a2-help" style="margin-top:10px"><button type="button" class="a2-chip dim" id="a2NoTask">Je ne sais pas</button></p>'}`;
       screenEl.querySelectorAll('[data-rm]').forEach((b) => b.onclick = () => { r().taches = (r().taches || []).filter((t) => t.id !== b.dataset.rm); RENDER.q2(); });
       const addSug = (o) => {
@@ -287,40 +299,49 @@
     q34() {
       const ts = r().taches || [];
       spoken = 'Pour chaque tâche : combien de fois par semaine, et combien de temps à chaque fois ?';
-      screenEl.innerHTML = `${head(spoken, 'Un clic par ligne suffit. « Je ne sais pas » est une réponse valable.')}
-        ${ts.map((t) => `<div class="a2-row"><b>${escapeHtml(t.libelle)}</b>
+      screenEl.innerHTML = `${head(spoken)}
+        <div class="a2-seq">${ts.map((t, i) => `<div class="a2-row" data-i="${i}" hidden><span class="a2-of">Tâche ${i + 1} sur ${ts.length}</span><b>${escapeHtml(t.libelle)}</b>
           <div class="lbl">Combien de fois par semaine ?</div><div class="a2-chips">${FREQ.map(([k, l]) => chip(`data-t="${t.id}" data-f="${k}"`, l, t.frequence_tranche === k)).join('')}</div>
-          <div class="lbl">Combien de temps à chaque fois ?</div><div class="a2-chips">${DUREE.map(([k, l]) => chip(`data-t="${t.id}" data-d="${k}"`, l, t.duree_tranche === k)).join('')}</div></div>`).join('')}`;
+          <div class="lbl">Combien de temps à chaque fois ?</div><div class="a2-chips">${DUREE.map(([k, l]) => chip(`data-t="${t.id}" data-d="${k}"`, l, t.duree_tranche === k)).join('')}</div></div>`).join('')}</div>`;
+      const rows = [...screenEl.querySelectorAll('.a2-row[data-i]')];
+      const complete = (t) => t.frequence_tranche && t.duree_tranche;
+      // une tâche à la fois : la suivante apparaît quand on a répondu à celle-ci pendant cette visite
+      // (une réponse déjà pré-remplie se confirme d'un clic)
+      const vus = new Set();
+      const devoiler = (anim) => {
+        let k = 0;
+        while (k < ts.length - 1 && vus.has(ts[k].id) && complete(ts[k])) k++;
+        rows.forEach((row, i) => {
+          if (i > k || !row.hidden) return;
+          row.hidden = false;
+          if (anim) { row.classList.add('a2-arrive'); setTimeout(() => row.scrollIntoView({ behavior: 'smooth', block: 'center' }), 60); }
+        });
+      };
+      devoiler(false);
       screenEl.querySelectorAll('[data-f],[data-d]').forEach((b) => b.onclick = () => {
         const t = tache(b.dataset.t);
         if (b.dataset.f) t.frequence_tranche = b.dataset.f; else t.duree_tranche = b.dataset.d;
         b.parentElement.querySelectorAll('.a2-chip').forEach((x) => x.setAttribute('aria-pressed', x === b ? 'true' : 'false'));
+        const autre = b.dataset.f ? 'duree_tranche' : 'frequence_tranche';
+        const ligne = b.closest('.a2-row');
+        ligne.dataset[b.dataset.f ? 'f' : 'd'] = '1';
+        // remplie = les deux réponses données (ou l'autre était déjà là et on vient de confirmer celle-ci)
+        if (complete(t) && (ligne.dataset.f && ligne.dataset.d || t[autre])) { vus.add(t.id); setTimeout(() => devoiler(true), 250); }
       });
     },
     q567(i) {
       const t = tache(st.lourdes[i]);
       if (!t) return go('q8');
-      const tools = outilsChoisis();
-      const order = t.applis_ids || [];
-      spoken = `Pour « ${t.libelle} » : quels outils ouvres-tu, dans l'ordre ? Recopies-tu des infos de l'un à l'autre ?`;
-      screenEl.innerHTML = `<p class="a2-help" style="margin:0 0 4px">Tâche ${i + 1} sur ${st.lourdes.length} parmi les plus lourdes</p>
-        <h3 class="a2-q">${escapeHtml(t.libelle)}</h3>
-        <div class="a2-row"><b>Quels outils ouvres-tu pour cette tâche ? Clique-les dans l'ordre.</b>
-          <div class="a2-grid">${tools.map((o) => { const k = order.indexOf(o.id); return `<button type="button" class="a2-tool" data-tool="${o.id}" aria-pressed="${k >= 0}">${k >= 0 ? `<span class="rank">${k + 1}</span>` : ''}${toolIcon(o.nom)}<span>${escapeHtml(o.nom)}</span></button>`; }).join('')}</div>
-          <div class="lbl">Recopies-tu des informations d'un outil à l'autre ?</div>
-          <div class="a2-chips">${RECOPIE.map(([v, l]) => chip(`data-rec="${v}"`, l, t.recopie === v || (v === null && t.recopie === null))).join('')}</div></div>
-        <div class="a2-row"><b>Qu'est-ce qui la déclenche ?</b>
-          <div class="a2-chips">${DECL.map(([k, l]) => chip(`data-decl="${k}"`, l, t.declencheur === k)).join('')}</div>
+      // Les outils ouverts et leur ordre ne sont plus demandés : l'enregistrement (computer use) les observe en vrai.
+      screenEl.innerHTML = `<p class="a2-help a2-of">Tâche ${i + 1} sur ${st.lourdes.length}</p>
+        ${head(`« ${t.libelle} » : qu'est-ce qui la déclenche ?`)}
+        <div class="a2-row"><div class="a2-chips">${DECL.map(([k, l]) => chip(`data-decl="${k}"`, l, t.declencheur === k)).join('')}</div>
           <div class="a2-input" ${t.declencheur === 'autre' ? '' : 'hidden'} id="a2DeclOther"><input id="a2DeclText" placeholder="Ce qui la déclenche" value="${escapeHtml(t.declencheur_autre || '')}"></div></div>
-        <div class="a2-row"><b>Que se passe-t-il quand ça ne se passe pas comme d'habitude ? <span style="font-weight:400;color:var(--text-dim)">(facultatif)</span></b>
-          <p class="a2-help" style="margin:0 0 6px">Raconte à voix haute ou écris. Ta réponse reste sur ce poste.</p>
+        <div class="a2-row"><b>Recopies-tu des informations d'un outil à l'autre ?</b>
+          <div class="a2-chips">${RECOPIE.map(([v, l]) => chip(`data-rec="${v}"`, l, t.recopie === v || (v === null && t.recopie === null))).join('')}</div></div>
+        <div class="a2-row"><b>Et quand ça ne se passe pas comme d'habitude ?</b>
           <textarea id="a2Exc" placeholder="Par exemple : il manque une pièce, je relance par mail…">${escapeHtml(t.exceptions_transcript || '')}</textarea>
-          <div class="a2-input"><button type="button" id="a2ExcMic">🎙 Répondre à voix haute</button></div></div>`;
-      screenEl.querySelectorAll('[data-tool]').forEach((b) => b.onclick = () => {
-        const id = b.dataset.tool;
-        t.applis_ids = order.includes(id) ? order.filter((x) => x !== id) : [...order, id];
-        RENDER.q567(i);
-      });
+          <div class="a2-input"><button type="button" id="a2ExcMic">${ICO.mic} Répondre à voix haute</button></div></div>`;
       screenEl.querySelectorAll('[data-rec]').forEach((b) => b.onclick = () => {
         t.recopie = b.dataset.rec === 'true' ? true : b.dataset.rec === 'false' ? false : null;
         b.parentElement.querySelectorAll('.a2-chip').forEach((x) => x.setAttribute('aria-pressed', x === b ? 'true' : 'false'));
@@ -349,21 +370,30 @@
     recap() {
       const ts = r().taches || [];
       const tools = outilsChoisis();
-      const edit = (s) => `<a href="#" class="edit" data-go="${s}">Modifier</a>`;
+      const edit = (s) => `<a href="#" class="a2-edit" data-go="${s}">${ICO.edit}<span>Modifier</span></a>`;
+      const deleg = ts.find((t) => t.deleguer_en_premier);
+      const parSem = (t) => label(FREQ, t.frequence_tranche);
+      const duree = (t) => label(DUREE, t.duree_tranche);
       spoken = "Voici ce qu'on a compris. Tu peux tout modifier avant d'envoyer.";
-      screenEl.innerHTML = `<div class="a2-recap">${head("Voici ce qu'on a compris", 'Vérifie, modifie si besoin, puis envoie.')}
-        <dl>
-          <dt>Ton rôle ${edit('role')}</dt><dd>${escapeHtml(r().role_metier || 'non précisé')}</dd>
-          <dt>Tes outils de travail ${edit('q1')}</dt><dd><div class="apps-strip" style="margin:0">${tools.map((o) => `<span class="app-pill">${toolIcon(o.nom).replace('<img', '<img class="ticon"')}${escapeHtml(o.nom)}</span>`).join('') || '—'}</div></dd>
-          <dt>Tes tâches de la semaine ${edit('q2')}</dt><dd>${ts.length ? ts.map((t) => `<div><b>${escapeHtml(t.libelle)}</b> · ${escapeHtml(label(FREQ, t.frequence_tranche) || '?')} fois, ${escapeHtml(label(DUREE, t.duree_tranche) || '?')} ${edit('q34')}</div>`).join('') : 'aucune'}</dd>
-          ${st.lourdes.map((id, i) => { const t = tache(id); if (!t) return ''; const apps = (t.applis_ids || []).map((a) => tools.find((o) => o.id === a)?.nom || a);
-            return `<dt>Détail : ${escapeHtml(t.libelle)} ${edit(`q567:${i}`)}</dt><dd>${apps.length ? escapeHtml(apps.join(' → ')) : 'outils non précisés'}
-              · ${t.recopie === true ? 'recopie entre outils' : t.recopie === false ? 'pas de recopie' : 'recopie : ?'}
-              · déclenchée par : ${escapeHtml(t.declencheur === 'autre' ? t.declencheur_autre || 'autre' : label(DECL, t.declencheur) || '?')}
-              ${t.exceptions_transcript ? `<br><span style="color:var(--text-dim)">« ${escapeHtml(t.exceptions_transcript)} »</span>` : ''}</dd>`; }).join('')}
-          <dt>À déléguer en premier ${edit('q8')}</dt><dd>${escapeHtml(ts.find((t) => t.deleguer_en_premier)?.libelle || 'je ne sais pas')}</dd>
-        </dl></div>`;
-      screenEl.querySelectorAll('[data-go]').forEach((a) => a.onclick = (e) => { e.preventDefault(); go(a.dataset.go); });
+      screenEl.innerHTML = `<div class="a2-recap">${head("Voici ce qu'on a compris")}
+        <div class="rc-keys">
+          <div class="rc-key"><span>Rôle</span><b>${escapeHtml(r().role_metier || 'Non précisé')}</b>${edit('role')}</div>
+          <div class="rc-key"><span>Outils</span><b>${tools.length}</b>${edit('q1')}</div>
+          <div class="rc-key"><span>Tâches</span><b>${ts.length}</b>${edit('q2')}</div>
+        </div>
+        <section class="rc-block">
+          <header><h4>Tes tâches de la semaine</h4>${edit('q34')}</header>
+          ${ts.length ? `<ul class="rc-tasks">${ts.map((t) => `<li${t === deleg ? ' class="deleg"' : ''}>
+              <span class="nom">${escapeHtml(t.libelle)}${t === deleg ? `<em>${ICO.star}À déléguer en premier</em>` : ''}</span>
+              <span class="val">${parSem(t) ? `${escapeHtml(parSem(t))} <small>/ sem.</small>` : '<small>?</small>'}</span>
+              <span class="val">${duree(t) ? escapeHtml(duree(t)) : '<small>?</small>'}</span></li>`).join('')}</ul>`
+            : '<p class="rc-vide">Aucune tâche pour l\'instant.</p>'}
+        </section>
+        <section class="rc-block">
+          <header><h4>Tes outils de travail</h4>${edit('q1')}</header>
+          <div class="rc-tools">${tools.map((o) => `<span class="rc-tool" title="${escapeHtml(o.nom)}">${toolIcon(o.nom)}<span>${escapeHtml(o.nom)}</span></span>`).join('') || '<p class="rc-vide">Aucun outil choisi.</p>'}</div>
+        </section></div>`;
+      screenEl.querySelectorAll('[data-go]').forEach((x) => x.onclick = (e) => { e.preventDefault(); go(x.dataset.go); });
       $('a2Next').textContent = 'Envoyer et voir mon top 3';
     },
     async resultat() {
@@ -377,55 +407,203 @@
       const hTop = top.reduce((n, o) => n + (o.gain_heures_semaine || 0), 0);
       const eTop = top.reduce((n, o) => n + (o.gain_euros_an || 0), 0);
       const fmtE = (x) => `${Math.round(x).toLocaleString('fr-FR')} €`;
-      spoken = top.length ? `Voici les ${top.length} tâches qui te coûtent le plus de temps.` : "On n'a pas trouvé de tâche assez lourde pour être automatisée.";
-      screenEl.innerHTML = `${head(top.length ? `Ton top ${top.length} des tâches à automatiser` : 'Pas de tâche assez lourde à automatiser pour l\'instant')}
-        ${top.length ? `<p class="a2-total">Ensemble, elles représentent <b>${hTop.toLocaleString('fr-FR', { maximumFractionDigits: 1 })} h par semaine</b>, soit environ <b>${fmtE(eTop)} par an</b>
-          (au coût horaire de ${f.dirigeant?.cout_horaire ?? 35} €).</p>` : ''}
-        <div class="a2-top3">${top.map((o, k) => `<div class="a2-opp"><span class="n">N° ${k + 1}</span><b>${escapeHtml(byId[o.tache_id]?.libelle || o.tache_id)}</b>
-            <span class="big">${(o.gain_heures_semaine ?? 0).toLocaleString('fr-FR')} h <small>par semaine</small></span>
-            <span class="eur">≈ ${fmtE(o.gain_euros_an || 0)} par an</span>
-            <span class="tags">Automatisation ${o.tranche_facilite === 'facile' ? 'facile' : o.tranche_facilite === 'moyen' ? 'moyennement facile' : 'difficile'}${byId[o.tache_id]?.deleguer_en_premier ? ' · celle que tu délèguerais en premier' : ''}</span>
-            <button type="button" data-observe="${o.tache_id}">Observer cette tâche</button></div>`).join('')}</div>
-        ${autres.length ? `<h4 style="margin:6px 0 4px;font-size:14px">Les autres tâches</h4><ul class="a2-others">${autres.map((o) => `<li><b>${escapeHtml(byId[o.tache_id]?.libelle || o.tache_id)}</b> · ${RECO[o.recommandation]}
-            ${RECO_WHY[o.recommandation] ? `<span class="why">(${RECO_WHY[o.recommandation]})</span>` : ''}</li>`).join('')}</ul>` : ''}
-        ${f.alertes.length ? `<div class="a2-alerts"><h4>À vérifier</h4><ul>${f.alertes.slice(0, 6).map((a) => `<li>${escapeHtml(a.message)}</li>`).join('')}</ul></div>` : ''}
-        <p class="a2-help" style="margin-top:12px"><a href="#" id="a2Redo">Refaire l'audit</a></p>`;
+      // « Mon travail » : ce que la personne fait et avec quoi (l'historique de son audit), ses priorités en tête
+      const conf = r().outils_confirmes;
+      const outils = [...(f.applications || []).filter((x) => (conf ? conf.includes(x.id) : x.filtre_metier?.est_metier)).map((x) => ({ id: x.id, nom: x.nom })),
+                      ...(r().outils_ajoutes || [])].filter((o, i, l) => l.findIndex((x) => x.nom.toLowerCase() === o.nom.toLowerCase()) === i); // sans doublon
+      const rang = Object.fromEntries(top.map((o, k) => [o.tache_id, k + 1]));
+      const ts = [...(f.taches || [])].sort((x, y) => (rang[x.id] || 99) - (rang[y.id] || 99));
+      const dateAudit = f.date_audit ? new Date(f.date_audit).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' }) : '';
+      const facile = (o) => (o.tranche_facilite === 'facile' ? 'Facile à automatiser' : o.tranche_facilite === 'moyen' ? 'Moyennement facile' : 'Difficile à automatiser');
+      spoken = '';
+      const p1 = top[0], suite = top.slice(1);
+      // Le grand compteur : le temps déjà gagné par les automatisations (chaque semaine), et ce qui reste à gagner
+      fetch('/api/automations').then((x) => x.json()).then((d) => {
+        const gagne = (d.automations || []).reduce((n, a) => n + (a.gain?.minutes_semaine || 0), 0);
+        const el = document.getElementById('mtCompteur');
+        if (!el || gagne < 1) return;
+        el.innerHTML = `<b>${fmtTemps(gagne)}</b><span>gagnées chaque semaine</span><em>${fmtTemps(Math.max(0, aGagner * 60 - gagne))} à gagner encore</em>`;
+      }).catch(() => {});
+      const gain = (o) => `<span class="mt-chip"><b>${(o.gain_heures_semaine ?? 0).toLocaleString('fr-FR')} h</b> par semaine</span><span class="mt-chip"><b>≈ ${fmtE(o.gain_euros_an || 0)}</b> par an</span>`;
+      const aGagner = f.opportunites.reduce((n, o) => n + (o.gain_heures_semaine || 0), 0);
+      // Points à vérifier : en haut, et on peut y répondre (une tâche à ajouter, ou un outil qui ne sert pas au travail)
+      const ecartees = new Set(r().alertes_ecartees || []);
+      const alertes = f.alertes.filter((x) => !ecartees.has(x.application_id || x.message)).slice(0, 3);
+      const appNom = (id) => (f.applications || []).find((x) => x.id === id)?.nom || id;
+      // le prénom de l'espace choisi (équipe), sinon celui saisi ici
+      const prenom = (window.TwiinEspace?.membre?.prenom || r().prenom || '').trim();
+      if (!window.TwiinEspace?.membre) document.addEventListener('twiin-espace', (e) => {
+        const h = screenEl.querySelector('.mt-bonjour h2');
+        if (e.detail?.prenom && h) { h.textContent = `Bonjour ${e.detail.prenom}`; $('mtPrenom')?.remove(); }
+      }, { once: true });
+      screenEl.innerHTML = `<div class="mt">
+        <header class="mt-bonjour"><h2>Bonjour${prenom ? ` ${escapeHtml(prenom)}` : ''}</h2>
+          ${window.TwiinEspace?.membre ? '' : `<button type="button" class="quiet mt-prenom" id="mtPrenom">${prenom ? 'Modifier' : 'Ajouter ton prénom'}</button>`}</header>
+        <section class="mt-compteur" id="mtCompteur" aria-live="polite"><b>${fmtHeures(aGagner)}</b><span>à gagner chaque semaine</span></section>
+        ${alertes.map((x, k) => {
+          const [constat, question] = String(x.message).split(/\s*:\s*(?=[^:]*\?\s*$)/);
+          const q = (question || 'À quoi te sert-il ?').replace(/vous sert-il/gi, 'te sert-il').replace(/\bvous\b/gi, 'tu');
+          return `<form class="mt-verif" data-k="${k}">
+            <span class="mt-verif-ico">${x.application_id ? toolIcon(appNom(x.application_id)) : ''}</span>
+            <div class="mt-verif-corps"><p class="mt-kicker">À vérifier</p><h3>${escapeHtml(x.application_id ? `À quoi te sert ${appNom(x.application_id)} ?` : q[0].toUpperCase() + q.slice(1))}</h3>
+              <p class="mt-verif-why">${escapeHtml(x.application_id ? 'Très utilisé sur ton poste, mais dans aucune de tes tâches.' : constat || '')}</p>
+              <div class="mt-verif-champs">
+                <input type="text" name="lib" maxlength="120" required placeholder="Ce que tu y fais, en quelques mots" aria-label="${escapeHtml(q)}">
+                <select name="freq" aria-label="Combien de fois par semaine">${FREQ.map(([v, l]) => `<option value="${v}" ${v === '2-5' ? 'selected' : ''}>${l} / sem.</option>`).join('')}</select>
+                <select name="duree" aria-label="Combien de temps à chaque fois">${DUREE.map(([v, l]) => `<option value="${v}" ${v === '15-30' ? 'selected' : ''}>${l}</option>`).join('')}</select>
+              </div>
+              <div class="mt-verif-acts"><button type="submit" class="primary">Ajouter cette tâche</button>
+                <button type="button" class="quiet" data-ecarter>Pas pour mon travail</button></div></div></form>`; }).join('')}
+        <ol class="mt-parcours" aria-label="Ton parcours">
+          <li class="fait" data-etape="audit"><span>1</span>Audit de ton poste</li>
+          <li data-etape="observer"><span>2</span>Observer une tâche</li>
+          <li data-etape="automatiser"><span>3</span>L'automatiser</li>
+        </ol>
+        ${p1 ? `<section class="mt-hero">
+          <p class="mt-kicker">Ta prochaine étape${dateAudit ? ` · audit du ${dateAudit}` : ''}</p>
+          <h3>Observer « <span data-court>${escapeHtml(byId[p1.tache_id]?.libelle || p1.tache_id)}</span> »</h3>
+          <button type="button" class="primary mt-cta" data-observe="${p1.tache_id}">Observer cette tâche</button>
+        </section>` : `<section class="mt-hero"><p class="mt-kicker">Ta prochaine étape</p><h3>Enregistre une tâche répétitive</h3>
+          <p class="mt-why">Pas de tâche assez lourde dans ton audit : montre à Twiin une tâche que tu fais souvent.</p>
+          <button type="button" class="primary mt-cta" id="mtRec">Enregistrer une tâche</button></section>`}
+        ${suite.length ? `<section class="mt-bloc"><header class="mt-head"><h3>Ensuite</h3></header>
+          <ul class="mt-rows">${suite.map((o, k) => `<li><span class="mt-rang">${k + 2}</span><span class="mt-nom"><span data-court>${escapeHtml(byId[o.tache_id]?.libelle || o.tache_id)}</span></span>
+            <span class="mt-gain" title="Temps à gagner par semaine">${fmtHeures(o.gain_heures_semaine)}<small> / sem.</small></span>
+            <button type="button" data-observe="${o.tache_id}">Observer</button></li>`).join('')}</ul></section>` : ''}
+        <section class="mt-bloc">
+          <header class="mt-head"><h3>Mon poste</h3></header>
+          <div class="mt-poste">
+            <span><small>Rôle</small><b>${escapeHtml(f.poste?.role_metier || r().role_metier || 'Non précisé')}</b></span>
+            <span><small>Outils</small><b>${outils.length}</b></span>
+            <span><small>Tâches suivies</small><b>${ts.length}</b></span>
+            <span class="mt-logos" aria-hidden="true">${outils.slice(0, 6).map((o) => toolIcon(o.nom)).join('')}${outils.length > 6 ? `<em>+${outils.length - 6}</em>` : ''}</span>
+          </div>
+          <details class="mt-detail"><summary>Voir mes tâches et mes outils</summary>
+            ${ts.length ? `<ul class="rc-tasks">${ts.map((t) => {
+              const o = f.opportunites.find((x) => x.tache_id === t.id);
+              return `<li><span class="nom"><span data-court>${escapeHtml(t.libelle)}</span>${rang[t.id] ? `<em>Priorité ${rang[t.id]}</em>` : o ? `<em class="dim">${escapeHtml(RECO[o.recommandation] || '')}</em>` : ''}</span>
+                <span class="val">${label(FREQ, t.frequence_tranche) ? `${escapeHtml(label(FREQ, t.frequence_tranche))} <small>/ sem.</small>` : '<small>?</small>'}</span>
+                <span class="val">${escapeHtml(label(DUREE, t.duree_tranche) || '?')}</span></li>`; }).join('')}</ul>` : ''}
+            <div class="rc-tools" style="margin-top:14px">${outils.map((o) => `<span class="rc-tool">${toolIcon(o.nom)}<span>${escapeHtml(o.nom)}</span></span>`).join('')}</div>
+          </details>
+        </section>
+        <div class="mt-fin"><button type="button" class="quiet" id="a2Redo">Refaire l'audit</button></div>
+      </div>`;
+      // fil du parcours : étape 2 faite s'il y a une tâche analysée, étape 3 s'il y a une automatisation
+      Promise.all([fetch('/api/sessions').then((x) => x.json()).catch(() => ({})), fetch('/api/automations').then((x) => x.json()).catch(() => ({}))]).then(([se, au]) => {
+        const obs = (se.sessions || []).some((x) => x.analyse && !x.supprime_le), auto = (au.automations || []).some((x) => !x.failed);
+        const li = (k) => screenEl.querySelector(`[data-etape="${k}"]`);
+        if (!li('observer')) return;
+        li('observer').classList.toggle('fait', obs); li('automatiser').classList.toggle('fait', auto);
+        (obs ? (auto ? null : li('automatiser')) : li('observer'))?.classList.add('ici');
+      });
+      $('mtRec')?.addEventListener('click', () => document.getElementById('toRecordBtn').click());
       screenEl.querySelectorAll('[data-observe]').forEach((b) => b.onclick = () => {
         const lib = byId[b.dataset.observe]?.libelle || '';
         setStep(2);
         setPrimary(startBtn);
         statusEl.textContent = `À enregistrer : « ${lib} ». Clique sur « Enregistrer ma tâche », puis fais-la comme d'habitude.`;
       });
-      $('a2Redo').onclick = (e) => { e.preventDefault(); go('intro'); };
-      setPrimary(screenEl.querySelector('[data-observe]') || document.getElementById('toRecordBtn'));
+      $('a2Redo').onclick = () => go('intro');
+      // Prénom (la fiche est à lui) : gardé avec ses réponses, sur le poste
+      if ($('mtPrenom')) $('mtPrenom').onclick = () => {
+        const h = screenEl.querySelector('.mt-bonjour h2');
+        h.innerHTML = `Bonjour <input type="text" id="mtPrenomIn" maxlength="40" value="${escapeHtml(prenom)}" placeholder="ton prénom" aria-label="Ton prénom">`;
+        const i = $('mtPrenomIn'); i.focus();
+        const ok = async () => { r().prenom = i.value.trim(); await save(); go('resultat'); };
+        i.onkeydown = (e) => { if (e.key === 'Enter') ok(); if (e.key === 'Escape') go('resultat'); };
+        i.onblur = ok;
+      };
+      // Réponses aux points à vérifier
+      screenEl.querySelectorAll('.mt-verif').forEach((fo) => {
+        const x = alertes[+fo.dataset.k], id = x.application_id;
+        const ecarter = () => { r().alertes_ecartees = [...new Set([...(r().alertes_ecartees || []), id || x.message])]; };
+        fo.onsubmit = async (e) => {
+          e.preventDefault();
+          r().taches = [...(r().taches || []), { id: `t_libre_${Date.now().toString(36)}`, libelle: fo.lib.value.trim(), source: 'saisie_libre',
+            applis_ids: id ? [id] : [], frequence_tranche: fo.freq.value, duree_tranche: fo.duree.value, deleguer_en_premier: false }];
+          ecarter(); await save(); go('resultat');
+        };
+        fo.querySelector('[data-ecarter]').onclick = async () => {
+          if (id && r().outils_confirmes) r().outils_confirmes = r().outils_confirmes.filter((a) => a !== id);
+          ecarter(); await save(); go('resultat');
+        };
+      });
+      setPrimary(screenEl.querySelector('.mt-cta') || document.getElementById('toRecordBtn'));
     },
   };
 
   // Validations (passage à l'écran suivant)
+  // ── scan du poste : Iris et Ilo en bas, les logos des applis « se chargent » au-dessus d'eux, en arc ─────────────
+  // L'arc se remplit de gauche à droite comme une barre de chargement ; tant que le scan tourne, il se vide et recommence.
+  // Résultat : l'arc montre les vrais outils repérés, puis on passe à « Voici les outils que tu utilises le plus ».
+  async function scanner() {
+    const texte = 'On regarde les outils de ton poste…';
+    spoken = texte;
+    screenEl.innerHTML = `<h3 class="a2-q">${texte}</h3><p class="a2-help" id="a2ScanTxt">Seulement le nom des applications, jamais tes fichiers.</p>
+      <div class="a2-flux" data-twn-libre="1" aria-hidden="true"></div>`;
+    $('a2').classList.add('twn-scanning');
+    $('a2Next').disabled = true; $('a2Next').textContent = 'Audit en cours…'; $('a2Back').hidden = true;
+    window.TwiinNarrateur?.scene('scan', texte, 0, voiceOn);
+    const flux = screenEl.querySelector('.a2-flux');
+    const ECART = 66, still = matchMedia('(prefers-reduced-motion: reduce)').matches;
+    let logos = [], vitesse = 110, decal = 0, avant = performance.now(), tourne = true;
+    const remplir = (liste) => {
+      const l = [...liste]; while (l.length && l.length < 16) l.push(...liste); // assez de logos pour dépasser la largeur
+      flux.innerHTML = '';
+      logos = l.slice(0, 24).map((e) => { const s = document.createElement('span'); s.className = 'a2-fl'; s.innerHTML = `<img src="icons/${e.file}" alt="">`; flux.append(s); return s; });
+    };
+    const image = (now) => {
+      if (!tourne) return;
+      const dt = Math.min(.05, (now - avant) / 1000); avant = now;
+      const W = logos.length * ECART, cw = flux.clientWidth;
+      if (!still) decal = (decal + vitesse * dt) % W;
+      logos.forEach((s, i) => {
+        const x = ((i * ECART - decal) % W + W) % W - (W - cw) / 2;
+        const d = x + 22 - cw / 2, k = Math.exp(-((d / 120) ** 2)); // le logo au centre, juste au-dessus des jumeaux, grossit
+        s.style.transform = `translate(${x}px, ${-k * 16}px) scale(${.72 + .6 * k})`;
+        s.style.opacity = String(.3 + .7 * k);
+      });
+      requestAnimationFrame(image);
+    };
+    remplir([...ICONS].sort(() => Math.random() - 0.5));
+    requestAnimationFrame(image);
+    try {
+      const t0 = Date.now();
+      st.outils = await api('/api/audit/outils', { usage: r().consent_usage, navigateur: r().consent_navigateur });
+      await new Promise((res) => setTimeout(res, Math.max(0, 3500 - (Date.now() - t0)))); // le temps de voir l'animation
+      const metier = st.outils.applications.filter((a) => a.filtre_metier?.est_metier);
+      const vus = metier.map((a) => findIcons(a.nom, 1)[0]).filter(Boolean);
+      // les vrais outils prennent la place des logos de chargement, et le flux ralentit
+      flux.classList.add('change');
+      await new Promise((res) => setTimeout(res, 350));
+      if (vus.length) remplir(vus);
+      vitesse = 45; flux.classList.remove('change');
+      $('a2ScanTxt').textContent = `${metier.length} outils de travail repérés.`;
+      await new Promise((res) => setTimeout(res, 1800));
+      delete r().outils_confirmes; // nouveaux outils : cochés par défaut
+      return true;
+    } catch (e) {
+      $('a2').classList.remove('twn-scanning');
+      render();
+      screenEl.insertAdjacentHTML('beforeend', `<p class="a2-help" style="color:var(--bad)">${escapeHtml(e.message)}</p>`);
+      return false;
+    } finally {
+      tourne = false;
+      $('a2Next').disabled = false;
+    }
+  }
+
   const VALIDATE = {
     async intro() {
       r().consent_usage = $('a2Usage').checked;
       r().consent_navigateur = $('a2Nav').checked;
-      $('a2Next').disabled = true; $('a2Next').textContent = 'Audit en cours…';
-      sphereSearching();
-      try {
-        const t0 = Date.now();
-        st.outils = await api('/api/audit/outils', { usage: r().consent_usage, navigateur: r().consent_navigateur });
-        await new Promise((res) => setTimeout(res, Math.max(0, 2500 - (Date.now() - t0))));
-        sphereResult(st.outils.applications.filter((a) => a.filtre_metier?.est_metier));
-        delete r().outils_confirmes; // nouveaux outils : cochés par défaut
-        await loadQuestions();
-        return true;
-      } catch (e) {
-        screenEl.insertAdjacentHTML('beforeend', `<p class="a2-help" style="color:var(--bad)">${escapeHtml(e.message)}</p>`);
-        $('sphereBox').hidden = true;
-        return false;
-      } finally {
-        $('a2Next').disabled = false;
-      }
+      st.scanAFaire = true; // le scan se lance après le rôle, juste avant « les outils que tu utilises le plus »
+      return true;
     },
     async role() {
       if (!r().role_metier) r().role_metier = '';
+      if (st.scanAFaire || !st.outils) { if (!(await scanner())) return false; st.scanAFaire = false; }
       await loadQuestions(); // les tâches proposées dépendent du rôle
       return true;
     },
@@ -473,16 +651,23 @@
   }
 
   function render() {
+    $('a2').classList.remove('twn-scanning');
+    $('a2').classList.toggle('a2-fini', st.screen === 'resultat'); // « Mon travail » : pas de barre de progression ni de « Retour »
     const [name, arg] = st.screen.split(':');
     $('a2Next').textContent = 'Suivant →';
     $('a2Next').hidden = st.screen === 'resultat';
     $('a2Back').hidden = st.screen === 'intro';
-    $('toRecordBtn').hidden = !['intro', 'resultat'].includes(st.screen); // pas de raccourci au milieu des questions
+    $('toRecordBtn').hidden = true; // l'action principale est dans l'écran lui-même (« Observer cette tâche »)
     if (name !== 'intro') $('sphereBox').hidden = true;
     RENDER[name](arg !== undefined ? Number(arg) : undefined);
     progress();
+    // Mode narrateur (2e écran « on fait connaissance ») : Iris et Ilo posent la question, mot par mot
+    if (window.TwiinNarrateur?.scene(st.screen, spoken, screens().indexOf(st.screen), voiceOn)) return;
     if (voiceOn && st.screen !== 'resultat') say();
   }
+
+  // Fin de la page d'ouverture (« Allons-y ») : on montre les questions, même si l'audit est déjà fait
+  window.twiinAuditReprendre = () => { if (st.screen === 'resultat') { go('intro'); return true; } return false; };
 
   // ── démarrage : brouillon et audit déjà faits ? on reprend où on en était ──────────────────────────────────────────
   document.getElementById('toRecordBtn').addEventListener('click', () => {
@@ -497,7 +682,9 @@
       st.outils = outils.applications?.length ? outils : null;
       st.dirigeant = dir.dirigeant;
       if (st.outils) await loadQuestions();
-      if (st.rep.envoye && st.outils) { st.screen = 'resultat'; }
+      const connaissance = new URLSearchParams(location.search).has('faire-connaissance'); // arrivée depuis la page d'ouverture
+      if (connaissance) { st.screen = 'intro'; } // on refait connaissance : réponses pré-remplies, rien n'est effacé
+      else if (st.rep.envoye && st.outils) { st.screen = 'resultat'; }
       else if ((st.rep.taches || []).length && st.outils) {
         const { ids } = await api('/api/onboarding/lourdes', { taches: st.rep.taches }).catch(() => ({ ids: [] }));
         st.lourdes = ids;

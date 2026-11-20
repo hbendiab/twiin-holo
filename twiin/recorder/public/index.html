@@ -105,6 +105,21 @@
   .btn-stop:hover:not(:disabled) { color: var(--bad); border-color: var(--bad); background: rgba(197, 34, 31, 0.06); }
 
   .controls { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-bottom: 18px; }
+  .voice-toggle { display: inline-flex; align-items: center; gap: 8px; font-size: 14px; color: var(--text-dim); cursor: pointer; user-select: none; }
+  .voice-toggle input { position: absolute; opacity: 0; pointer-events: none; }
+  .voice-toggle .track { width: 34px; height: 20px; border-radius: 999px; background: color-mix(in srgb, var(--text) 24%, transparent); position: relative; transition: background 0.15s ease; flex: none; }
+  .voice-toggle .track::after { content: ""; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%; background: var(--bg); box-shadow: 0 1px 2px rgba(0,0,0,0.3); transition: transform 0.15s ease; }
+  .voice-toggle input:checked + .track { background: var(--accent); }
+  .voice-toggle input:checked + .track::after { transform: translateX(14px); }
+  .voice-toggle input:focus-visible + .track { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .voice-toggle:has(input:checked) { color: var(--text); }
+  .voice-toggle:has(input:disabled) { opacity: 0.4; cursor: default; }
+  .voice-engine { flex-basis: 100%; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 14px; font-size: 12px; color: var(--text-dim); margin-top: -4px; }
+  .voice-engine label { display: inline-flex; align-items: center; gap: 4px; cursor: pointer; }
+  .voice-engine label:has(input:disabled) { opacity: 0.5; cursor: default; }
+  .voice-engine button { font-size: 12px; padding: 2px 8px; }
+  .voice-engine .voice-note { flex-basis: auto; margin-top: 0; }
+  .voice-note { flex-basis: 100%; font-size: 12px; color: var(--text-dim); margin-top: -4px; }
   #reBtn { margin-left: auto; font-size: 13px; color: var(--text-dim); }
 
   #screens { display: flex; flex-wrap: wrap; gap: 8px; margin: -6px 0 14px; font-size: 12px; color: var(--text-dim); }
@@ -127,7 +142,9 @@
   /* --- attente de l'analyse : cellules + étapes cochées --- */
   #analysis { display: grid; grid-template-columns: 150px minmax(0, 1fr); gap: 20px; align-items: center;
               background: var(--panel); border: 1px solid var(--panel-border); border-radius: 18px; padding: 18px 22px; margin: 0 0 24px; }
-  #analysis svg { width: 150px; height: 96px; display: block; }
+  #analysisCells { display: grid; place-items: center; }
+  #analysisCells .tw-orb { --s: 58px; }
+  #analysisCells .tw-twins { gap: 6px; }
   #analysis h4 { margin: 0 0 8px; font-size: 15px; font-weight: 600; }
   .phases { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; font-size: 14px; }
   .phases li { display: flex; align-items: center; gap: 10px; color: var(--text-dim); }
@@ -215,6 +232,7 @@
   .hint { font-size: 12px !important; color: var(--text-dim); margin: 6px 0 !important; }
   .chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0; }
   .chip { font-size: 11px; padding: 2px 8px; border-radius: 999px; border: 1px solid var(--panel-border); background: var(--panel); }
+  .steps-stale .btn-improve, .steps-stale .btn-replay { opacity: 0.5; cursor: not-allowed; }
   .chip.api { color: var(--ok); border-color: var(--ok); } .chip.noapi { color: var(--warn); border-color: var(--warn); }
   .branch { margin-top: 10px; font-size: 13px; color: var(--text); }
   .nstatus { font-size: 13px; color: var(--text); margin-bottom: 8px; }
@@ -299,6 +317,15 @@
   .step-ico.inherited { opacity: 0.35; }
   #example .ex-meta { display: flex; align-items: center; gap: 10px; }
   #example .ex-meta .apps-strip { margin: 0; }
+  /* bulles d'applis cliquables (ignorer une appli ouverte par erreur) : petites, discrètes */
+  .app-pill.logo-seul { padding: 4px; } .app-pill.logo-seul .ticon { margin-right: 0; }
+  .app-pill.pick .ticon { margin-right: 0; }
+  .app-pill.pick { cursor: pointer; user-select: none; gap: 0; transition: opacity 0.15s ease; }
+  .app-pill.pick .t { margin-left: 6px; font-size: 11px; color: var(--text-dim); font-weight: 400; }
+  .app-pill.pick.off { opacity: 0.45; text-decoration: line-through; }
+  .app-pill.pick:hover { border-color: var(--accent); }
+  .app-pill.pick:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .apps-hint { font-size: 11px; color: var(--text-dim); align-self: center; margin-left: 2px; }
   #example ol li .ticon { width: 16px; height: 16px; }
   #journal .ticon { width: 15px; height: 15px; vertical-align: -3px; margin-right: 5px; }
   .chip .ticon { width: 14px; height: 14px; vertical-align: -3px; margin-right: 4px; }
@@ -412,9 +439,154 @@
   .a2 textarea { width: 100%; min-height: 80px; resize: vertical; }
   .a2-intro ol { margin: 8px 0 14px; padding-left: 20px; font-size: 14px; display: grid; gap: 4px; }
   .a2-consent { display: grid; gap: 8px; padding: 12px 14px; border-radius: 12px; background: var(--panel-2); margin: 10px 0; }
-  .a2-recap dl { display: grid; grid-template-columns: 170px minmax(0, 1fr); gap: 8px 14px; font-size: 13.5px; margin: 0; }
-  .a2-recap dt { color: var(--text-dim); } .a2-recap dd { margin: 0; }
-  .a2-recap .edit { font-size: 12px; margin-left: 6px; }
+  /* « Mon travail » : le parcours, UNE prochaine étape (un seul bouton plein), puis le reste en plus discret */
+  #a2.a2-fini > .a2-top, #a2.a2-fini > .a2-nav { display: none !important; }
+  .mt-parcours { list-style: none; display: flex; gap: 6px; margin: 0 0 22px; padding: 0; counter-reset: none; flex-wrap: wrap; }
+  .mt-parcours li { display: flex; align-items: center; gap: 8px; font-size: 13.5px; color: color-mix(in srgb, var(--ink) 55%, transparent); padding: 6px 12px 6px 6px; border-radius: 999px; }
+  .mt-parcours li span { width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center; font: 600 11.5px var(--mono); background: var(--brand-chip, var(--chip)); }
+  .mt-parcours li + li::before { content: ""; width: 18px; height: 1px; background: var(--brand-rule, var(--rule)); margin: 0 4px 0 -10px; }
+  .mt-parcours li.fait span { background: var(--brand-strong, var(--accent)); color: #fff; font-size: 0; }
+  .mt-parcours li.fait span::after { content: "✓"; font-size: 12px; }
+  .mt-parcours li.ici { color: var(--ink); font-weight: 600; background: var(--brand-chip, var(--chip)); }
+  .mt-parcours li.ici span { background: var(--ink); color: var(--canvas); }
+  .mt-hero { padding: 24px 26px; border-radius: var(--r-panel, 12px); background: var(--glass-fill, var(--wash)); border: 1px solid var(--brand-strong, var(--accent));
+    box-shadow: var(--glass-shadow, none); }
+  .mt-kicker { margin: 0 0 6px; font: 500 12px var(--mono); text-transform: uppercase; letter-spacing: .06em; color: var(--brand-strong, var(--accent)); }
+  .mt-hero h3 { margin: 0; font-size: clamp(21px, 2.4vw, 26px); font-weight: 600; letter-spacing: -0.025em; line-height: 1.2; }
+  .mt-why { margin: 8px 0 14px; font-size: 15px; line-height: 1.5; color: color-mix(in srgb, var(--ink) 72%, transparent); max-width: 60ch; }
+  .mt-chips { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 18px; }
+  .mt-chip { font-size: 13.5px; padding: 6px 12px; border-radius: 999px; background: #fff; border: 1px solid var(--brand-rule, var(--rule)); }
+  :root[data-theme="dark"] .mt-chip { background: transparent; }
+  .mt-chip b { font-weight: 600; }
+  .mt .mt-cta { padding: 13px 22px !important; font-size: 15.5px !important; }
+  .mt-bloc { margin-top: 30px; }
+  .mt-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 10px; }
+  .mt-head h3 { margin: 0; font-size: 17px; font-weight: 600; letter-spacing: -0.015em; }
+  .mt-date { font: 500 12px var(--mono); color: var(--brand-strong, var(--accent)); }
+  .mt-rows { list-style: none; margin: 0; padding: 0; border-top: 1px solid var(--brand-rule, var(--rule)); }
+  .mt-rows li { display: flex; align-items: center; gap: 14px; padding: 12px 4px; border-bottom: 1px solid var(--brand-rule, var(--rule)); }
+  .mt-rang { flex: none; width: 26px; height: 26px; border-radius: 8px; display: grid; place-items: center; font: 600 12px var(--mono); background: var(--brand-chip, var(--chip)); }
+  .mt-nom { flex: 1; min-width: 0; font-size: 15px; font-weight: 500; }
+  .mt-bonjour { display: flex; align-items: baseline; gap: 12px; margin: 0 0 6px; }
+  .mt-bonjour h2 { margin: 0; font-size: clamp(28px, 3vw, 38px); font-weight: 600; letter-spacing: -0.035em; }
+  .mt-bonjour input { font: inherit; letter-spacing: inherit; width: 8em; border: 0; border-bottom: 2px solid var(--brand-strong); background: transparent; color: inherit; padding: 0 2px; }
+  .mt-bonjour input:focus { outline: none; }
+  .mt-prenom { font-size: 13px; padding: 4px 8px; }
+  .mt-verif { display: flex; gap: 16px; align-items: flex-start; margin: 0 0 16px; padding: 20px 22px; border-radius: var(--r-panel, 10px);
+    border: 1px solid color-mix(in srgb, #e8a33d 55%, transparent); background: color-mix(in srgb, #e8a33d 9%, var(--canvas, #fff)); }
+  .mt-verif-ico img, .mt-verif-ico .noicon { width: 44px; height: 44px; border-radius: 12px; background: #fff; padding: 6px; border: 1px solid var(--brand-rule, var(--rule)); object-fit: contain; }
+  .mt-verif-corps { flex: 1; min-width: 0; }
+  .mt-verif .mt-kicker { color: #a8661a; }
+  .mt-verif h3 { margin: 2px 0 4px; font-size: 20px; font-weight: 600; letter-spacing: -0.02em; }
+  .mt-verif-why { margin: 0 0 14px; font-size: 14px; color: color-mix(in srgb, var(--ink) 70%, transparent); }
+  .mt-verif-champs { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
+  .mt-verif-champs input { flex: 1 1 240px; min-width: 0; }
+  .mt-verif-champs input, .mt-verif-champs select { font: inherit; font-size: 14px; padding: 9px 11px; border-radius: var(--r-card, 8px); border: 1px solid var(--brand-rule, var(--rule)); background: var(--canvas, #fff); color: var(--ink); }
+  .mt-verif-acts { display: flex; gap: 8px; flex-wrap: wrap; }
+  .mt-compteur { display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap; margin: 0 0 22px; }
+  .mt-compteur b { font-size: clamp(56px, 7vw, 88px); font-weight: 600; letter-spacing: -0.055em; line-height: .95; color: var(--brand-strong, #56669c); }
+  .mt-compteur span { font-size: 19px; font-weight: 500; letter-spacing: -0.015em; }
+  .mt-compteur em { font: 500 13px var(--mono, ui-monospace, monospace); font-style: normal; text-transform: uppercase; letter-spacing: .05em;
+    padding: 7px 12px; border-radius: 999px; background: var(--brand-chip, #e6ebf5); color: var(--brand-strong, #56669c); margin-left: auto; align-self: center; }
+  .mt-hero h3 + .mt-cta { margin-top: 18px; }
+  .mt-gain { flex: none; font: 600 15px var(--mono, ui-monospace, monospace); letter-spacing: -.02em; padding: 7px 13px; border-radius: 999px;
+    background: var(--brand-chip, #e6ebf5); color: var(--brand-strong, #56669c); }
+  .mt-gain small { font-size: 12px; font-weight: 500; opacity: .8; }
+  .mt-nom small { display: block; font-size: 13px; font-weight: 400; color: color-mix(in srgb, var(--ink) 62%, transparent); margin-top: 2px; }
+  .mt-poste { display: flex; gap: 28px; align-items: center; flex-wrap: wrap; padding: 14px 4px; }
+  .mt-poste small { display: block; font: 500 11px var(--mono); text-transform: uppercase; letter-spacing: .06em; color: color-mix(in srgb, var(--ink) 55%, transparent); }
+  .mt-poste b { font-size: 17px; font-weight: 600; }
+  .mt-logos { display: flex; margin-left: auto; align-items: center; }
+  .mt-logos img, .mt-logos .noicon { width: 30px; height: 30px; border-radius: 9px; background: #fff; padding: 4px; border: 1px solid var(--brand-rule, var(--rule)); object-fit: contain; }
+  .mt-logos img + img { margin-left: -8px; }
+  .mt-logos em { font: 500 12px var(--mono); font-style: normal; margin-left: 8px; color: color-mix(in srgb, var(--ink) 60%, transparent); }
+  .mt-detail { margin-top: 6px; border-top: 1px solid var(--brand-rule, var(--rule)); padding-top: 10px; }
+  .mt-detail summary { cursor: pointer; font-size: 14.5px; font-weight: 500; color: var(--brand-strong, var(--accent)); padding: 4px 0; }
+  .mt-detail[open] summary { margin-bottom: 10px; }
+  .mt-alerte ul { margin: 0; padding-left: 20px; font-size: 14px; line-height: 1.6; }
+  .rc-tasks .nom em.dim { color: color-mix(in srgb, var(--ink) 60%, transparent); background: transparent; border: 1px solid var(--brand-rule, var(--rule)); }
+  .mt-fin { margin-top: 22px; display: flex; justify-content: flex-end; }
+  @media (max-width: 640px) { .mt-logos { margin-left: 0; } .mt-rows li { flex-wrap: wrap; } }
+
+  /* « Mes tâches déjà enregistrées » : une carte par tâche, avec les logos de ses applis */
+  .task-card { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 14px; align-items: center; padding: 14px 16px !important; }
+  .tc-logos { display: flex; }
+  .tc-logos img, .tc-vide { width: 40px; height: 40px; border-radius: 11px; object-fit: contain; background: #fff; padding: 6px;
+    border: 1px solid var(--brand-rule, var(--rule)); box-shadow: 0 6px 14px -10px rgba(24, 21, 32, .4); }
+  .tc-logos img + img { margin-left: -12px; }
+  .tc-vide { display: block; background: var(--brand-chip, var(--chip)); }
+  .tc-txt b { display: block; font-size: 15px; font-weight: 600; letter-spacing: -0.01em; }
+  .tc-meta { display: block; margin-top: 2px; font-size: 13.5px; color: color-mix(in srgb, var(--ink) 65%, transparent); }
+  .tc-actions { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+  .tc-actions .btn, .tc-actions button { white-space: nowrap; }
+  .tc-ajout { display: inline-flex; align-items: center; gap: 6px; text-decoration: none; }
+  .tc-ajout svg, .ac-ico svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; }
+  @media (max-width: 760px) { .task-card { grid-template-columns: auto minmax(0, 1fr); } .tc-actions { grid-column: 1 / -1; justify-content: flex-start; } }
+  /* « Un passage a été oublié ? » : un encadré bien visible, accroché à la tâche */
+  .ajout-cta { display: flex; align-items: center; gap: 14px; margin: 0 0 18px; padding: 14px 16px; border-radius: var(--r-card, 10px);
+    background: var(--brand-tint, var(--wash)); border: 1px solid var(--brand-strong, var(--accent)); }
+  .ajout-cta .ac-ico { flex: none; width: 36px; height: 36px; border-radius: 10px; display: grid; place-items: center; background: var(--brand, var(--chip)); color: var(--brand-ink, var(--ink)); }
+  .ajout-cta .ac-txt { flex: 1; min-width: 0; }
+  .ajout-cta .ac-txt b { display: block; font-size: 15px; }
+  .ajout-cta .ac-txt span { display: block; font-size: 14px; color: color-mix(in srgb, var(--ink) 70%, transparent); }
+  .ajout-cta .btn { flex: none; white-space: nowrap; text-decoration: none; }
+  .ajout-cta .btn, .tc-actions a.btn { padding: 10px 16px !important; border-radius: var(--r-btn, 10px) !important; font-size: 14.5px; font-weight: 600 !important; display: inline-flex; align-items: center; gap: 6px; }
+  @media (max-width: 640px) { .ajout-cta { flex-wrap: wrap; } .ajout-cta .btn { width: 100%; text-align: center; } }
+
+  /* introduction : 3 étapes en cartes, consentements en interrupteurs, deux choix clairs */
+  .in-steps { list-style: none; padding: 0; margin: 22px 0 18px; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; text-align: left; }
+  .in-steps li { padding: 16px 16px 14px; border-radius: 16px; background: var(--brand-tint, var(--wash)); border: 1px solid var(--brand-rule, var(--rule)); }
+  .in-steps .n { display: inline-grid; place-items: center; width: 28px; height: 28px; border-radius: 9px; background: var(--brand, var(--chip));
+    color: var(--brand-ink, var(--ink)); font: 600 12px var(--mono); margin-bottom: 12px; }
+  .in-steps b { display: block; font-size: 15.5px; font-weight: 600; letter-spacing: -0.01em; }
+  .in-steps p { margin: 4px 0 0; font-size: 14px; line-height: 1.45; color: color-mix(in srgb, var(--ink) 72%, transparent); }
+  .in-opts { display: grid; gap: 8px; text-align: left; }
+  .in-switch { display: flex; align-items: center; gap: 14px; padding: 14px 16px; border-radius: 14px; border: 1px solid var(--brand-rule, var(--rule)); cursor: pointer; }
+  .in-switch input { position: absolute; opacity: 0; pointer-events: none; }
+  .in-switch .sw { flex: none; width: 40px; height: 24px; border-radius: 999px; background: var(--brand-chip, var(--chip)); position: relative; transition: background-color .25s var(--ease); }
+  .in-switch .sw::after { content: ""; position: absolute; top: 3px; left: 3px; width: 18px; height: 18px; border-radius: 50%; background: #fff;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, .25); transition: transform .3s var(--ease); }
+  .in-switch input:checked + .sw { background: var(--brand-strong, var(--accent)); }
+  .in-switch input:checked + .sw::after { transform: translateX(16px); }
+  .in-switch input:focus-visible + .sw { outline: 2px solid var(--brand-strong, var(--accent)); outline-offset: 2px; }
+  .in-switch .txt { font-size: 14.5px; font-weight: 500; line-height: 1.35; }
+  .in-switch .txt em { display: block; font-style: normal; font-weight: 400; font-size: 13.5px; color: color-mix(in srgb, var(--ink) 62%, transparent); }
+  .in-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 22px; flex-wrap: wrap; }
+  .in-actions button { padding: 12px 18px !important; font-size: 15px !important; }
+  @media (max-width: 640px) { .in-steps { grid-template-columns: minmax(0, 1fr); } .in-actions { justify-content: stretch; } .in-actions button { flex: 1; } }
+  /* les petites lignes d'aide : lisibles (encre adoucie, taille normale), plus de gris pâle */
+  .a2 .a2-help { font-size: 14.5px !important; line-height: 1.5; color: color-mix(in srgb, var(--ink) 70%, transparent) !important; }
+  .a2 .a2-row .lbl { font-size: 13.5px !important; font-weight: 500; color: var(--ink) !important; margin: 12px 0 6px !important; }
+  .a2 .a2-meta { font: 500 12px var(--mono) !important; color: var(--brand-strong, var(--accent)) !important; }
+  .a2 .a2-of { color: var(--brand-strong, var(--accent)) !important; font: 500 11.5px var(--mono) !important; }
+
+  /* récap : 3 repères, puis les tâches (l'essentiel), puis les outils */
+  .ico-svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; flex: none; vertical-align: -3px; }
+  .a2-recap { text-align: left; }
+  .rc-keys { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin: 18px 0 26px; }
+  .rc-key { position: relative; padding: 14px 16px; border-radius: 16px; background: var(--brand-tint, var(--wash)); border: 1px solid var(--brand-rule, var(--rule)); }
+  .rc-key span { display: block; font: 500 11px var(--mono); text-transform: uppercase; letter-spacing: .05em; color: var(--text-dim); }
+  .rc-key b { display: block; margin-top: 6px; font-size: 20px; font-weight: 600; letter-spacing: -0.02em; line-height: 1.2; }
+  .rc-key .a2-edit { position: absolute; top: 10px; right: 10px; }
+  .rc-key .a2-edit span { display: none; }
+  .a2-edit { display: inline-flex; align-items: center; gap: 5px; font-size: 13px; color: var(--brand-strong, var(--accent)); text-decoration: none; padding: 4px 8px; border-radius: 8px; }
+  .a2-edit:hover { background: var(--brand-chip, var(--chip)); }
+  .rc-block { margin-top: 22px; }
+  .rc-block header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+  .rc-block h4 { margin: 0; font-size: 15px; font-weight: 600; letter-spacing: -0.01em; }
+  .rc-tasks { list-style: none; margin: 0; padding: 0; border-top: 1px solid var(--brand-rule, var(--rule)); }
+  .rc-tasks li { display: grid; grid-template-columns: minmax(0, 1fr) 130px 110px; gap: 12px; align-items: center; padding: 12px 4px; border-bottom: 1px solid var(--brand-rule, var(--rule)); }
+  .rc-tasks .nom { font-size: 14.5px; font-weight: 500; min-width: 0; }
+  .rc-tasks .nom em { display: inline-flex; align-items: center; gap: 4px; margin-left: 10px; font: 500 11px var(--mono); font-style: normal; color: var(--brand-strong, var(--accent));
+    background: var(--brand-chip, var(--chip)); padding: 3px 8px; border-radius: 999px; vertical-align: 1px; }
+  .rc-tasks .nom em .ico-svg { width: 12px; height: 12px; }
+  .rc-tasks .val { font: 500 13px var(--mono); text-align: right; font-variant-numeric: tabular-nums; }
+  .rc-tasks .val small { color: var(--text-dim); font-size: 11px; }
+  .rc-tools { display: flex; flex-wrap: wrap; gap: 8px; }
+  .rc-tool { display: inline-flex; align-items: center; gap: 8px; padding: 6px 12px 6px 6px; border-radius: 999px; background: var(--brand-tint, var(--wash)); border: 1px solid var(--brand-rule, var(--rule)); font-size: 13px; }
+  .rc-tool img, .rc-tool .noicon { width: 22px; height: 22px; border-radius: 6px; object-fit: contain; }
+  .rc-vide { color: var(--text-dim); margin: 6px 0 0; }
+  @media (max-width: 640px) { .rc-keys { grid-template-columns: minmax(0, 1fr); } .rc-tasks li { grid-template-columns: minmax(0, 1fr) auto; } .rc-tasks .val:last-child { grid-column: 2; } }
   .a2-top3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin: 6px 0 16px; }
   .a2-opp { position: relative; padding: 16px; border-radius: 14px; border: 1px solid var(--accent); background: var(--accent-soft); display: flex; flex-direction: column; gap: 6px; }
   .a2-opp .n { font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--accent); }
@@ -470,6 +642,19 @@
   details.why .reasons { margin: 10px 0 0; padding-left: 18px; }
   details.why .tiles { margin-top: 12px; }
   body[data-view="3"] .workflow .apps-strip { margin-bottom: 14px; }
+  /* Relecture avant envoi : images déjà masquées, l'employé retire ce qu'il ne veut pas envoyer */
+  .review h3 { margin: 0 0 6px; font-size: 22px; }
+  .review .rv-lead { color: var(--text-dim); margin: 0 0 16px; }
+  .rv-wait { display: flex; align-items: center; gap: 12px; color: var(--text-dim); }
+  .rv-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 12px; margin-bottom: 16px; }
+  .rv-item { position: relative; padding: 0 !important; border-radius: 14px !important; overflow: hidden; aspect-ratio: 16 / 10; background: #000 !important; }
+  .rv-item img { width: 100%; height: 100%; object-fit: cover; display: block; transition: opacity .15s, filter .15s; }
+  .rv-item[aria-pressed="true"] img { opacity: .25; filter: grayscale(1); }
+  .rv-item .rv-t { position: absolute; left: 8px; bottom: 6px; font-size: 11px; color: #fff; background: rgba(0,0,0,.55); padding: 2px 7px; border-radius: 99px; }
+  .rv-item .rv-x { position: absolute; right: 6px; top: 6px; min-width: 26px; height: 26px; padding: 0 8px; border-radius: 99px; display: grid; place-items: center;
+    font-size: 12px; font-weight: 700; background: rgba(255,255,255,.9); color: var(--bad); }
+  .rv-item[aria-pressed="true"] .rv-x { background: var(--bad); color: #fff; }
+  .rv-text { display: block; margin: 0 0 14px; color: var(--text-dim); font-size: 14px; }
   /* Audit : liste déroulante avec recherche (outils, tâches) */
   .a2-combo { position: relative; margin-top: 14px; display: flex; gap: 8px; align-items: center; }
   .a2-combo input { flex: 1; padding: 13px 18px !important; font-size: 15px !important; }
@@ -483,6 +668,7 @@
   .a2-opt[aria-selected="true"] { background: var(--accent-soft); }
   .a2-opt .ico { width: 24px; height: 24px; display: grid; place-items: center; flex: none; border-radius: 7px; }
   .a2-opt .ico img { width: 22px; height: 22px; object-fit: contain; }
+  .a2-opt .ico:empty { display: none; } /* pas de logo (ex. les rôles) : pas de retrait vide */
   .a2-opt.free .ico { background: var(--accent); color: var(--accent-ink); font-weight: 700; border-radius: 50%; }
   .a2-opt .txt { flex: 1; min-width: 0; color: var(--text); }
   .a2-opt .txt b { font-weight: 700; }
@@ -502,7 +688,7 @@
 <body>
   <header class="topbar">
     <div class="brand" aria-label="Twiin"><span id="logoCells"></span><span>Tw<b>ii</b>n</span></div>
-    <nav class="nav"><a href="/" aria-current="page">Analyser une tâche</a><a href="/videos.html">Mes vidéos</a><a href="/automatisations.html">Mes automatisations</a><a href="/back.html" class="nav-back">Back</a></nav>
+    <nav class="nav"><a href="/#enregistrer" aria-current="page">Analyser une tâche</a><a href="/videos.html">Mes vidéos</a><a href="/automatisations.html">Mes automatisations</a><a href="/back.html" class="nav-back">Back</a></nav>
     <button id="themeBtn" type="button">Thème sombre</button>
   </header>
 
@@ -514,14 +700,14 @@
   </ol>
 
   <section class="view" data-view="1">
-  <h1 class="page-title">Audit de ton poste</h1>
+  <h1 class="page-title">Mon travail</h1>
 
   <section class="panel a2" id="a2" aria-live="polite">
     <div class="a2-top"><div class="a2-progress"><span id="a2Bar"></span></div><span class="a2-meta" id="a2Meta"></span></div>
     <div id="a2Screen"></div>
     <div class="sphere-box" id="sphereBox" hidden><div id="scanSphere"></div><p class="sphere-caption" id="sphereCaption"></p></div>
     <div class="a2-nav"><button type="button" id="a2Back" class="quiet">← Retour</button>
-      <span class="a2-voice"><button type="button" id="a2Listen" class="quiet" title="Écouter la question">🔊 Écouter</button>
+      <span class="a2-voice"><button type="button" id="a2Listen" class="quiet" title="Écouter la question">Écouter</button>
         <label class="check"><input type="checkbox" id="a2Voice"> Lire les questions à voix haute</label></span>
       <button type="button" id="a2Next">Suivant →</button></div>
   </section>
@@ -535,6 +721,15 @@
   <div class="controls rec-controls">
     <button id="startBtn">Enregistrer ma tâche</button>
     <button id="addBtn" disabled>+ Ajouter un écran</button>
+    <button id="pauseBtn" disabled title="Met en pause l'enregistrement : rien n'est noté ni capturé">Pause</button>
+    <label id="voiceToggle" class="voice-toggle" title="Enregistre ta voix pendant la tâche (explique ce que tu fais et pourquoi). Elle est transcrite sur ton Mac : seul le texte est envoyé au modèle d'analyse.">
+      <input type="checkbox" id="voiceSwitch" role="switch"><span class="track"></span><span>Capture vocale</span>
+    </label>
+    <span id="voiceNote" class="voice-note" role="status" hidden></span>
+    <div id="voiceInstallBox" class="voice-engine" hidden>
+      <span id="voiceInstallInfo" class="voice-note" role="status" hidden></span>
+      <button type="button" id="voiceInstallBtn" class="quiet" hidden>Réessayer l'installation</button>
+    </div>
     <button id="stopBtn" disabled>Terminer et analyser</button>
     <button id="reBtn" class="quiet" title="Refaire l'analyse du dernier enregistrement, sans le refaire">Réanalyser</button>
   </div>
@@ -552,6 +747,21 @@
       <button id="exOpenBtn" type="button">Ouvrir l'exemple</button>
       <button id="lastBtn" type="button" hidden>Reprendre ma dernière tâche analysée</button>
     </div>
+  </section>
+  <section class="view panel" data-view="2" id="myTasks" hidden>
+    <h3 style="margin:0 0 14px">Mes tâches déjà enregistrées</h3>
+    <ul id="myTasksList" style="list-style:none;margin:0;padding:0;display:grid;gap:10px"></ul>
+  </section>
+
+  <section id="launchN8n" hidden>
+    <div class="ex-head">
+      <h4><span class="chip-example">n8n</span><span>Lancer une automatisation existante</span></h4>
+    </div>
+    <div class="ex-actions">
+      <select id="planSelect" aria-label="Automatisation à lancer"></select>
+      <button id="launchBtn" type="button">Lancer le workflow n8n</button>
+    </div>
+    <div id="n8nLaunch" hidden></div>
   </section>
 
   <section id="analysis" hidden aria-live="polite">
@@ -589,6 +799,8 @@
   <script src="banner.js"></script>
   <script src="ui/twiin-ui.js"></script>
   <script src="app.js"></script>
+  <script src="discovery.js"></script>
+  <script src="narrateur.js"></script>
   <script src="audit2.js"></script>
 </body>
 </html>

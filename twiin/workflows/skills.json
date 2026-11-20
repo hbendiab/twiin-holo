@@ -1,5 +1,21 @@
 [
   {
+    "id": "n8n-holo-calculer-3-3",
+    "name": "n8n Holo — calculer 3×3",
+    "description": "Étape lancée par n8n",
+    "steps": [
+      "In Google Chrome, open a new tab and go to https://www.google.com. In the search bar, type « calculatrice » and press Enter. The Google calculator should appear in the results. Click the « 3 » button, then the « × » button, then the « 3 » button, then the « = » button. Read the result displayed on the calculator screen. Then answer ONLY with a JSON object with exactly these keys, filled with the values you READ ON SCREEN (write « non trouvé » if a value is not visible): {\"resultat\":\"the number displayed as the result of 3 × 3 on the calculator\"}"
+    ]
+  },
+  {
+    "id": "n8n-holo-ecrire-dans-google-sheets",
+    "name": "n8n Holo — écrire dans Google Sheets",
+    "description": "Étape lancée par n8n",
+    "steps": [
+      "In Google Chrome, switch to the tab with Google Sheets « TEST Holo computer use ». In cell B4, type  and press Tab. In cell C4, type  and press Tab. In cell D4, type =C4-B4 and press Enter. In cell B5, type  and press Tab. In cell C5, type  and press Tab. In cell D5, type =C5-B5 and press Enter. In cell B6, type  and press Tab. In cell C6, type  and press Tab. In cell D6, type =C6-B6 and press Enter. Press Ctrl+S to save. Do not modify any other cells or sheets. Stop."
+    ]
+  },
+  {
     "id": "n8n-holo-lire-articles-linkedin",
     "name": "n8n Holo — lire articles LinkedIn",
     "description": "Étape lancée par n8n",
@@ -16,11 +32,83 @@
     ]
   },
   {
+    "id": "n8n-holo-lire-prix-stockx",
+    "name": "n8n Holo — lire prix StockX",
+    "description": "Étape lancée par n8n",
+    "steps": [
+      "In Google Chrome, open https://stockx.com. In the search bar at the top, type « reversible reflective down puffer » and press Enter. In the results, find « Supreme Reversible Reflective Down Puffer Jacket » in Pink. Click on it to open the product page. Read the « Buy Now » price (the lowest available buy-now price). Go back to search. Search again for « reversible reflective down puffer black » or « supreme reversible reflective down puffer jacket black ». Find the Black version. Click on it. Select size XL if prompted. Read the « Buy Now » price. Go back to search. Search for « textured sweater supreme pink ». Click on the product. Read the « Buy Now » price. Do not buy, do not add to cart, do not click any purchase button. Copy every price EXACTLY as written (number only, no currency symbol, no thousands separator). Then answer ONLY with a JSON object with exactly these keys, filled with the values you READ ON SCREEN (write « non trouvé » if a value is not visible): {\"stockx_puffer_pink\":\"Buy Now price of Supreme Reversible Reflective Down Puffer Jacket Pink, number only\",\"stockx_puffer_black\":\"Buy Now price of Supreme Reversible Reflective Down Puffer Jacket Black (size XL), number only\",\"stockx_sweater_pink\":\"Buy Now price of Supreme Textured Sweater Pink, number only\"}"
+    ]
+  },
+  {
+    "id": "n8n-holo-lire-prix-stockx-puffer-black",
+    "name": "n8n Holo — lire prix StockX Puffer Black",
+    "description": "Étape lancée par n8n",
+    "steps": [
+      "In Google Chrome, open https://stockx.com. In the search bar at the top, type « reversible reflective down puffer black » and press Enter. In the search results, find and click on the product « Supreme Reversible Reflective Down Puffer Jacket » in BLACK. Verify the page title contains « Supreme Reversible Reflective Down Puffer Jacket » and the color is Black. Select the size XL from the size selector. Read the « Buy Now » price displayed for size XL. Copy the number EXACTLY as displayed (without the € symbol, without currency code, without thousands separator). Then answer ONLY with a JSON object with exactly these keys, filled with the values you READ ON SCREEN (write « non trouvé » if a value is not visible): {\"prix_stockx\":\"Buy Now price for size XL as a number, e.g. 1710\"}"
+    ]
+  },
+  {
+    "id": "n8n-holo-lire-prix-stockx-puffer-pink",
+    "name": "n8n Holo — lire prix StockX Puffer Pink",
+    "description": "Étape lancée par n8n",
+    "steps": [
+      "In Google Chrome, open https://stockx.com. In the search bar at the top, type « reversible reflective down puffer » and press Enter. In the search results, find and click on the product « Supreme Reversible Reflective Down Puffer Jacket » in PINK. Verify the page title contains « Supreme Reversible Reflective Down Puffer Jacket » and the color is Pink. Read the « Buy Now » price displayed on the page. Copy the number EXACTLY as displayed (without the € symbol, without currency code, without thousands separator). Then answer ONLY with a JSON object with exactly these keys, filled with the values you READ ON SCREEN (write « non trouvé » if a value is not visible): {\"prix_stockx\":\"Buy Now price as a number, e.g. 1361\"}"
+    ]
+  },
+  {
+    "id": "n8n-holo-lire-prix-stockx-textured-sweater-pink",
+    "name": "n8n Holo — lire prix StockX Textured Sweater Pink",
+    "description": "Étape lancée par n8n",
+    "steps": [
+      "In Google Chrome, open https://stockx.com. In the search bar at the top, type « textured sweater supreme pink » and press Enter. In the search results, find and click on the product « Supreme Textured Sweater » in PINK. Verify the page title contains « Supreme Textured Sweater » and the color is Pink. Read the « Buy Now » price displayed on the page. Copy the number EXACTLY as displayed (without the € symbol, without currency code, without thousands separator). Then answer ONLY with a JSON object with exactly these keys, filled with the values you READ ON SCREEN (write « non trouvé » if a value is not visible): {\"prix_stockx\":\"Buy Now price as a number, e.g. 731\"}"
+    ]
+  },
+  {
+    "id": "n8n-holo-lire-prix-supreme",
+    "name": "n8n Holo — lire prix Supreme",
+    "description": "Étape lancée par n8n",
+    "steps": [
+      "In Google Chrome, open https://eu.supreme.com/collections/all. Wait for the page to load fully. Find the product « Reversible Reflective Down Puffer Jacket » in the color Pink. Click on it to open the product page. Read the retail price displayed (e.g. « €528 »). Go back to the collections page. Find the product « Reversible Reflective Down Puffer Jacket » in the color Black. Click on it to open the product page. Read the retail price. Go back to the collections page. Find the product « Textured Sweater » in the color Pink. Click on it to open the product page. Read the retail price. Do not add anything to cart, do not click « Buy » or any purchase button. Copy every price EXACTLY as written (number only, no currency symbol). Then answer ONLY with a JSON object with exactly these keys, filled with the values you READ ON SCREEN (write « non trouvé » if a value is not visible): {\"prix_puffer_pink\":\"retail price of Reversible Reflective Down Puffer Jacket Pink, number only\",\"prix_puffer_black\":\"retail price of Reversible Reflective Down Puffer Jacket Black, number only\",\"prix_sweater_pink\":\"retail price of Textured Sweater Pink, number only\"}"
+    ]
+  },
+  {
+    "id": "n8n-holo-lire-prix-supreme-puffer-black",
+    "name": "n8n Holo — lire prix Supreme Puffer Black",
+    "description": "Étape lancée par n8n",
+    "steps": [
+      "In Google Chrome, open https://eu.supreme.com/collections/all. Scroll through the product grid and find the product titled « Reversible Reflective Down Puffer Jacket » in the BLACK colorway. Click on it to open the product page. Verify the page title contains « Reversible Reflective Down Puffer Jacket » and the color shown is Black. Read the retail price displayed on the page. Copy the number EXACTLY as displayed (without the € symbol, without currency code). Then answer ONLY with a JSON object with exactly these keys, filled with the values you READ ON SCREEN (write « non trouvé » if a value is not visible): {\"prix_supreme\":\"retail price as a number, e.g. 528\"}"
+    ]
+  },
+  {
+    "id": "n8n-holo-lire-prix-supreme-puffer-pink",
+    "name": "n8n Holo — lire prix Supreme Puffer Pink",
+    "description": "Étape lancée par n8n",
+    "steps": [
+      "In Google Chrome, open https://eu.supreme.com/collections/all. Scroll through the product grid and find the product titled « Reversible Reflective Down Puffer Jacket » in the PINK colorway. Click on it to open the product page. Verify the page title contains « Reversible Reflective Down Puffer Jacket » and the color shown is Pink. Read the retail price displayed on the page (the price in euros, e.g. 528). Copy the number EXACTLY as displayed (without the € symbol, without currency code). Then answer ONLY with a JSON object with exactly these keys, filled with the values you READ ON SCREEN (write « non trouvé » if a value is not visible): {\"prix_supreme\":\"retail price as a number, e.g. 528\"}"
+    ]
+  },
+  {
+    "id": "n8n-holo-lire-prix-supreme-textured-sweater-pink",
+    "name": "n8n Holo — lire prix Supreme Textured Sweater Pink",
+    "description": "Étape lancée par n8n",
+    "steps": [
+      "In Google Chrome, open https://eu.supreme.com/collections/all. Scroll through the product grid and find the product titled « Textured Sweater » in the PINK colorway. Click on it to open the product page. Verify the page title contains « Textured Sweater » and the color shown is Pink. Read the retail price displayed on the page. Copy the number EXACTLY as displayed (without the € symbol, without currency code). Then answer ONLY with a JSON object with exactly these keys, filled with the values you READ ON SCREEN (write « non trouvé » if a value is not visible): {\"prix_supreme\":\"retail price as a number, e.g. 198\"}"
+    ]
+  },
+  {
     "id": "n8n-holo-note-onenote",
     "name": "n8n Holo — note OneNote",
     "description": "Étape lancée par n8n",
     "steps": [
       "Open Microsoft OneNote, go to the section « Groupe » and open the page « Veille concurrence ». The cursor starts in the page TITLE: type « Veille – L'Oréal (n8n 18/11/2026) », then press Enter so the cursor is in the BODY. Type this text in the body: « No.1 Beauty Group Worldwide. No.1 most innovative company in Europe (Fortune's ranking). ». Then press Enter twice and type: « Articles récents :  ». Check that the title contains only the title, then stop. Do not modify any other page."
+    ]
+  },
+  {
+    "id": "n8n-holo-saisir-resultats-notion",
+    "name": "n8n Holo — saisir résultats Notion",
+    "description": "Étape lancée par n8n",
+    "steps": [
+      "In Google Chrome, open the Notion page « Résultat des calculs ». Click in the body of the page below any existing content. Type « 9 » and press Enter. Type « 1 » and press Enter. Stop. Do not modify any other page or content. Then answer ONLY with a JSON object with exactly these keys, filled with the values you READ ON SCREEN (write « non trouvé » if a value is not visible): {\"resultats_saisis\":\"the values typed into the page, one per line\"}"
     ]
   },
   {

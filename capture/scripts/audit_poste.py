@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Audit Twiin du poste : la liste des outils installés sur ce Mac, classés connu / inconnu.
+"""Audit Twiin du poste : la liste des outils installés sur ce Mac ou ce PC Windows, classés connu / inconnu.
 
     .venv/bin/python capture/scripts/audit_poste.py            # écrit audit_poste.json + .md
     .venv/bin/python capture/scripts/audit_poste.py --print    # affiche aussi le tableau
@@ -8,7 +8,8 @@ Même registre (capture/backend/app/known_tools.json) et même format que l'audi
 [{app, type: connu|inconnu, api: oui|non, connector, screenshots}] (+ name, category, composants…).
 
 Règle de confiance. Le script lit UNIQUEMENT des métadonnées d'outils :
-  - les applications (/Applications, ~/Applications) : nom, version, bundle id, catégorie déclarée (Info.plist) ;
+  - les applications : sur Mac /Applications (Info.plist : nom, version, bundle id, catégorie déclarée) ;
+    sur Windows la liste « Applications installées » du registre (nom, version, éditeur) ;
   - les outils en ligne de commande installés (Homebrew `brew leaves`, quelques commandes courantes et leur version) ;
   - les extensions d'éditeur (VS Code, Cursor) et de Chrome : leur nom seulement.
 Il ne lit AUCUN fichier de travail, AUCUN historique de navigation, AUCUNE activité. Rien n'est envoyé :
@@ -92,6 +93,91 @@ def recent_use(app_path: str, days: int = 30) -> dict:
     return {"usage_days": n, "usage": "récente" if n else ("ancienne" if "(" in raw and "null" not in raw else "inconnue")}
 
 
+# ---------------------------------------------------------------- Windows
+
+WIN_SKIP = re.compile(r"^(Microsoft Visual C\+\+|Microsoft \.NET|Windows Software Development Kit|Windows SDK|"
+                      r"Microsoft Windows Desktop Runtime|Microsoft ASP\.NET|Microsoft Update Health|Update for|"
+                      r"Security Update|Microsoft Edge WebView2|vs_|Microsoft GameInput|NVIDIA (Graphics|PhysX|HD Audio|USBC|FrameView))", re.I)
+WIN_PERSO = re.compile(r"\b(steam|epic games|battle\.net|riot|origin|ubisoft|game|jeu|spotify|netflix|deezer|vlc|discord)\b", re.I)
+
+
+def windows_apps() -> list[dict]:
+    """Applications installées (registre « Désinstaller un programme ») : nom, version, éditeur, dossier. Rien d'autre."""
+    import winreg
+    roots = [(winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall"),
+             (winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall"),
+             (winreg.HKEY_CURRENT_USER, r"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall")]
+    seen, out = set(), []
+    for hive, path in roots:
+        try:
+            root = winreg.OpenKey(hive, path)
+        except OSError:
+            continue
+        for i in range(winreg.QueryInfoKey(root)[0]):
+            try:
+                k = winreg.OpenKey(root, winreg.EnumKey(root, i))
+            except OSError:
+                continue
+            def val(name):
+                try:
+                    return winreg.QueryValueEx(k, name)[0]
+                except OSError:
+                    return None
+            name = (val("DisplayName") or "").strip()
+            if not name or val("SystemComponent") == 1 or val("ParentKeyName") or val("ReleaseType"):
+                continue
+            if name.lower() in seen:
+                continue
+            seen.add(name.lower())
+            icon = str(val("DisplayIcon") or "").split(",")[0].strip('"')
+            out.append({"name": name, "file": name, "bundle_id": str(val("Publisher") or ""),
+                        "version": str(val("DisplayVersion") or ""), "declared_category": "",
+                        "path": str(val("InstallLocation") or "") or (str(Path(icon).parent) if icon else "")})
+    return sorted(out, key=lambda a: a["name"].lower())
+
+
+def windows_recent_use(days: int = 30) -> dict[str, datetime]:
+    """Seulement si l'employé l'a accepté : DERNIÈRE ouverture de chaque programme, lue dans UserAssist (registre de
+    l'utilisateur, tenu par Windows). Ni ce qui a été fait, ni les fichiers ouverts. {chemin exe en minuscules: date}."""
+    import codecs, struct, winreg
+    res = {}
+    base = r"Software\Microsoft\Windows\CurrentVersion\Explorer\UserAssist"
+    try:
+        ua = winreg.OpenKey(winreg.HKEY_CURRENT_USER, base)
+    except OSError:
+        return res
+    for i in range(winreg.QueryInfoKey(ua)[0]):
+        try:
+            cnt = winreg.OpenKey(ua, winreg.EnumKey(ua, i) + r"\Count")
+        except OSError:
+            continue
+        for j in range(winreg.QueryInfoKey(cnt)[1]):
+            name, data, _ = winreg.EnumValue(cnt, j)
+            if not isinstance(data, bytes) or len(data) < 68:
+                continue
+            ft = struct.unpack_from("<Q", data, 60)[0]
+            if not ft:
+                continue
+            when = datetime(1601, 1, 1) + __import__("datetime").timedelta(microseconds=ft // 10)
+            res[codecs.decode(name, "rot13").lower()] = when
+    return res
+
+
+def windows_usage_for(app: dict, ua: dict[str, datetime], days: int = 30) -> dict:
+    folder = (app.get("path") or "").lower().rstrip("\\")
+    key = re.sub(r"[^a-z0-9]", "", app["name"].lower())[:8]
+    last = None
+    for exe, when in ua.items():
+        if (folder and exe.startswith(folder)) or (key and key in re.sub(r"[^a-z0-9]", "", Path(exe).stem.lower())):
+            last = max(last, when) if last else when
+    if last is None:
+        return {"usage_days": 0, "usage": "inconnue"}
+    recent = (datetime.utcnow() - last).days <= days
+    # Windows ne garde que la dernière ouverture : on indique « au moins 1 jour » quand elle date de moins de 30 jours
+    return {"usage_days": 1 if recent else 0, "usage": "récente" if recent else "ancienne",
+            "last_used": last.strftime("%Y-%m-%d")}
+
+
 def cli_tools() -> list[dict]:
     out, seen = [], set()
     if shutil.which("brew"):
@@ -121,7 +207,8 @@ def editor_extensions() -> dict[str, list[str]]:
 
 
 def chrome_extensions() -> list[str]:
-    root = HOME / "Library" / "Application Support" / "Google" / "Chrome"
+    root = (Path(__import__("os").environ.get("LOCALAPPDATA", "")) / "Google" / "Chrome" / "User Data"
+            if sys.platform == "win32" else HOME / "Library" / "Application Support" / "Google" / "Chrome")
     names = set()
     for manifest in root.glob("*/Extensions/*/*/manifest.json"):
         try:
@@ -165,18 +252,18 @@ def build(registry: list[dict], usage: bool = False) -> dict:
     tools: dict[str, dict] = {}
     perso, apple_skipped = [], 0
 
-    for p in app_bundles():
-        a = read_app(p)
-        if not a:
-            continue
+    is_win = sys.platform == "win32"
+    apps = windows_apps() if is_win else [a for a in (read_app(p) for p in app_bundles()) if a]
+    ua = windows_recent_use() if (is_win and usage) else {}
+    for a in apps:
         tool = match_app(a["file"], a["bundle_id"], registry) or match_app(a["name"], a["bundle_id"], registry)
         comp = {"name": a["file"], "version": a["version"], "bundle_id": a["bundle_id"]}
         if usage:
-            comp.update(recent_use(a["path"]))
-        if tool is None and a["bundle_id"].startswith("com.apple."):
-            apple_skipped += 1  # apps système d'Apple (Musique, iMovie…) : pas des outils métier
+            comp.update(windows_usage_for(a, ua) if is_win else recent_use(a["path"]))
+        if tool is None and (a["bundle_id"].startswith("com.apple.") or (is_win and WIN_SKIP.search(a["name"]))):
+            apple_skipped += 1  # composants système (Apple, ou runtimes et mises à jour Windows) : pas des outils métier
             continue
-        if tool is None and a["declared_category"] in PERSO:
+        if tool is None and (a["declared_category"] in PERSO or (is_win and WIN_PERSO.search(a["name"]))):
             perso.append({**comp, "declared_category": a["declared_category"]})
             continue
         key = tool["name"] if tool else f"app:{a['file']}"
@@ -229,7 +316,7 @@ def markdown(a: dict) -> str:
         "",
         f"**{s['outils']} outils** : {s['connus']} connus (dont {s['connus_avec_api']} avec API), "
         f"{s['inconnus']} inconnus. Exclus : {s['apps_perso_exclues']} apps perso, "
-        f"{s['apps_systeme_apple_ignorees']} apps système Apple.",
+        f"{s['apps_systeme_apple_ignorees']} composants système.",
         "",
         "| Outil | Catégorie | Type | API | Connecteur | Jumeau | Détecté via | Composants |",
         "|---|---|---|---|---|---|---|---|",
@@ -257,16 +344,16 @@ def main():
     ap.add_argument("--usage", action="store_true",
                     help="indique aussi si chaque appli a été ouverte ces 30 derniers jours (choix de l'employé)")
     args = ap.parse_args()
-    if sys.platform != "darwin":
-        sys.exit("Audit du poste : macOS uniquement pour l'instant.")
+    if sys.platform not in ("darwin", "win32"):
+        sys.exit("Audit du poste : macOS ou Windows uniquement.")
 
     print("Audit du poste Twiin : lecture des métadonnées d'outils uniquement (apps, CLI, extensions).", flush=True)
     audit = build(load_registry(), usage=args.usage)
     out = args.out or OUT_BASE / datetime.now().strftime("%Y%m%d-%H%M%S")
     out.mkdir(parents=True, exist_ok=True)
-    (out / "audit_poste.json").write_text(json.dumps(audit, ensure_ascii=False, indent=2))
+    (out / "audit_poste.json").write_text(json.dumps(audit, ensure_ascii=False, indent=2), encoding="utf-8")
     md = markdown(audit)
-    (out / "audit_poste.md").write_text(md)
+    (out / "audit_poste.md").write_text(md, encoding="utf-8")
     s = audit["summary"]
     print(f"{s['outils']} outils : {s['connus']} connus ({s['connus_avec_api']} avec API), {s['inconnus']} inconnus.")
     print(f"→ {out / 'audit_poste.json'}\n→ {out / 'audit_poste.md'}")

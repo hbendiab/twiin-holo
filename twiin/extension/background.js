@@ -9,8 +9,11 @@ async function api(path, { method = 'GET', body } = {}) {
   const headers = { ...(body ? { 'Content-Type': 'application/json' } : {}), ...(token ? { Authorization: `Bearer ${token}` } : {}) };
   let r;
   try {
-    r = await fetch((await base()) + path, { method, headers, body: body ? JSON.stringify(body) : undefined });
-  } catch {
+    // délai maximum : l'analyse d'une tâche peut prendre quelques minutes, le reste quelques secondes
+    r = await fetch((await base()) + path, { method, headers, body: body ? JSON.stringify(body) : undefined,
+      signal: AbortSignal.timeout(path.startsWith('/api/generate-workflows') || path.startsWith('/api/n8n/create') ? 5 * 60000 : 90000) });
+  } catch (e) {
+    if (e?.name === 'TimeoutError') return { error: 'Twiin met trop de temps à répondre. Réessaie.' };
     return { offline: true, error: 'Twiin n\'est pas lancé sur ce Mac.' };
   }
   const j = await r.json().catch(() => ({}));
@@ -142,7 +145,13 @@ chrome.runtime.onInstalled.addListener(() => {
   chrome.alarms.create('etat', { periodInMinutes: 0.5 });
 });
 chrome.runtime.onStartup.addListener(() => chrome.alarms.create('etat', { periodInMinutes: 0.5 }));
-chrome.alarms.onAlarm.addListener((a) => { if (a.name === 'etat') etat(true); });
+// L'extension se signale au serveur Twiin : l'onboarding de l'app la voit connectée
+const ping = async () => fetch((await base()) + '/api/extension/ping', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({ version: chrome.runtime.getManifest().version }) }).catch(() => {});
+chrome.runtime.onInstalled.addListener(ping);
+chrome.runtime.onStartup.addListener(ping);
+chrome.alarms.onAlarm.addListener((a) => { if (a.name === 'etat') { etat(true); ping(); } });
+ping();
 chrome.contextMenus.onClicked.addListener((info, tab) => {
   if (info.menuItemId === 'record') startRecording(tab?.windowId);
   if (info.menuItemId === 'autos') openPage('automatisations.html');
