@@ -3101,7 +3101,7 @@ function phraseGuide(etape) {
         `à la première personne du pluriel, au présent, sans guillemets ni emoji. Exemple : « On ouvre la page LinkedIn de L'Oréal et on lit ses chiffres. »\n\n${etape.slice(0, 1200)}` }] })
       .then((r) => {
         const t = String(r.choices?.[0]?.message?.content || '').replace(/<think>[\s\S]*?<\/think>/g, '').trim().split('\n')[0].replace(/^[«"\s]+|[»"\s]+$/g, '');
-        if (t) { const c = readJson(PHRASES_FICHIER, {}); c[etape] = t.slice(0, 140); fs.writeFileSync(PHRASES_FICHIER, JSON.stringify(c, null, 1)); }
+        if (t && !/aucune consigne|pas de consigne|rien à résumer/i.test(t)) { const c = readJson(PHRASES_FICHIER, {}); c[etape] = t.slice(0, 140); fs.writeFileSync(PHRASES_FICHIER, JSON.stringify(c, null, 1)); }
       }).catch(() => {}).finally(() => phrasesEnCours.delete(etape));
   }
   return null;
@@ -3113,7 +3113,11 @@ app.get('/api/guide', (req, res) => {
   const etape = [...evs].reverse().find((e) => e.type === 'step_start');
   const session = [...evs].reverse().find((e) => e.type === 'session')?.url || null;
   const bloc = replay?.running ? String(replay.name || '').replace(/^n8n\s+/, '') : null;
-  let phrase = etape?.step ? phraseGuide(String(etape.step)) : null;
+  // étapes envoyées ensemble (« 3 étapes envoyées ensemble ») : on résume la vraie consigne, lue dans l'événement de départ
+  const depart = evs.find((e) => e.type === 'start');
+  const consigne = etape?.step && !/envoy[ée]es ensemble/i.test(etape.step) ? String(etape.step)
+    : Array.isArray(depart?.steps) ? depart.steps.join(' ') : null;
+  let phrase = consigne ? phraseGuide(consigne) : null;
   if (!phrase && bloc) phrase = bloc.replace(/^Holo\s*[—-]\s*/i, '').replace(/^./, (c) => c.toUpperCase()) + '…';
   if (!phrase) { const der = r?.noeuds?.at(-1); phrase = der ? `${der.nom.replace(/^Holo\s*[—-]\s*/i, '')} : ${der.ok ? 'fait' : 'à vérifier'}.` : 'On prépare l\'automatisation…'; }
   res.json({ actif: true, titre: r?.name || bloc || 'Holo', sur_mac: replay?.running ? replay.env !== 'cloud' : !!r?.sur_mac, cloud: replay?.running && replay.env === 'cloud',

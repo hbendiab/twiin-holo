@@ -177,10 +177,18 @@ def voix_pour(nom_tuto):
     return nom, VOIX_TUTO[nom]
 
 
-def tts(text, out: Path, vid):
+# Iris et Ilo racontent le tuto à tour de rôle (mêmes voix et réglages que dans le SaaS, recorder/server.js JUMEAUX)
+JUMEAUX = {
+    "iris": ("O31r762Gb3WFygrEOGh0", {"stability": 0.4, "similarity_boost": 0.8, "style": 0.5, "use_speaker_boost": True}),
+    "ilo": ("IHngRooVccHyPqB4uQkG", {"stability": 0.6, "similarity_boost": 0.8, "style": 0.15, "use_speaker_boost": False}),
+}
+
+
+def tts(text, out: Path, vid, reglages=None):
+    corps = {"text": text, "model_id": "eleven_multilingual_v2", **({"voice_settings": reglages} if reglages else {})}
     r = requests.post(f"{ELEVEN_BASE}/v1/text-to-speech/{vid}?output_format=mp3_44100_192",
                       headers={"xi-api-key": ENV["ELEVENLABS_API_KEY"].strip(), "Content-Type": "application/json"},
-                      json={"text": text, "model_id": "eleven_multilingual_v2"}, timeout=120)
+                      json=corps, timeout=120)
     if not r.ok:
         raise SystemExit(f"ElevenLabs : {r.status_code} {r.text[:200]}")
     out.write_bytes(r.content)
@@ -362,20 +370,24 @@ def finish(a, run, per_step, out_dir):
     voix_nom, voix_id = voix_pour(a.name)
     print(f"voix off : {voix_nom}", flush=True)
 
-    def voice(text, name):
+    impose = bool(ENV.get("ELEVENLABS_TUTO_VOICE_ID", "").strip())  # une voix imposée : pas d'alternance
+
+    def voice(text, name, qui="iris"):
         if a.no_voice or not text:
             return None, max(2.5, len(text) / 14)
         f = out_dir / f"{name}.mp3"
-        return f"tutos/{a.name}/{f.name}", tts(text, f, voix_id)
+        vid, reglages = (voix_id, None) if impose else JUMEAUX[qui]
+        return f"tutos/{a.name}/{f.name}", tts(text, f, vid, reglages)
 
-    intro_audio, intro_s = voice(nar.get("intro", ""), "intro")
-    outro_audio, outro_s = voice(nar.get("outro", ""), "outro")
+    intro_audio, intro_s = voice(nar.get("intro", ""), "intro", "iris")
+    outro_audio, outro_s = voice(nar.get("outro", ""), "outro", "ilo")
     scenes = []
     for n, (p, s) in enumerate(zip(per_step, nar["steps"]), 1):
         text = s["narration"] + (f" Astuce : {s['tip']}" if s.get("tip") else "")
-        audio, secs = voice(text, f"etape{n}")
+        qui = "iris" if n % 2 else "ilo"
+        audio, secs = voice(text, f"etape{n}", qui)
         scenes.append({
-            "title": s["title"], "narration": s["narration"], "tip": s.get("tip", ""), "audio": audio,
+            "title": s["title"], "narration": s["narration"], "tip": s.get("tip", ""), "audio": audio, "qui": qui,
             "durationInFrames": int((secs + 1.2) * FPS),
             "shots": [{"src": x["src"], "w": x["w"], "h": x["h"], "click": x["click"], "action": x["action"]} for x in p["shots"]],
         })
