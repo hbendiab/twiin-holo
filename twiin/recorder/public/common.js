@@ -23,11 +23,7 @@ function initLogo() {
   return; // le logo est désormais la vidéo des deux sphères (shell.js) ; ancien dessin gardé ci-dessous
   const box = document.getElementById('logoCells');
   if (!box) return;
-  box.innerHTML = `<svg viewBox="40 40 400 220" aria-hidden="true"><defs><filter id="gooLogo" x="-20%" y="-20%" width="140%" height="140%">
-    <feGaussianBlur in="SourceGraphic" stdDeviation="14" result="b"/><feColorMatrix in="b" mode="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 26 -11" result="g"/>
-    <feComposite in="SourceGraphic" in2="g" operator="atop"/></filter></defs>
-    <g filter="url(#gooLogo)"><circle class="a" cx="200" cy="150" r="66" style="fill:var(--cell-a)"/><circle class="b" cx="280" cy="150" r="66" style="fill:var(--cell-b)"/></g>
-    <circle class="na" cx="190" cy="150" r="9" style="fill:var(--nucleus)" opacity=".7"/><circle class="nb" cx="290" cy="150" r="9" style="fill:var(--nucleus)" opacity=".7"/></svg>`;
+  box.innerHTML = '<span class="tw-twins" aria-hidden="true"><i class="tw-orb iris"></i><i class="tw-orb ilo"></i></span>'; // Iris et Ilo
   if (matchMedia('(prefers-reduced-motion: reduce)').matches) return;
   const [a, b, na, nb] = ['.a', '.b', '.na', '.nb'].map((s) => box.querySelector(s));
   const tick = (t) => {
@@ -72,3 +68,12 @@ const fmtDate = (iso) => new Date(iso).toLocaleString('fr-FR', { day: 'numeric',
 
 initThemeButton();
 initLogo();
+
+// Durées affichées partout dans le SaaS : des heures entières (« 12 h »), jamais de virgule ; sous une heure, des minutes
+function fmtTemps(minutes) {
+  const m = Math.max(0, Number(minutes) || 0);
+  if (m >= 59.5) return `${Math.round(m / 60)} h`;
+  if (m < 1) return '0 h';
+  return `${m > 10 ? Math.round(m / 5) * 5 : Math.round(m)} min`;
+}
+const fmtHeures = (h) => fmtTemps((Number(h) || 0) * 60);

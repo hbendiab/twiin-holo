@@ -12,6 +12,7 @@
     moon: '<path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z"/>',
     sun: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>',
     chevron: '<path d="M15 6l-6 6 6 6"/>',
+    marque: '<path d="M4 20V9l8-5 8 5v11"/><path d="M9 20v-6h6v6"/>',
   };
   const svg = (k) => `<svg viewBox="0 0 24 24" aria-hidden="true">${I[k]}</svg>`;
   const path = location.pathname;
@@ -19,13 +20,15 @@
   const hash = () => ({ '': '#audit', '#exemple': '#enregistrer', '#tester': '#reco' }[location.hash] ?? location.hash);
   const here = (href) => (href.startsWith('/#') ? onIndex && hash() === href.slice(1) : path.endsWith(href));
   const still = matchMedia('(prefers-reduced-motion: reduce)').matches;
-  const LOGO = still ? '/logo-twiin.png' : '/logo-twiin.webp'; // image animée : les deux sphères tournent, comme un GIF
 
   const GROUPES = [
     ['Analyser une tâche', [['/#audit', 'travail', 'Mon travail'], ['/#enregistrer', 'rec', 'Enregistrer'], ['/#reco', 'reco', 'Recommandation']]],
     ['Mes résultats', [['/enregistrements.html', 'rec', 'Mes enregistrements'], ['/videos.html', 'video', 'Mes vidéos'], ['/automatisations.html', 'auto', 'Mes automatisations']]],
     ['À distance', [['/telecommande.html', 'phone', 'Télécommande']]],
+    ['Entreprise', [['/mise-en-service.html', 'marque', 'Mise en service']]],
   ];
+  // Chaque étape du parcours a sa couleur (fond de page, repère du menu, sur-titre) : on voit tout de suite où l'on est
+  const ETAPES = [['analyser', 'Analyser'], ['resultats', 'Résultats'], ['distance', 'À distance'], ['entreprise', 'Entreprise']];
 
   // Repliée ou dépliée : mémorisé sur ce navigateur ; appliqué tout de suite, sans animation au chargement
   const root = document.documentElement;
@@ -37,7 +40,7 @@
   // Ancien emplacement du logo (en-tête des pages) : gardé pour la page de connexion
   function logo() {
     const box = document.getElementById('logoCells');
-    if (box) box.innerHTML = `<img class="tw-logo" src="${LOGO}" alt="">`;
+    if (box) box.innerHTML = '<span class="tw-twins" aria-hidden="true"><i class="tw-orb iris"></i><i class="tw-orb ilo"></i></span>';
   }
 
   // Page d'ouverture : une goutte de chrome se dédouble en Iris et Ilo, qui présentent Twiin. Une fois par session
@@ -55,22 +58,25 @@
     document.head.append(s);
   }
 
-  // Sur-titre numéroté au-dessus du titre de la page : « 01  Analyser une tâche · Audit »
+  // Sur-titre de l'étape au-dessus du titre de la page : pastille de couleur « Résultats » · Mes vidéos
   function eyebrow() {
     document.querySelectorAll('.tw-eyebrow').forEach((e) => e.remove());
-    let n = 0, found = null;
-    for (const [titre, liens] of GROUPES) { n++; const l = liens.find(([href]) => here(href)); if (l) { found = [n, titre, l[2]]; break; } }
+    let n = -1, found = null;
+    for (const [, liens] of GROUPES) { n++; const l = liens.find(([href]) => here(href)); if (l) { found = [n, l[2]]; break; } }
+    if (found) root.dataset.etape = ETAPES[found[0]][0]; else delete root.dataset.etape;
     const h1 = [...document.querySelectorAll('h1')].find((h) => h.offsetParent !== null && !h.closest('.tw-side'));
     if (!found || !h1) return;
     const p = document.createElement('p');
     p.className = 'tw-eyebrow';
-    p.innerHTML = `<b>${String(found[0]).padStart(2, '0')}</b><span>${found[1]}</span><span>·</span><span>${found[2]}</span>`;
+    p.innerHTML = `<span class="tw-etape">${ETAPES[found[0]][1]}</span><span>${found[1]}</span>`;
     h1.before(p);
   }
 
   function build() {
     // Iris et Ilo en chrome liquide (même rendu que la page d'ouverture) partout où ils apparaissent
     const jum = document.createElement('script'); jum.src = '/jumeaux.js'; document.head.append(jum);
+    // titres courts partout (data-court), sans phrase qui répète les logos
+    const tit = document.createElement('script'); tit.src = '/titres.js'; document.head.append(tit);
     logo();
     if (document.body.classList.contains('no-rail')) { if (path.endsWith('/login.html')) intro(); return; }
     let i = 0;
@@ -81,7 +87,7 @@
     side.setAttribute('aria-label', 'Navigation Twiin');
     side.innerHTML = `
       <a class="tw-brand" href="/#audit" aria-label="Twiin, accueil"><span class="tw-twins tw-mark" aria-hidden="true"><i class="tw-orb iris"></i><i class="tw-orb ilo"></i></span><span class="tw-lbl tw-word">Twiin</span></a>
-      <nav class="tw-nav">${GROUPES.map(([titre, liens]) => `<span class="tw-group"><span>${titre}</span></span>${liens.map(item).join('')}`).join('')}</nav>
+      <nav class="tw-nav">${GROUPES.map(([titre, liens], k) => `<div class="tw-bloc" data-etape="${ETAPES[k][0]}"><span class="tw-group"><span>${ETAPES[k][1]}</span></span>${liens.map(item).join('')}</div>`).join('')}</nav>
       <div class="tw-foot">
         <button type="button" class="tw-item" data-act="theme" style="--i:${i++}" data-label="Thème"><span class="tw-round">${svg('moon')}</span><span class="tw-lbl">Thème sombre</span></button>
         <button type="button" class="tw-item tw-user" data-act="user" style="--i:${i++}" data-label="Compte"><span class="tw-round tw-avatar">T</span><span class="tw-lbl">Mon compte</span></button>
@@ -96,6 +102,11 @@
     const comp = document.createElement('script'); comp.src = '/compagnons.js'; document.head.append(comp);
     addEventListener('hashchange', () => setTimeout(eyebrow, 30));
     requestAnimationFrame(() => requestAnimationFrame(() => root.classList.remove('side-noanim')));
+
+    // Marque de l'entreprise cliente (couleur, logo) : marque.js
+    const mq = document.createElement('script'); mq.src = '/marque.js'; document.head.append(mq);
+    // Espace perso dans l'équipe (JC, Noah…) : espace.js
+    const es = document.createElement('script'); es.src = '/espace.js'; document.head.append(es);
 
     // Thème
     const themeBtn = side.querySelector('[data-act="theme"]');

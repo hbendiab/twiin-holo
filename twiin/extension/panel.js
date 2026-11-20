@@ -37,7 +37,7 @@ async function readSite() {
 
 let BASE = 'http://localhost:3000';
 let S = { etat: null, rec: null, prefs: {} }, autos = null, last = null, tutos = null, tutoJob = null;
-let tab = 'autos', openId = null, msg = {}, sel = 0, autoJob = null, lastHtml = '', tutoMine = false; // tutoMine : vidéo lancée depuis ce panneau
+let tab = null, openId = null, msg = {}, sel = 0, autoJob = null, lastHtml = '', tutoMine = false; // tutoMine : vidéo lancée depuis ce panneau
 const C = Capture.state;
 
 // --- Lien avec le service worker : état pour le badge et la bulle ; ordres venus de ⌥⇧R, de la bulle, du clic droit ---
@@ -59,8 +59,8 @@ Capture.config({ onUpdate: () => {
   render();
 } });
 
-async function record(fromClick) {
-  try { await Capture.start({ fromClick }); }
+async function record(fromClick, opts = {}) {
+  try { await Capture.start({ fromClick, ...opts }); }
   catch (e) {
     if (e.name === 'NotAllowedError' || /annulé/.test(e.message)) return render(); // l'employé a fermé le sélecteur
     C.error = fromClick ? `Capture impossible : ${e.message}` : 'Clique sur « Enregistrer une tâche » pour choisir l\'écran.';
@@ -103,9 +103,11 @@ function render() {
   } else {
     h += liveAutomation(e) + captureBlock() + taskBlock();
     if (!C.recording && !C.analyzing && !C.review) {
-      h += `<div class="tabs" role="tablist"><button role="tab" data-tab="autos" aria-selected="${tab === 'autos'}" type="button">Automatisations</button>
-        <button role="tab" data-tab="tutos" aria-selected="${tab === 'tutos'}" type="button">Vidéos de formation</button></div>`;
-      h += tab === 'autos' ? renderAutos() : renderTutos();
+      // deux petits boutons : la liste ne s'affiche que quand on clique dessus (et se replie au 2e clic)
+      const nA = autos?.automations?.length, nT = tutos?.length;
+      h += `<div class="replis"><button data-tab="autos" aria-expanded="${tab === 'autos'}" type="button">Automatisations${nA ? ` <span>${nA}</span>` : ''}</button>
+        <button data-tab="tutos" aria-expanded="${tab === 'tutos'}" type="button">Vidéos${nT ? ` <span>${nT}</span>` : ''}</button></div>`;
+      if (tab) h += `<div class="repli-liste">${tab === 'autos' ? renderAutos() : renderTutos()}</div>`;
     }
   }
   if (h !== lastHtml) { $('#app').innerHTML = h; lastHtml = h; }
@@ -132,13 +134,14 @@ function liveAutomation(e) {
 
 function captureBlock() {
   if (C.recording) {
-    return `<div class="card"><div class="live rec"><span class="dot"></span><span class="t"><b>Enregistrement en cours</b>
+    return `<div class="card"><div class="live rec ${C.paused ? 'plan' : ''}"><span class="dot"></span><span class="t"><b>${C.paused ? 'En pause' : C.ajout ? 'Passage oublié en cours' : 'Enregistrement en cours'}</b>
+        ${C.ajout?.titre ? `<span>ajouté à la fin de « ${esc(C.ajout.titre)} »</span>` : ''}
         <span>${C.screens.length} écran${C.screens.length > 1 ? 's' : ''} · ${C.frames} image${C.frames > 1 ? 's' : ''} gardée${C.frames > 1 ? 's' : ''}</span></span></div>
       <p class="timer" id="recTime">00:00</p>
       <div class="thumbs">${C.thumbs.length ? C.thumbs.map((src) => `<img src="${src}" alt="">`).join('') : '<span class="empty">Les images apparaissent ici dès que l\'écran change.</span>'}</div>
-      <p class="sub">Fais ta tâche normalement, dans n'importe quel onglet ou appli. Ce panneau reste ouvert : reviens ici pour finir.</p>
       <button class="b dark big" data-act="recstop" type="button">Terminer et analyser</button>
-      <div class="row" style="margin-top:8px;justify-content:space-between"><button class="b" data-act="recadd" type="button">+ Ajouter un écran</button>
+      <div class="row" style="margin-top:8px;justify-content:space-between"><button class="b" data-act="recpause" type="button">${C.paused ? 'Reprendre' : 'Pause'}</button>
+        <button class="b" data-act="recadd" type="button">+ Ajouter un écran</button>
         <button class="link" data-act="reccancel" type="button">Annuler sans analyser</button></div></div>`;
   }
   if (C.review) { // relecture avant envoi : rien n'est encore parti de l'ordinateur
@@ -165,7 +168,6 @@ function captureBlock() {
   if (C.error) h += `<div class="card"><div class="live plan"><span class="t"><b>Enregistrement interrompu</b><span>${esc(C.error)}</span></span>
     <button class="link" data-act="recclear" type="button">OK</button></div></div>`;
   h += `<button class="b dark big" data-act="rec" type="button"><span class="recdot"></span>Enregistrer une tâche</button>`;
-  if (last || C.result || C.error) h += `<button class="b big" style="margin-top:8px" data-act="reanalyze" type="button">Réanalyser le dernier enregistrement</button>`;
   return h;
 }
 
@@ -185,26 +187,25 @@ function taskBlock() {
     h += `<p class="sub">${C.result.workflows.length} tâches trouvées :</p><div class="others">${C.result.workflows.map((w, i) =>
       `<button class="b" data-act="sel" data-i="${i}" aria-pressed="${i === sel}" type="button">${esc(w.name)}</button>`).join('')}</div>`;
   }
-  h += `<h2>${esc(t.name)}</h2><p class="sub">${esc(t.summary || '')}</p>
-    <ol class="steps">${steps.slice(0, 5).map((x) => `<li>${esc(x)}</li>`).join('')}</ol>
-    ${steps.length > 5 ? `<details class="more"><summary>Voir les ${steps.length - 5} autres étapes</summary><ol class="steps" start="6">${steps.slice(5).map((x) => `<li>${esc(x)}</li>`).join('')}</ol></details>` : ''}
-    ${typeof Reco !== 'undefined' ? Reco.html(t) : ''}
+  h += `<h2>${esc(t.name)}</h2>
+    ${steps.length ? `<details class="more"><summary>${steps.length} étape${steps.length > 1 ? 's' : ''}</summary><ol class="steps">${steps.map((x) => `<li>${esc(x)}</li>`).join('')}</ol></details>` : ''}
     <div class="actions">${actionButtons(t, busy)}
-      <button class="link" data-act="twiin" data-hash="#enregistrer" type="button">Corriger les étapes dans Twiin</button>
+      <div class="row" style="justify-content:space-between">${t.session ? '<button class="link" data-act="recajout" type="button">+ Ajouter un passage oublié</button>' : ''}
+        <button class="link" data-act="twiin" data-hash="#enregistrer" type="button">Ouvrir dans Twiin</button></div>
     </div>${autoBlock()}${tutoBlock()}</div>`;
   return h;
 }
 
 // Les deux boutons ; si la Reco est prête, le bouton recommandé passe en plein et en premier (comme sur la page web)
 function actionButtons(t, busy) {
-  const auto = `<button class="b ${typeof Reco !== 'undefined' && Reco.primary(t) === 'tuto' ? '' : 'dark'}" data-act="mkauto" type="button" ${busy ? 'disabled' : ''}>Créer l'automatisation</button>`;
-  const tuto = `<button class="b ${typeof Reco !== 'undefined' && Reco.primary(t) === 'tuto' ? 'dark' : ''}" data-act="mktuto" type="button" ${tutoJob?.running ? 'disabled' : ''}>Créer la vidéo de formation</button>`;
+  const auto = `<button class="b ${typeof Reco !== 'undefined' && Reco.primary(t) === 'tuto' ? '' : 'dark'}" data-act="mkauto" type="button" ${busy ? 'disabled' : ''}>Automatiser</button>`;
+  const tuto = `<button class="b ${typeof Reco !== 'undefined' && Reco.primary(t) === 'tuto' ? 'dark' : ''}" data-act="mktuto" type="button" ${tutoJob?.running ? 'disabled' : ''}>Créer la vidéo</button>`;
   return typeof Reco !== 'undefined' && Reco.primary(t) === 'tuto' ? tuto + auto : auto + tuto;
 }
 
 function autoBlock() {
   if (!autoJob) return '';
-  const ICO = { wait: '⏳', ok: '✅', bad: '❌' };
+  const ICO = { wait: '…', ok: '✓', bad: '✕' };
   return `<div class="job"><h4>Automatisation</h4><p class="st">${esc(autoJob.status)}</p>
     ${autoJob.blocks.length ? `<ol>${autoJob.blocks.map((b) => `<li><span>${ICO[b.state]}</span><span><b>${esc(b.name)}</b> <span class="o">${esc(b.out || '')}</span></span></li>`).join('')}</ol>` : ''}
     ${autoJob.holo ? `<p class="st" style="margin-top:6px">${esc(autoJob.holo)}</p>` : ''}
@@ -243,7 +244,7 @@ function renderAutos() {
     const mac = a.blocks.some((b) => b.kind === 'holo' && b.env !== 'cloud');
     const isOpen = openId === a.id;
     return `<div class="auto"><div class="h"><span class="n" data-act="more" data-id="${esc(a.id)}" title="Options">${esc(a.name)}</span>
-        <button class="b dark" data-act="run" data-id="${esc(a.id)}" type="button" ${S.etat?.running ? 'disabled' : ''}>${a.running ? 'En cours' : 'Lancer'}</button></div>
+        <button class="b" data-act="run" data-id="${esc(a.id)}" type="button" ${S.etat?.running ? 'disabled' : ''}>${a.running ? 'En cours' : 'Lancer'}</button></div>
       <div class="m">${surCeSite(a) ? `<span class="site">Sur ${esc(site)}</span> · ` : ''}${esc(a.freq_label)}${a.plan ? ` · programmée ${esc(quand(a.plan))}` : ''}
         ${mac ? ' · <span class="pill mac">utilise ton Mac</span>' : ''} · <button class="link" data-act="more" data-id="${esc(a.id)}" type="button">${isOpen ? 'fermer' : 'programmer'}</button></div>
       ${isOpen ? `<div class="more">
@@ -320,12 +321,14 @@ async function createTuto() {
 document.addEventListener('click', async (ev) => {
   const el = ev.target.closest('[data-act], [data-tab]');
   if (!el) return;
-  if (el.dataset.tab) { tab = el.dataset.tab; return render(); }
+  if (el.dataset.tab) { tab = tab === el.dataset.tab ? null : el.dataset.tab; return render(); }
   const { act, id } = el.dataset;
   const say = (k, text, err = false) => { msg[k] = text; msg[k + 'Err'] = err; render(); };
   if (act === 'rec') return record(true); // le clic autorise le partage d'écran
   if (act === 'recadd') { try { await Capture.addScreen({ fromClick: true }); } catch { /* sélecteur fermé */ } return; }
   if (act === 'recstop') return Capture.stop();
+  if (act === 'recpause') return Capture.pause();
+  if (act === 'recajout') { const t = task(); return t?.session ? record(true, { ajouterA: t.session, titre: t.name }) : undefined; }
   if (act === 'reccancel') return Capture.cancel();
   if (act === 'recclear') return Capture.clear();
   if (act === 'rvtoggle') return Capture.toggle(Number(el.dataset.i));

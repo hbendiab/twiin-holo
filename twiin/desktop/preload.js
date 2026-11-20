@@ -4,8 +4,10 @@ contextBridge.exposeInMainWorld('twiinDesktop', {
   rec: (r) => ipcRenderer.send('rec', r),
   setCompact: (on) => ipcRenderer.send('compact', on),
   hide: () => ipcRenderer.send('hide'),
+  minimize: () => ipcRenderer.send('minimize'),
   askMic: () => ipcRenderer.invoke('voice:ask-mic'),
   openExternal: (url) => ipcRenderer.send('open', url),
+  closeToast: () => ipcRenderer.send('toast:close'), // notification Twiin (toast.html)
   onCommand: (fn) => ipcRenderer.on('cmd', (_e, m) => fn(m)),
   onCompact: (fn) => ipcRenderer.on('compact', (_e, on) => fn(on)),
 });

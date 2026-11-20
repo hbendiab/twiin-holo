@@ -1,0 +1,93 @@
+/* ══════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+   Twiin · même DA que le SaaS (recorder/public/theme.css), pour le panneau de l'extension Chrome et la fenêtre de l'app Mac.
+   Chargé EN DERNIER. Fond blanc ; lavande (Noomo) en deuxième couleur ; cases en verre dépoli ; une action principale en
+   lavande soutenu ; étiquettes en mono ; Iris et Ilo en chrome liquide (jumeaux.js).
+   ══════════════════════════════════════════════════════════════════════════════════════════════════════════════════ */
+:root {
+  --canvas: #ffffff; --ink: #161615; --muted: #8a8a85;
+  --brand: #c9d2e7; --brand-strong: #56669c; --brand-ink: #181520; --brand-tint: #f3f5fb; --brand-chip: #e6ebf5; --brand-rule: #dce2f0;
+  --glass-fill: linear-gradient(135deg, rgba(255,255,255,.95) 0%, rgba(243,245,251,.9) 45%, rgba(222,228,242,.85) 100%);
+  --glass-line: rgba(196,205,228,.9);
+  --glass-shadow: inset 0 1px 0 rgba(255,255,255,.95), 3px 4px 0 -1px rgba(201,210,231,.75), 3px 4px 0 0 rgba(176,188,218,.45), 0 18px 34px -26px rgba(56,66,110,.45);
+  --mono: ui-monospace, "SF Mono", "Geist Mono", Menlo, monospace;
+  /* les variables du panneau, remappées */
+  --text: var(--ink); --dim: #6f6f6a; --line: var(--brand-rule); --panel: var(--brand-tint); --panel-2: #fff; --border: var(--brand-rule);
+  --accent: var(--brand-strong); --blue: var(--brand-strong); --coral: #d6403f; --ok: #1f8a5b; --warn: #9a6b00;
+  --grad: var(--canvas);
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --canvas: #0e0e0d; --ink: #f5f5f2; --muted: #8a8a85;
+    --brand: #3a4260; --brand-strong: #aab7e0; --brand-ink: #eef1f8; --brand-tint: #151823; --brand-chip: #222839; --brand-rule: #2b3247;
+    --glass-fill: linear-gradient(135deg, rgba(58,66,96,.55) 0%, rgba(36,41,60,.6) 50%, rgba(26,29,43,.7) 100%);
+    --glass-line: rgba(170,183,224,.18);
+    --glass-shadow: inset 0 1px 0 rgba(255,255,255,.08), 3px 4px 0 -1px rgba(58,66,96,.6), 0 18px 34px -24px rgba(0,0,0,.7);
+    --text: var(--ink); --dim: #9a9a95; --panel-2: #1a1d29; --coral: #f16a6a; --ok: #4cc38a; --grad: var(--canvas);
+    color-scheme: dark;
+  }
+}
+html { background: var(--canvas) !important; }
+body { font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", Inter, "Segoe UI", sans-serif !important; color: var(--ink); letter-spacing: -.006em; }
+
+/* marque : Iris et Ilo + « Twiin » */
+.brand { font-weight: 600 !important; font-size: 18px !important; letter-spacing: -.035em !important; gap: 9px !important; }
+.tw-twins { display: inline-flex; gap: 3px; align-items: center; flex: none; }
+.tw-orb { --s: 20px; width: var(--s); height: var(--s); border-radius: 50%; display: block; position: relative; overflow: hidden;
+  background: radial-gradient(circle at 32% 26%, #fff 0 9%, transparent 22%), radial-gradient(120% 70% at 50% 108%, #f4f4f1 0 22%, transparent 46%),
+    conic-gradient(from 20deg at 50% 55%, #1b1b1a, #8d8d88, #f2f2ee, #5c5c58, #d9d9d4, #2a2a28, #b6b6b1, #1b1b1a); }
+.pill .tw-orb { --s: 16px; }
+
+/* étiquettes et repères : en mono, comme les sur-titres du SaaS */
+.label { font: 500 10.5px var(--mono) !important; letter-spacing: .07em !important; color: var(--dim) !important; }
+.chip { font: 500 11px var(--mono) !important; background: var(--brand-chip) !important; color: var(--brand-ink) !important; border-radius: 999px; }
+.chip.off { color: var(--coral) !important; }
+kbd, code { font-family: var(--mono) !important; background: var(--brand-chip) !important; }
+
+/* cases : verre dépoli, coins presque droits */
+.card { background: var(--glass-fill) !important; border: 1px solid var(--glass-line) !important; box-shadow: var(--glass-shadow) !important; border-radius: 10px !important; }
+.auto, .tuto, .job, .reco { background: var(--brand-tint) !important; border: 1px solid var(--brand-rule) !important; border-radius: 8px !important; }
+.card h3, .task h2 { letter-spacing: -.02em !important; font-weight: 600 !important; }
+
+/* boutons : une action principale en lavande soutenu, les autres en lavande pâle */
+button.b { border-radius: 10px !important; background: var(--brand-chip) !important; color: var(--brand-ink) !important; border: 1px solid transparent !important; font-weight: 600 !important; }
+button.b:hover:not(:disabled) { filter: none; background: var(--brand-rule) !important; }
+button.b.dark, .others button[aria-pressed="true"] { background: var(--brand-strong) !important; color: #fff !important; border-color: var(--brand-strong) !important;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.22), 0 10px 20px -12px rgba(56,66,110,.7) !important; }
+@media (prefers-color-scheme: dark) { button.b.dark, .others button[aria-pressed="true"] { color: #0e0e0d !important; } }
+button.b.red { color: var(--coral) !important; background: rgba(214, 64, 63, .08) !important; }
+button.b.big { box-shadow: inset 0 1px 0 rgba(255,255,255,.22), 0 12px 24px -12px rgba(56,66,110,.7) !important; }
+button.link { color: var(--brand-strong) !important; }
+.round { border-radius: 10px !important; background: #fff !important; border: 1px solid var(--brand-rule) !important; }
+@media (prefers-color-scheme: dark) { .round { background: var(--brand-chip) !important; } }
+
+/* onglets : un sélecteur discret, l'onglet actif en blanc */
+.tabs { background: var(--brand-chip) !important; border: 0 !important; border-radius: 12px !important; padding: 3px !important; }
+.tabs button { border-radius: 9px !important; color: var(--dim) !important; }
+.tabs button[aria-selected="true"] { background: #fff !important; color: var(--ink) !important; box-shadow: 0 2px 6px -3px rgba(24,21,32,.3); }
+@media (prefers-color-scheme: dark) { .tabs button[aria-selected="true"] { background: var(--canvas) !important; } }
+
+/* états */
+.pill { background: var(--brand-chip) !important; font-family: var(--mono); }
+.pill.mac { background: rgba(242, 233, 124, .4) !important; }
+.live .dot { background: var(--brand-strong) !important; }
+.bar { background: var(--brand-chip) !important; } .bar span { background: var(--brand-strong) !important; }
+.checks li.done .c { background: var(--brand-strong) !important; border-color: var(--brand-strong) !important; color: #fff !important; }
+.checks li.now .c::after { background: var(--brand-strong) !important; }
+.vswitch input:checked + .vtrack { background: var(--brand-strong) !important; }
+.foot { border-top-color: var(--brand-rule) !important; }
+.timer { font-weight: 600 !important; letter-spacing: -.045em !important; }
+
+[hidden] { display: none !important; } /* l'ancien style affichait des éléments masqués (ex. interrupteur de la bulle dans l'app Mac) */
+
+/* Automatisations / Vidéos : deux petits boutons qui déplient leur liste */
+.replis { display: flex; gap: 8px; margin: 14px 0 8px; }
+.replis button { flex: 1; display: inline-flex; align-items: center; justify-content: center; gap: 6px; font: 600 13px inherit; font-family: inherit; cursor: pointer;
+  padding: 9px 10px; border-radius: 10px; border: 1px solid var(--brand-rule); background: #fff; color: var(--brand-ink); }
+@media (prefers-color-scheme: dark) { .replis button { background: var(--brand-chip); } }
+.replis button::after { content: ""; width: 7px; height: 7px; border-right: 1.6px solid currentColor; border-bottom: 1.6px solid currentColor; transform: rotate(45deg) translateY(-2px); margin-left: 2px; opacity: .6; transition: transform .2s; }
+.replis button[aria-expanded="true"] { border-color: var(--brand-strong); background: var(--brand-tint); }
+.replis button[aria-expanded="true"]::after { transform: rotate(225deg) translateY(-1px); }
+.replis button span { font: 500 11px var(--mono); padding: 1px 7px; border-radius: 999px; background: var(--brand-chip); }
+.repli-liste { animation: deplie .25s ease-out; }
+@keyframes deplie { from { opacity: 0; transform: translateY(-4px); } }

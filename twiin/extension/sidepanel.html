@@ -7,10 +7,11 @@
 <link rel="stylesheet" href="popup.css">
 <link rel="stylesheet" href="panel.css">
 <link rel="stylesheet" href="voice.css">
+<link rel="stylesheet" href="twiin-da.css">
 </head>
 <body>
   <header class="top">
-    <span class="brand"><img class="tw-logo" src="logo-twiin.webp" alt="">Twiin</span>
+    <span class="brand"><span class="tw-twins" aria-hidden="true"><i class="tw-orb iris"></i><i class="tw-orb ilo"></i></span>Twiin</span>
     <span id="conn" class="chip">…</span>
     <button id="openTwiin" class="round" type="button" aria-label="Ouvrir Twiin dans un onglet" title="Ouvrir Twiin dans un onglet"><svg viewBox="0 0 24 24"><path d="M14 4h6v6"/><path d="M20 4l-9 9"/><path d="M18 14v6H4V6h6"/></svg></button>
   </header>
@@ -21,11 +22,12 @@
 
   <footer class="foot">
     <label class="switch"><input type="checkbox" id="bubbleToggle"> Bulle Twiin sur les pages</label>
-    <span class="keys"><kbd>⌥⇧T</kbd> ouvrir · <kbd>⌥⇧R</kbd> enregistrer / terminer · <kbd>⌥⇧X</kbd> tout arrêter</span>
+    <span class="keys"><kbd>⌥⇧R</kbd> enregistrer / terminer</span>
     <button id="resetHidden" class="link" type="button" hidden></button>
   </footer>
 <script src="voice.js"></script>
 <script src="capture.js"></script>
 <script src="panel.js"></script>
+<script src="jumeaux.js"></script>
 </body>
 </html>

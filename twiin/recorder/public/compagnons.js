@@ -101,15 +101,11 @@
       fin = setTimeout(taire, duree || Math.max(5000, 2600 + mots.length * 320));
     };
 
-    // Une fois par page et par session, ils disent à quoi sert la page
-    const vus = () => { try { return JSON.parse(sessionStorage.getItem('twiin-compagnons') || '[]'); } catch { return []; } };
+    // Ils ne présentent plus la page tout seuls (le titre suffit) : seulement quand on clique sur eux
     const presenter = (auto) => {
       const k = cle(), texte = DIRE[k];
       if (!texte) return taire();
-      if (auto) {
-        const v = vus(); if (v.includes(k)) return taire();
-        try { sessionStorage.setItem('twiin-compagnons', JSON.stringify([...v, k])); } catch { /* rien */ }
-      }
+      if (auto) return taire();
       dire(texte);
     };
     duo.addEventListener('click', () => (bulle.classList.contains('on') ? taire() : presenter(false)));

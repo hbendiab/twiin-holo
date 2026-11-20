@@ -20,7 +20,7 @@ const RECORDER_DIR = path.join(APP_DIR, 'recorder');
 const ONBOARD_FILE = path.join(DATA_DIR, 'onboarding.json');
 const SHORTCUT = IS_MAC ? 'Alt+Command+T' : 'Control+Alt+T'; // ⌥⌘T sur Mac, Ctrl+Alt+T sous Windows
 const FULL = { width: 400, height: 720 };
-const PILL = { width: 340, height: 64 };
+const PILL = { width: 320, height: 40 }; // barre mini pendant l'enregistrement
 
 let win = null, tray = null, server = null, compact = false, rec = { on: false }, trayTimer = null, screenPick = 0;
 
@@ -43,30 +43,132 @@ function placeFull() {
 }
 function placePill() {
   const { workArea } = screen.getPrimaryDisplay();
-  win.setBounds({ x: Math.round(workArea.x + (workArea.width - PILL.width) / 2), y: workArea.y + 10, width: PILL.width, height: PILL.height });
+  win.setBounds({ x: Math.round(workArea.x + (workArea.width - PILL.width) / 2), y: workArea.y + 6, width: PILL.width, height: PILL.height });
 }
 function setCompact(on) {
   compact = on;
   if (!win) return;
-  win.setResizable(!on);
+  // la taille minimale du panneau (300 × 360) empêcherait la barre d'enregistrement de faire 40 px de haut
+  if (on) win.setMinimumSize(1, 1);
+  win.setResizable(true);
   on ? placePill() : placeFull();
+  if (!on) win.setMinimumSize(300, 360);
+  win.setResizable(!on);
   win.webContents.send('compact', on);
 }
 function createWindow() {
   win = new BrowserWindow({
     ...FULL, show: false, frame: false, transparent: false, backgroundColor: '#e9ebef', roundedCorners: true, hasShadow: true,
-    resizable: true, minimizable: false, fullscreenable: false, alwaysOnTop: true, title: 'Twiin',
+    resizable: true, minimizable: true, fullscreenable: false, alwaysOnTop: true, title: 'Twiin', minWidth: 300, minHeight: 360,
     webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, sandbox: false },
   });
   win.setAlwaysOnTop(true, 'floating');
   win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
-  win.setContentProtection(true); // la fenêtre Twiin n'apparaît pas dans les images de la tâche
+  // Invisible dans les captures seulement quand il le faut (voir proteger()) : sinon Twiin disparaissait aussi des
+  // captures d'écran de l'utilisateur (⌘⇧4 montrait ce qu'il y a derrière la fenêtre).
   placeFull();
   win.loadFile(path.join(__dirname, 'loading.html'));
   win.once('ready-to-show', () => win.show());
   win.on('close', (e) => { if (!app.isQuitting) { e.preventDefault(); win.hide(); } }); // fermer = cacher
   win.webContents.setWindowOpenHandler(({ url }) => { shell.openExternal(url); return { action: 'deny' }; });
 }
+// --- Notifications Twiin : une petite carte aux couleurs du SaaS (Iris et Ilo), en haut à droite de l'écran ----------
+// quand une vidéo ou une automatisation se termine et que la fenêtre Twiin est réduite, cachée ou en arrière-plan.
+const toasts = [];
+// Twiin est retiré des captures d'écran UNIQUEMENT pendant un enregistrement de tâche ou quand Holo travaille sur ce Mac
+// (pour ne pas apparaître dans les images de la tâche, ni gêner Holo). Le reste du temps, ⌘⇧4 le capture normalement.
+let protege = false;
+function proteger(on) {
+  if (on === protege) return;
+  protege = on;
+  win?.setContentProtection(on);
+  toasts.forEach((t) => t.setContentProtection(on));
+}
+function placeToasts() {
+  const { workArea } = screen.getPrimaryDisplay();
+  toasts.forEach((t, i) => t.setBounds({ x: workArea.x + workArea.width - 400 - 8, y: workArea.y + 8 + i * 122, width: 400, height: 122 }));
+}
+function toast({ kick, titre, texte, lien, echec }) {
+  const t = new BrowserWindow({ width: 400, height: 122, show: false, frame: false, transparent: true, hasShadow: false, resizable: false, movable: false,
+    minimizable: false, maximizable: false, fullscreenable: false, skipTaskbar: true, focusable: false, alwaysOnTop: true,
+    webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, sandbox: false } });
+  t.setAlwaysOnTop(true, 'screen-saver');
+  t.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+  t.setContentProtection(protege); // pas dans les images d'un enregistrement (seulement pendant)
+  toasts.push(t); placeToasts();
+  t.on('closed', () => { toasts.splice(toasts.indexOf(t), 1); placeToasts(); });
+  const q = new URLSearchParams({ kick: kick || 'Twiin', titre, texte: texte || '', ...(lien ? { lien } : {}), ...(echec ? { echec: '1' } : {}) });
+  t.loadURL(`${BASE}/toast.html?${q}`);
+  t.once('ready-to-show', () => t.showInactive());
+}
+ipcMain.on('toast:close', (e) => BrowserWindow.fromWebContents(e.sender)?.close());
+// Twiin a-t-il la main de l'utilisateur ? (fenêtre visible, en grand, au premier plan) : sinon on prévient par une notification
+const discret = () => !win || !win.isVisible() || win.isMinimized() || compact || !win.isFocused();
+// --- Jumeaux guides : pendant une automatisation, Iris et Ilo suivent la souris et disent ce qui se passe -------------
+// Fenêtre transparente, au-dessus de tout, qui ne prend ni le focus ni les clics (Holo clique « à travers »).
+// Invisible dans les captures d'écran (Holo ne la voit pas, elle ne le gêne pas) mais visible sur l'écran et le projecteur ;
+// TWIIN_GUIDE_CAPTURE=1 la rend visible dans les captures, pour filmer une démo.
+let guide = null, guideSuivi = null, gx = null, gy = null;
+const GUIDE_W = 380, GUIDE_H = 150;
+function ouvrirGuide() {
+  if (guide) return;
+  guide = new BrowserWindow({ width: GUIDE_W, height: GUIDE_H, show: false, frame: false, transparent: true, hasShadow: false, resizable: false, movable: false,
+    minimizable: false, maximizable: false, fullscreenable: false, skipTaskbar: true, focusable: false, alwaysOnTop: true,
+    webPreferences: { contextIsolation: true, sandbox: true, autoplayPolicy: 'no-user-gesture-required' } });
+  guide.setAlwaysOnTop(true, 'screen-saver');
+  guide.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+  guide.setIgnoreMouseEvents(true);
+  guide.setContentProtection(process.env.TWIIN_GUIDE_CAPTURE !== '1');
+  guide.loadURL(`${BASE}/guide.html`);
+  guide.once('ready-to-show', () => guide?.showInactive());
+  guide.on('closed', () => { guide = null; clearInterval(guideSuivi); guideSuivi = null; gx = gy = null; });
+  // suit la souris en douceur, à côté du pointeur (jamais dessus), et reste dans l'écran
+  guideSuivi = setInterval(() => {
+    if (!guide) return;
+    const p = screen.getCursorScreenPoint();
+    const wa = screen.getDisplayNearestPoint(p).workArea;
+    let x = p.x + 26, y = p.y + 22;
+    if (x + GUIDE_W > wa.x + wa.width) x = p.x - GUIDE_W - 14;
+    if (y + GUIDE_H > wa.y + wa.height) y = p.y - GUIDE_H - 10;
+    x = Math.max(wa.x, x); y = Math.max(wa.y, y);
+    gx = gx == null ? x : gx + (x - gx) * 0.22; gy = gy == null ? y : gy + (y - gy) * 0.22;
+    guide.setBounds({ x: Math.round(gx), y: Math.round(gy), width: GUIDE_W, height: GUIDE_H });
+  }, 33);
+}
+function fermerGuide() { if (guide) guide.close(); }
+setInterval(async () => {
+  const g = await fetch(BASE + '/api/guide').then((r) => (r.ok ? r.json() : {})).catch(() => ({}));
+  if (g.actif) ouvrirGuide(); else fermerGuide();
+}, 1500);
+
+function surveiller() {
+  const J = (u) => fetch(BASE + u).then((r) => (r.ok ? r.json() : {})).catch(() => ({}));
+  let tuto = null, n8nVus = null;
+  setInterval(async () => {
+    // enregistrement (app, extension ou page Twiin) ou Holo sur ce Mac : Twiin invisible dans les captures
+    const [st, etat] = await Promise.all([J('/api/actions/status'), J('/api/automations/etat')]);
+    proteger(!!(rec.on || st.running || (etat.running && etat.sur_mac)));
+    // vidéo de formation : passage de « en cours » à « finie »
+    const t = await J('/api/tuto/status');
+    if (tuto?.running && t.running === false && t.name === tuto.name && discret()) {
+      const titre = ((await J('/api/tutos')).tutos || []).find((x) => x.name === t.name)?.title || 'Ta tâche';
+      toast(t.error ? { kick: 'Vidéo de formation', titre: "La vidéo n'a pas pu être créée", texte: String(t.error).slice(0, 90), lien: '/videos.html', echec: true }
+        : { kick: 'Vidéo de formation prête', titre, texte: 'Elle est dans « Mes vidéos ».', lien: `/videos.html#${encodeURIComponent(t.name)}` });
+    }
+    if (t.name || t.running != null) tuto = t;
+    // automatisation n8n : l'événement « done » de la création
+    const n = await J('/api/n8n/events?since=0');
+    const evs = n.events || [];
+    if (n8nVus != null && evs.length > n8nVus) {
+      const fin = evs.slice(n8nVus).find((e) => e.type === 'done');
+      const nom = evs.find((e) => e.type === 'plan')?.plan?.name || 'Ton automatisation';
+      if (fin && discret()) toast(fin.ok ? { kick: 'Automatisation prête', titre: nom, texte: 'Créée et testée : elle est dans « Mes automatisations ».', lien: '/automatisations.html' }
+        : { kick: 'Automatisation', titre: "La création n'a pas abouti", texte: String(fin.status || nom).slice(0, 90), lien: '/automatisations.html', echec: true });
+    }
+    n8nVus = evs.length < (n8nVus ?? 0) ? 0 : evs.length; // une nouvelle création repart de zéro
+  }, 4000);
+}
+
 function toggle() {
   if (!win) return;
   if (win.isVisible() && win.isFocused()) win.hide();
@@ -117,6 +219,7 @@ function paintTray() {
 ipcMain.on('rec', (_e, r) => {
   const was = rec;
   rec = r || { on: false };
+  if (rec.on) proteger(true); // tout de suite au début d'un enregistrement (la fin est prise en compte par surveiller())
   if (rec.on && !was.on) { screenPick = 0; setCompact(true); }                  // enregistrement : pastille
   if (!rec.on && was.on) { setCompact(false); win.show(); }                        // fin : on montre l'analyse
   if (rec.done && !was.done && (!win.isVisible() || !win.isFocused())) {
@@ -128,6 +231,7 @@ ipcMain.on('rec', (_e, r) => {
 });
 ipcMain.on('compact', (_e, on) => setCompact(!!on));
 ipcMain.on('hide', () => win.hide());
+ipcMain.on('minimize', () => win.minimize()); // « − » : réduire dans le Dock
 ipcMain.on('open', (_e, url) => { if (/^https?:\/\//.test(url)) shell.openExternal(url); });
 
 // --- Premier lancement : installation en arrière-plan + onboarding (5 écrans) ---------------------------------------
@@ -227,7 +331,7 @@ async function startApp() {
   createWindow();
   if (!globalShortcut.register(SHORTCUT, toggle)) console.warn(`Raccourci ${SHORTCUT} déjà pris par une autre appli.`);
   const ok = await ensureServer();
-  if (ok) win.loadURL(`${BASE}/ext/desktop.html`);
+  if (ok) { win.loadURL(`${BASE}/ext/desktop.html`); surveiller(); }
   else win.webContents.executeJavaScript("document.body.dataset.state = 'fail'");
 }
 app.whenReady().then(async () => {

@@ -72,3 +72,12 @@ relais/.vercel/
 # Télécommande : appairage du téléphone et pont H (dev)
 workflows/telecommande.json
 workflows/holo-venv/
+automation/cibles/
+workflows/titres-courts.json
+workflows/marque.json
+workflows/marque-logo.*
+tuto/video/public/marque*
+workflows/categories-tutos.json
+workflows/connexions.json
+workflows/equipe.json
+workflows/guide-phrases.json

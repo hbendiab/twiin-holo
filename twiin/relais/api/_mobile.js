@@ -131,7 +131,7 @@ function friendly(e) {
   return 'H ne répond pas pour le moment, réessaie.';
 }
 
-let page = null;
+let page = null, jumeaux = null;
 function pageMobile() {
   page ??= fs.readFileSync(path.join(process.cwd(), 'mobile', 'index.html'), 'utf8');
   return new Response(page, { headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store',
@@ -172,6 +172,10 @@ async function depot(req) { // POST /mobile/depot, appelé par le Mac avec sa cl
 export async function mobile(req, parts) {
   const action = parts[0] || '';
   if (action === '' && req.method === 'GET') return pageMobile();
+  if (action === 'jumeaux.js' && req.method === 'GET') { // Iris et Ilo en chrome liquide (même rendu que le SaaS)
+    jumeaux ??= fs.readFileSync(path.join(process.cwd(), 'mobile', 'jumeaux.js'), 'utf8');
+    return new Response(jumeaux, { headers: { 'content-type': 'text/javascript; charset=utf-8', 'cache-control': 'public, max-age=3600' } });
+  }
   if (action === 'depot' && req.method === 'POST') return depot(req).catch((e) => { console.error(e.message); return json(502, { error: 'Dépôt impossible.' }); });
   const t = jetonMobile(req);
   if (!t) return json(401, { error: 'Appairage expiré : rescanne le QR code affiché par Twiin sur ton Mac.' });

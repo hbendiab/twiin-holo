@@ -424,6 +424,20 @@ export function mountTelecommande(app, { isLocal, root, port, analyser }) {
     if (pont) { pont.kill('SIGTERM'); pont = null; }
     if (oublier) fs.rmSync(ETAT, { force: true }); // le téléphone appairé ne peut plus rien faire
   }
+  // Une étape Holo sur le Mac a besoin du bureau : le pont du téléphone le libère le temps de l'étape, puis reprend
+  // (même appairage : le téléphone n'a rien à refaire). Sinon H refuse : « another agent is driving this desktop ».
+  let enPause = false;
+  function pause() {
+    if (!pont) return false;
+    enPause = true;
+    pont.kill('SIGTERM'); pont = null; etat = 'pause';
+    return true;
+  }
+  async function reprendre() {
+    if (!enPause) return;
+    enPause = false;
+    try { await demarrer(); } catch (e) { etat = 'erreur'; erreur = e.message; }
+  }
   process.on('exit', () => pont?.kill('SIGTERM'));
 
   app.get('/api/telecommande', async (req, res) => {
@@ -441,4 +455,5 @@ export function mountTelecommande(app, { isLocal, root, port, analyser }) {
     arreter({ oublier: req.query.oublier === '1' });
     res.json(await vue());
   });
+  return { pause, reprendre };
 }

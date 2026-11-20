@@ -62,6 +62,56 @@ if (!process.env.TWIIN_LOCAL_TOKEN) {
 
 const app = express();
 app.use(express.json({ limit: '200mb' }));
+app.use(express.urlencoded({ extended: false, limit: '4kb' }));
+// --- Mode démo : visiteurs venus par le lien public (tunnel Cloudflare) ------------------------------------------------
+// Le tunnel arrive « depuis le Mac » : on le reconnaît à ses en-têtes Cloudflare et on ne lui donne JAMAIS les droits du poste.
+// Code d'accès (TWIIN_DEMO_CODE), lecture seule, rien qui touche le Mac (capture, Holo sur l'écran, télécommande),
+// pas d'images d'enregistrements (pages possiblement confidentielles), pas de journaux. Seules les automatisations qui
+// tournent entièrement dans le cloud de H peuvent être lancées.
+const estVisiteur = (req) => !!(req.get('cf-ray') || req.get('cf-connecting-ip'));
+const DEMO_COOKIE = 'twiin_demo';
+const demoJeton = () => crypto.createHmac('sha256', String(process.env.TWIIN_DEMO_CODE || 'x') + (process.env.TWIIN_LOCAL_TOKEN || '')).update('demo').digest('base64url').slice(0, 32);
+const DEMO_POST_OK = [/^\/api\/titres-courts$/, /^\/api\/automations\/[\w-]+\/cibles\/proposer$/, /^\/api\/automations\/[\w-]+\/run$/];
+const DEMO_GET_NON = [/^\/api\/telecommande/, /^\/api\/back/, /^\/api\/google\//, /^\/api\/sessions\/[^/]+\/(frames|images|frame|shot|screens|media)/i,
+  /^\/sessions\//, /^\/api\/actions\/(start|stop|pause)/, /^\/api\/setup/, /^\/back\.html/, /^\/telecommande\.html/, /^\/api\/connexions/];
+app.use(async (req, res, next) => {
+  if (!estVisiteur(req)) return next();
+  res.set('x-twiin-mode', 'demo');
+  if (!process.env.TWIIN_DEMO_CODE) return res.status(503).send('Mode démo non configuré.');
+  if (req.path === '/demo' && req.method === 'POST') {
+    const code = String(req.body?.code || '').trim();
+    if (code.toLowerCase() !== String(process.env.TWIIN_DEMO_CODE).toLowerCase()) return res.redirect('/demo?faux=1');
+    res.setHeader('Set-Cookie', `${DEMO_COOKIE}=${demoJeton()}; Path=/; Max-Age=172800; HttpOnly; Secure; SameSite=Lax`);
+    return res.redirect('/');
+  }
+  const ok = (req.get('cookie') || '').split(/;\s*/).some((c) => c === `${DEMO_COOKIE}=${demoJeton()}`);
+  if (!ok) {
+    if (req.path.startsWith('/api/')) return res.status(401).json({ error: 'Code d\'accès requis.' });
+    if (req.path !== '/demo' && !/\.(css|js|png|jpg|svg|woff2?|webp|ico)$/.test(req.path)) return res.redirect('/demo');
+    if (req.path === '/demo') return res.send(`<!doctype html><html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Twiin · démo</title><style>body{margin:0;min-height:100vh;display:grid;place-items:center;font:16px -apple-system,Inter,sans-serif;color:#161615;
+background:radial-gradient(60% 60% at 80% 10%,#c9d2e7aa,transparent 70%),#f7f8fc}form{width:min(380px,calc(100vw - 32px));padding:30px;border-radius:18px;background:#fff;
+border:1px solid #dce2f0;box-shadow:0 30px 60px -36px rgba(56,66,110,.5);display:grid;gap:14px}.duo{display:flex;gap:4px}.duo img{width:40px;height:40px}
+h1{margin:0;font-size:26px;letter-spacing:-.03em}p{margin:0;color:#5d5d58}input{font:inherit;padding:12px;border-radius:10px;border:1px solid #dce2f0}
+button{font:600 15px inherit;font-family:inherit;padding:12px;border:0;border-radius:10px;background:#56669c;color:#fff;cursor:pointer}.err{color:#c0392b}</style></head>
+<body><form method="post" action="/demo"><span class="duo"><img src="/img/iris.png" alt=""><img src="/img/ilo.png" alt=""></span><h1>Bienvenue sur Twiin</h1>
+<p>Démo pour le jury du hackathon Build The Future. Entre le code d'accès.</p>${req.query.faux ? '<p class="err">Code incorrect.</p>' : ''}
+<input name="code" autocomplete="off" autofocus aria-label="Code d'accès" placeholder="Code d'accès" required><button type="submit">Entrer</button></form></body></html>`);
+    return next();
+  }
+  if (DEMO_GET_NON.some((r) => r.test(req.path))) return res.status(403).json({ error: 'Mode démo : réservé au poste de l\'équipe.' });
+  if (req.method !== 'GET' && req.method !== 'HEAD') {
+    if (!DEMO_POST_OK.some((r) => r.test(req.path))) return res.status(403).json({ error: 'Mode démo : lecture seule. Cette action se fait sur le poste de l\'équipe.' });
+    const m = req.path.match(/^\/api\/automations\/([\w-]+)\/run$/);
+    if (m) { // seulement si elle ne prend pas le Mac
+      try {
+        const a = await automationSummary(await n8nApi(`/workflows/${encodeURIComponent(m[1])}`));
+        if (a.blocks.some((b) => b.kind === 'holo' && b.env !== 'cloud')) return res.status(403).json({ error: 'Mode démo : cette automatisation utilise le Mac de l\'équipe. Choisis-en une qui tourne dans le cloud.' });
+      } catch { return res.status(403).json({ error: 'Mode démo : automatisation introuvable.' }); }
+    }
+  }
+  next();
+});
 app.use(express.static('public'));
 // Panneau de l'extension Chrome, aussi utilisé tel quel par l'app Mac (desktop/, Electron) : /ext/desktop.html
 app.use('/ext', express.static(path.join(REPO_ROOT, 'extension')));
@@ -77,7 +127,26 @@ app.use('/vendor/supabase', express.static(path.join(path.dirname(fileURLToPath(
 const SB_URL = (process.env.SUPABASE_URL || '').replace(/\/+$/, '');
 const SB_ANON = process.env.SUPABASE_PUBLISHABLE_KEY || process.env.SUPABASE_ANON_KEY || ''; // même clé publique, deux noms (équipe / Twiin)
 // Comptes activés seulement sur demande (TWIIN_COMPTES=1), une fois les tables créées : sinon Twiin reste en local.
-const SB_ON = !!(SB_URL && SB_ANON) && /^(1|true|oui)$/i.test(process.env.TWIIN_COMPTES || '');
+// TWIIN_COMPTES=service : pas d'écran de connexion, Twiin se connecte lui-même avec le compte de service
+// (SUPABASE_EMAIL / SUPABASE_PASSWORD) et enregistre tout dans Supabase sous ce compte.
+const SB_SERVICE = !!(SB_URL && SB_ANON) && /^service$/i.test(process.env.TWIIN_COMPTES || '');
+const SB_ON = (!!(SB_URL && SB_ANON) && /^(1|true|oui)$/i.test(process.env.TWIIN_COMPTES || '')) || SB_SERVICE;
+let compteService = null; // { id, email, token, refresh, until }
+async function connexionService() {
+  if (compteService && compteService.until > Date.now() + 60e3) return compteService;
+  const body = compteService?.refresh ? { refresh_token: compteService.refresh }
+    : { email: process.env.SUPABASE_EMAIL, password: process.env.SUPABASE_PASSWORD };
+  const r = await fetch(`${SB_URL}/auth/v1/token?grant_type=${compteService?.refresh ? 'refresh_token' : 'password'}`, {
+    method: 'POST', headers: { apikey: SB_ANON, 'content-type': 'application/json' }, body: JSON.stringify(body), signal: AbortSignal.timeout(10000) });
+  const d = await r.json().catch(() => ({}));
+  if (!r.ok || !d.access_token) {
+    if (compteService?.refresh) { compteService = null; return connexionService(); } // jeton de rafraîchissement périmé : nouvelle connexion
+    throw new Error(`Supabase (compte de service) : ${d.error_description || d.msg || r.status}`);
+  }
+  compteService = { id: d.user.id, email: d.user.email, token: d.access_token, refresh: d.refresh_token,
+    company_id: d.user.app_metadata?.company_id || null, until: Date.now() + (d.expires_in || 3600) * 1000 };
+  return compteService;
+}
 const als = new AsyncLocalStorage(); // l'employé de la requête en cours, disponible partout (même dans les tâches longues)
 const tokenCache = new Map();
 async function sbUserFromToken(token) {
@@ -92,7 +161,8 @@ async function sbUserFromToken(token) {
 }
 // Appel à l'API REST de Supabase au nom de l'employé connecté. Ne casse jamais le parcours : en cas d'erreur, null.
 async function sb(pathname, { method = 'GET', body, prefer } = {}) {
-  const user = als.getStore();
+  let user = als.getStore();
+  if (SB_SERVICE) user = await connexionService().catch((e) => { console.warn(`[supabase] ${e.message}`); return null; });
   if (!SB_ON || !user) return null;
   try {
     const r = await fetch(`${SB_URL}/rest/v1/${pathname}`, {
@@ -112,11 +182,15 @@ const sbUser = () => als.getStore() || null;
 // Garde le contexte de l'employé dans un rappel lancé plus tard (fin d'un programme, minuterie…)
 const keepUser = (fn) => { const u = als.getStore(); return (...a) => (u ? als.run(u, () => fn(...a)) : fn(...a)); };
 
-app.get('/api/config', (req, res) => res.json({ supabase: SB_ON ? { url: SB_URL, anonKey: SB_ANON } : null }));
+app.get('/api/config', (req, res) => res.json({ supabase: SB_ON && !SB_SERVICE ? { url: SB_URL, anonKey: SB_ANON } : null, stockage: SB_SERVICE ? 'supabase' : SB_ON ? 'comptes' : 'local' }));
 // Toutes les routes /api demandent un employé connecté, sauf : la config, la voix (balise <audio>), le pont n8n → Holo
 // (il a son propre jeton) et les fichiers servis.
 const OPEN_API = ['/config', '/voice/say', '/holo/run', '/holo/web', '/excel/write', '/extension/']; // ponts n8n : jeton Twiin propre
 app.use('/api', async (req, res, next) => {
+  if (SB_SERVICE) { // compte de service : pas de connexion à demander
+    const u = await connexionService().catch(() => null);
+    return u ? als.run(u, next) : next();
+  }
   if (!SB_ON || OPEN_API.some((p) => req.path.startsWith(p))) return next();
   const token = (req.headers.authorization || '').replace(/^Bearer\s+/i, '');
   const user = token ? await sbUserFromToken(token).catch(() => null) : null;
@@ -278,7 +352,7 @@ the general intent in one phrase, a one-sentence summary, and a one-sentence rea
 running daily and unattended.
 
 Return ONLY a JSON object, no prose, no markdown fences, exactly in this shape:
-{"workflows":[{"name":"short label","general_intent":"abstracted pattern","summary":"one sentence","why_daily":"one sentence","steps":["step 1","step 2"]}]}`;
+{"workflows":[{"name":"short French title, 2 to 5 words, no app or tool names (logos show them), e.g. Inspirations design Awwwards","general_intent":"abstracted pattern","summary":"one sentence","why_daily":"one sentence","steps":["step 1","step 2"]}]}`;
 
 // Mode « copie fidèle » (par défaut, celui de l'Observer de Twiin) : décrire EXACTEMENT ce que l'utilisateur a fait,
 // sans rien ajouter. Mode « daily » (comportement d'origine d'ImproveMe) : imaginer une routine quotidienne.
@@ -308,7 +382,7 @@ so that an agent can reproduce it identically. Rules:
 
 Inside JSON string values never use straight double quotes: quote typed text with « » instead.
 Return ONLY a JSON object, no prose, no markdown fences, exactly in this shape:
-{"workflows":[{"name":"short label","general_intent":"goal","summary":"one sentence","why_daily":"one sentence","steps":["step 1","step 2"]}]}`;
+{"workflows":[{"name":"short French title, 2 to 5 words, no app or tool names (logos show them)","general_intent":"goal","summary":"one sentence","why_daily":"one sentence","steps":["step 1","step 2"]}]}`;
 
 // Journal technique (page Back) : chaque appel au modèle, coût, scan, tuto… — jamais montré dans le parcours de l'employé.
 const BACK_LOG = path.join(REPO_ROOT, 'workflows', 'back-log.jsonl');
@@ -1061,13 +1135,13 @@ screen and uses mouse and keyboard on the employee's computer, Mac or Windows, p
 
 Return ONLY a JSON object, no prose, no markdown fences. Inside string values never use straight double quotes
 (use « » instead). Shape:
-{"name":"short label","summary":"one sentence","steps":["step 1","step 2"],
+{"name":"short French title, 2 to 5 words, no app or tool names","summary":"one sentence","steps":["step 1","step 2"],
  "changes":[{"kind":"fiabilité|process","what":"what changed, in French, one sentence"}]}
 Write the steps in English (the agent works best in English) and the "changes" in French.`;
 
 // Dernier workflow analysé (affiché au chargement de la page, pour l'améliorer ou le rejouer sans réenregistrer)
 app.get('/api/candidates', async (req, res) => {
-  if (sbUser()) { // connecté : SES dernières tâches analysées
+  if (sbUser() && !SB_SERVICE) { // connecté : SES dernières tâches analysées
     const me = sbUser()?.id;
     const rows = await sb(`taches?select=*&source=eq.analyse&recorded_by=eq.${me}&order=created_at.desc&limit=20`);
     return res.json({ workflows: (rows || []).map((t) => ({ task_id: t.id, name: t.title, summary: t.summary, why_daily: t.why,
@@ -1395,7 +1469,7 @@ AVAILABLE RESOURCES:
   admin API GET http://127.0.0.1:8042/api/invoices (auth "comptarex") lists saved invoices for checking.
 SAFETY: never send, publish, pay, validate, delete, follow or message anything; in accounting software always stop at
 « Enregistrer le brouillon ». Only write to the resources above or to new pages.
-Return ONLY JSON, no fences: {"name":"short title","schedule_cron":"cron or null","blocks":[…]}.
+Return ONLY JSON, no fences: {"name":"short French title, 2 to 5 words, no tool names, keep the subject (e.g. Veille concurrence L'Oréal)","schedule_cron":"cron or null","blocks":[…]}.
 Use « » instead of straight double quotes inside strings. Example of a good plan:
 `;
 
@@ -1478,6 +1552,7 @@ app.post('/api/n8n/create', async (req, res) => {
       const imported = evs.find((e) => e.type === 'imported');
       if (imported) await sb('automations?on_conflict=user_id,n8n_id', { method: 'POST', prefer: 'resolution=merge-duplicates,return=minimal',
         body: { task_id: wf.task_id || null, n8n_id: imported.id, name: plan.name || wf.name, blocks: plan.blocks, freq: 'manual', active: false } });
+      if (imported) modeleDe(imported.id).catch((e) => console.warn(`Personnalisation ${imported.id} : ${e.message}`)); // rubrique prête à l'ouverture
     }));
     console.log(`Automatisation n8n : ${plan.name} (${plan.blocks.length} blocs)`);
     res.json({ plan, file: path.basename(planFile) });
@@ -1669,13 +1744,16 @@ app.post('/api/holo/run', async (req, res) => {
     const events = path.join(dir, `${new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)}-n8n-events.jsonl`);
     fs.writeFileSync(events, '');
     if (env === 'mac') spawnMac(['-e', 'tell application "System Events" to set visible of process "Code" to false']);
+    const pontEnPause = env === 'mac' && telecommande?.pause(); // le bureau du Mac à Holo seul, le temps de l'étape
+    if (pontEnPause) await new Promise((r) => setTimeout(r, 1500));
     const t0 = Date.now();
     const proc = spawn(PYTHON, ['-u', RUN_LIVE, id, '--no-open', '--events', events, ...(env === 'cloud' ? ['--remote'] : [])], { cwd: REPO_ROOT });
     proc.stdout.on('data', (d) => process.stdout.write(`[n8n→holo] ${d}`));
     proc.stderr.on('data', (d) => process.stderr.write(`[n8n→holo] ${d}`));
-    replay = { proc, events, id, running: true, env };
+    replay = { proc, events, id, running: true, env, name: name || 'Holo' };
     console.log(`n8n → Holo : ${id} (${steps.length} étape(s), ${env === 'cloud' ? 'navigateur cloud de H' : 'sur ce Mac'})`);
     await new Promise((resolve) => proc.on('close', resolve));
+    if (pontEnPause) telecommande.reprendre(); // le téléphone reprend la main sur le Mac
     replay.running = false;
     const evs = fs.readFileSync(events, 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l));
     const end = evs.find((e) => e.type === 'end') || {};
@@ -1891,7 +1969,7 @@ const ELEVEN_STT_MODEL = process.env.ELEVENLABS_STT_MODEL || 'scribe_v2';
 
 // La voix et la transcription coûtent des crédits ElevenLabs : réservées à ce Mac (pas aux autres postes du réseau).
 const isLocal = (req) => ['127.0.0.1', '::1', '::ffff:127.0.0.1'].includes(req.socket.remoteAddress);
-mountTelecommande(app, { isLocal, root: REPO_ROOT, port: PORT, analyser: (dir) => { // tâche faite depuis le téléphone : masquage + analyse
+const telecommande = mountTelecommande(app, { isLocal, root: REPO_ROOT, port: PORT, analyser: (dir) => { // tâche faite depuis le téléphone : masquage + analyse
   if (analysisProgress.phase !== 'idle' && Date.now() - analysisProgress.at < 600000) return false;
   analyzeSessionDir(dir).catch((e) => console.error('Analyse (télécommande) :', e.message)).finally(() => setPhase('idle'));
   return true;
@@ -2071,7 +2149,7 @@ app.post('/api/onboarding/profile', async (req, res) => {
   }
 });
 app.get('/api/onboarding/profile', async (req, res) => {
-  if (sbUser()) { // connecté : SA fiche (plusieurs collègues peuvent passer sur le même Mac)
+  if (sbUser() && !SB_SERVICE) { // connecté : SA fiche (plusieurs collègues peuvent passer sur le même Mac)
     const rows = await sb(`profiles?id=eq.${sbUser().id}&select=*`);
     if (rows?.[0]) profileCache.set(sbUser().id, rows[0]);
     return res.json({ profile: rows?.[0] || null });
@@ -2114,7 +2192,7 @@ app.post('/api/audit/scan', (req, res) => {
   });
 });
 app.get('/api/audit/latest', async (req, res) => {
-  if (sbUser()) { // connecté : SON dernier scan
+  if (sbUser() && !SB_SERVICE) { // connecté : SON dernier scan
     const rows = await sb('audits?select=*&order=created_at.desc&limit=1');
     const a = rows?.[0];
     return res.json({ audit: a ? { schema: 'twiin/audit-poste@1', generated_at: a.created_at, scope: a.scope, summary: a.summary, tools: a.tools,
@@ -2172,12 +2250,20 @@ app.post('/api/tuto/create', async (req, res) => {
     }
     if (!(example && fs.existsSync(mp4))) {
       job.phase = 'render';
+      try { // la couverture affiche le titre court (les logos et la voix disent le reste)
+        const pr = JSON.parse(fs.readFileSync(props, 'utf8'));
+        const court = (await raccourcir([pr.title]))[pr.title];
+        if (court && court !== pr.title) { pr.titre_long = pr.title; pr.title = court; fs.writeFileSync(props, JSON.stringify(pr)); }
+        preparerCouverture(name);
+      } catch (e) { console.warn('Couverture du tuto :', e.message); }
       await runStep('npx', ['remotion', 'render', 'TwiinTuto', `out/${name}.mp4`, `--props=${JSON.stringify({ dataFile: `tutos/${name}/props.json` })}`],
         VIDEO_DIR, (l) => {
           const m = l.match(/(\d+)\s*\/\s*(\d+)/);
           if (m && Number(m[2]) > 0) job.percent = Math.min(100, Math.round((100 * Number(m[1])) / Number(m[2])));
         });
     }
+    await miniature(name).catch((e) => console.warn('Miniature :', e.message));
+    if (membreDe(req)) { const e = equipe(); e.proprietaires = { ...(e.proprietaires || {}), [name]: membreDe(req).id }; ecrireEquipe(e); }
     job.phase = 'done';
     job.percent = 100;
     job.url = `/tutos-video/${name}.mp4?v=${Date.now()}`;
@@ -2197,12 +2283,74 @@ app.post('/api/tuto/create', async (req, res) => {
     job.running = false;
   }
 });
+// Couverture d'un tuto : les logos des applis utilisées (comme une miniature YouTube), copiés à côté de ses données.
+// Les mots trop courants (Mail, Notes, Home…) ne comptent pas : seulement des noms d'applis sans ambiguïté.
+const ICI_SERVEUR = path.dirname(fileURLToPath(import.meta.url));
+const ICONES_COMMUNES = new Set(['home', 'apps', 'mail', 'maps', 'news', 'tips', 'tv', 'clock', 'games', 'music', 'notes', 'phone', 'books', 'photos', 'preview',
+  'console', 'calendar', 'contacts', 'messages', 'journal', 'weather', 'stocks', 'siri', 'pages', 'numbers', 'chess', 'screenshot', 'magnifier', 'passwords',
+  'reminders', 'shortcuts', 'automator', 'dictionary', 'calculator', 'cursor', 'safari', 'teleparty-for-safari', 'parallels-desktop']);
+function logosDuTuto(props) {
+  let reg = [];
+  try { reg = JSON.parse(fs.readFileSync(path.join(ICI_SERVEUR, 'public', 'icons', 'icons.json'), 'utf8')).icons || []; } catch { return []; }
+  const texte = [props.titre_long || props.title, props.intro, ...(props.scenes || []).flatMap((sc) => [sc.title, sc.narration, ...(sc.shots || []).map((x) => x.action)])].join(' \n ');
+  const trouves = [];
+  for (const e of reg) {
+    if (ICONES_COMMUNES.has(e.key)) continue;
+    let pos = -1;
+    for (const a of e.aliases) {
+      if (a.length < 3 || /^com\./.test(a)) continue;
+      const m = new RegExp(`(^|[^\\p{L}\\p{N}])${a.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?=$|[^\\p{L}\\p{N}])`, 'iu').exec(texte);
+      if (m && (pos < 0 || m.index < pos)) pos = m.index;
+    }
+    if (pos >= 0) trouves.push({ e, pos });
+  }
+  return trouves.sort((a, b) => a.pos - b.pos).slice(0, 4).map((x) => x.e);
+}
+function preparerCouverture(name) {
+  const dir = path.join(VIDEO_DIR, 'public', 'tutos', name), f = path.join(dir, 'props.json');
+  const pr = JSON.parse(fs.readFileSync(f, 'utf8'));
+  pr.title = String(pr.title || '').replace(/\s+en\s+\d+\s+étapes?$/i, ''); // la pastille « Tuto · N étapes » le dit déjà
+  const logos = logosDuTuto(pr);
+  fs.mkdirSync(path.join(dir, 'logos'), { recursive: true });
+  pr.logos = logos.map((e) => { fs.copyFileSync(path.join(ICI_SERVEUR, 'public', 'icons', e.file), path.join(dir, 'logos', e.file)); return `tutos/${name}/logos/${e.file}`; });
+  fs.writeFileSync(f, JSON.stringify(pr));
+  return pr.logos;
+}
+app.post('/api/tutos/:name/couverture', (req, res) => { // (re)prépare les logos de la couverture d'un tuto existant
+  try { res.json({ logos: preparerCouverture(path.basename(req.params.name)) }); } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Miniature d'un tuto : l'image fixe de sa couverture (DA Twiin), comme une miniature YouTube
+function miniature(name) {
+  return runStep('npx', ['remotion', 'still', 'TwiinTuto', `out/${name}.jpg`, '--frame=45', '--image-format=jpeg', '--jpeg-quality=85', '--scale=0.5',
+    `--props=${JSON.stringify({ dataFile: `tutos/${name}/props.json` })}`], VIDEO_DIR, () => {});
+}
 app.get('/api/tuto/status', (req, res) => res.json(tutoJob || { phase: 'idle' }));
 
 // ════════════════════════════════════════════════════════════════════════════════════════════════════════════════
 // Pages « Mes vidéos » et « Mes automatisations »
 // ════════════════════════════════════════════════════════════════════════════════════════════════════════════════
-app.get('/api/tutos', (req, res) => {
+// Catégorie de chaque tuto (classée une fois par le petit modèle, gardée sur le poste) : la page Mes vidéos les regroupe
+const CATEGORIES_TUTOS = ['Veille', 'Communication', 'Voyages', 'Design', 'Données', 'Recherche', 'Administratif', 'Autre'];
+const CATEGORIES_FICHIER = path.join(REPO_ROOT, 'workflows', 'categories-tutos.json');
+async function categoriser(tutos) {
+  const cache = readJson(CATEGORIES_FICHIER, {});
+  const manquants = tutos.filter((t) => !cache[t.name]);
+  if (manquants.length) {
+    try {
+      const r = await client.chat.completions.create({
+        model: HF_MODEL, max_tokens: 1500, temperature: 0, reasoning_effort: REASONING_EFFORT,
+        messages: [{ role: 'user', content: `Classify each French tutorial into exactly one category among: ${CATEGORIES_TUTOS.join(', ')}.\n` +
+          `Return ONLY JSON: {"categories": ["...", ...]} in the same order.\n\n${manquants.map((t, i) => `${i + 1}. ${t.title} — ${t.steps.map((x) => x.title).join(', ')}`).join('\n')}` }],
+      });
+      const out = parseWorkflows(r.choices?.[0]?.message?.content || '').result?.categories || [];
+      manquants.forEach((t, i) => { cache[t.name] = CATEGORIES_TUTOS.includes(out[i]) ? out[i] : 'Autre'; });
+      fs.writeFileSync(CATEGORIES_FICHIER, JSON.stringify(cache, null, 1));
+    } catch (e) { console.warn('Catégories des tutos :', e.message); }
+  }
+  return tutos.map((t) => ({ ...t, categorie: cache[t.name] || 'Autre' }));
+}
+app.get('/api/tutos', async (req, res) => {
   const list = (fs.existsSync(VIDEO_OUT) ? fs.readdirSync(VIDEO_OUT) : []).filter((f) => f.endsWith('.mp4')).map((f) => {
     const name = f.replace(/\.mp4$/, '');
     const st = fs.statSync(path.join(VIDEO_OUT, f));
@@ -2213,10 +2361,16 @@ app.get('/api/tutos', (req, res) => {
       name, url: `/tutos-video/${f}?v=${Math.round(st.mtimeMs)}`, created: st.mtime, size_mb: +(st.size / 1e6).toFixed(1),
       title: props?.title || name, intro: props?.intro || '', seconds: frames ? Math.round(frames / 30) : null,
       steps: (props?.scenes || []).map((sc) => ({ title: sc.title, narration: sc.narration, tip: sc.tip })),
-      thumb: props?.scenes?.[0]?.shots?.[0]?.src ? `/tutos-media/${props.scenes[0].shots[0].src.replace(/^tutos\//, '')}` : null,
+      thumb: fs.existsSync(path.join(VIDEO_OUT, `${name}.jpg`)) ? `/tutos-video/${name}.jpg?v=${Math.round(fs.statSync(path.join(VIDEO_OUT, `${name}.jpg`)).mtimeMs)}`
+        : props?.scenes?.[0]?.shots?.[0]?.src ? `/tutos-media/${props.scenes[0].shots[0].src.replace(/^tutos\//, '')}` : null,
     };
   }).sort((a, b) => new Date(b.created) - new Date(a.created));
-  res.json({ tutos: list });
+  const e = equipe(), prenom = (id) => e.membres.find((m) => m.id === id)?.prenom || null;
+  const avecEquipe = list.map((t) => {
+    const pa = e.partages.find((x) => x.type === 'tuto' && x.ref === t.name);
+    return { ...t, auteur: prenom(e.proprietaires?.[t.name]), partage: pa ? { par: prenom(pa.par), le: pa.le } : null };
+  });
+  res.json({ tutos: await categoriser(avecEquipe), categories: CATEGORIES_TUTOS, equipe: e.nom });
 });
 app.use('/tutos-media', express.static(path.join(VIDEO_DIR, 'public', 'tutos')));
 
@@ -2278,7 +2432,7 @@ async function automationSummary(w) {
   try { execs = (await n8nApi(`/executions?workflowId=${encodeURIComponent(w.id)}&limit=20`)).data || []; } catch { /* historique indisponible */ }
   const done = execs.filter((e) => e.stoppedAt);
   const dur = done.map((e) => (new Date(e.stoppedAt) - new Date(e.startedAt)) / 1000);
-  return {
+  const a = {
     id: w.id, name: w.name.replace(/^Twiin — /, ''), active: w.active, freq, freq_label: cron ? scheduleLabel(schedule) : 'Manuelle', cron, schedule,
     blocks: w.nodes.filter((n) => !/(webhook|scheduleTrigger|manualTrigger)$/i.test(n.type)).map((n) => {
       const kind = BLOCK_KIND(n);
@@ -2296,6 +2450,17 @@ async function automationSummary(w) {
     plan: lirePlans().find((p) => p.id === w.id)?.at || null,
     n8n_url: `${N8N_URL}/workflow/${w.id}`, created: w.createdAt, updated: w.updatedAt,
   };
+  a.gain = gainDe(a, execs);
+  return a;
+}
+// Temps gagné : la durée d'une exécution (Holo refait les gestes de l'employé) × le nombre de passages par semaine
+// (d'après l'horaire si elle est programmée, sinon ses lancements des 4 dernières semaines). En minutes.
+function gainDe(a, execs) {
+  const parLancement = Math.round(estimation(a) / 60);
+  const sc = a.active ? a.schedule : null;
+  const parSemaine = sc?.type === 'daily' ? 7 : sc?.type === 'weekly' ? (sc.days || []).length : sc?.type === 'monthly' ? 12 / 52
+    : execs.filter((e) => e.status === 'success' && Date.now() - new Date(e.startedAt) < 28 * 864e5).length / 4;
+  return { minutes_par_lancement: parLancement, lancements_semaine: +parSemaine.toFixed(2), minutes_semaine: Math.round(parLancement * parSemaine) };
 }
 
 // Automatisations dont la création a échoué (ex. connexion n8n manquante) : gardées pour « Mes automatisations ».
@@ -2328,6 +2493,9 @@ app.get('/api/automations', async (req, res) => {
     const runs = list.flatMap((a) => a.executions.map((e) => ({ n8n_id: a.id, n8n_execution_id: String(e.id), status: e.status, mode: e.mode,
                                                                   started_at: e.startedAt, stopped_at: e.stoppedAt })));
     if (runs.length) sb('automation_runs?on_conflict=user_id,n8n_execution_id', { method: 'POST', prefer: 'resolution=merge-duplicates,return=minimal', body: runs });
+    // les automatisations elles-mêmes (y compris celles créées avant la connexion à Supabase)
+    const autos = list.filter((a) => !a.failed).map((a) => ({ n8n_id: a.id, name: a.name, blocks: a.blocks, freq: a.freq, active: !!a.active }));
+    if (autos.length) sb('automations?on_conflict=user_id,n8n_id', { method: 'POST', prefer: 'resolution=merge-duplicates,return=minimal', body: autos });
     res.json({ up: true, n8n_url: N8N_URL, automations: list });
   } catch (e) {
     res.status(500).json({ error: e.message });
@@ -2345,8 +2513,16 @@ app.post('/api/automations/:id/schedule', async (req, res) => {
     // Nouveau format : { schedule: { type: manual|daily|weekly|monthly, days, monthday, hour, minute } } ; l'ancien « freq » reste accepté
     const sc = req.body?.schedule || (req.body?.freq in FREQS ? cronToSchedule(FREQS[req.body.freq] || '') : null);
     if (!sc) return res.status(400).json({ error: 'Planification inconnue.' });
+    res.json(await planifier(req.params.id, sc));
+  } catch (e) {
+    console.error(e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+async function planifier(brut, sc) {
+  {
     const cron = sc.type === 'manual' ? null : scheduleToCron(sc);
-    const id = encodeURIComponent(req.params.id);
+    const id = encodeURIComponent(brut);
     const w = await n8nApi(`/workflows/${id}`);
     let sched = w.nodes.find((n) => n.type.endsWith('.scheduleTrigger'));
     if (!sched && cron) { // pas de déclencheur planifié : on en ajoute un, branché comme le déclencheur manuel
@@ -2368,12 +2544,9 @@ app.post('/api/automations/:id/schedule', async (req, res) => {
     console.log(`Automatisation ${w.id} : ${scheduleLabel(sc)}`);
     const freq = cron ? (Object.keys(FREQS).find((k) => FREQS[k] === cron) || 'custom') : 'manual';
     await sb(`automations?n8n_id=eq.${encodeURIComponent(w.id)}`, { method: 'PATCH', prefer: 'return=minimal', body: { freq, active: !!cron } });
-    res.json(await automationSummary(await n8nApi(`/workflows/${id}`)));
-  } catch (e) {
-    console.error(e.message);
-    res.status(500).json({ error: e.message });
+    return automationSummary(await n8nApi(`/workflows/${id}`));
   }
-});
+}
 
 // --- Mise en service (DSI) : les autorisations à donner UNE fois pour toute l'entreprise, déduites des audits des postes --
 const SETUP_FAMILIES = [
@@ -2429,6 +2602,31 @@ app.post('/api/automations/:id/retry', async (req, res) => {
   res.json({ ok: true, id: f.id });
 });
 
+// Supprimer une automatisation : le flow dans n8n, son lancement programmé, sa trace dans le compte (si comptes activés).
+// Refusé pendant qu'elle tourne : il faut d'abord l'arrêter.
+app.delete('/api/automations/:id', async (req, res) => {
+  const id = String(req.params.id || '');
+  if (!/^[\w-]{1,80}$/.test(id)) return res.status(400).json({ error: 'Identifiant invalide.' });
+  if (automationRun?.id === id) return res.status(409).json({ error: 'Elle tourne en ce moment : arrête-la d\'abord.' });
+  try {
+    if (readFailed().some((x) => x.id === id)) forgetFailed(id); // pas créée dans n8n : seulement l'oublier
+    else {
+      try {
+        const en = (await n8nApi(`/executions?workflowId=${encodeURIComponent(id)}&status=running&limit=5`)).data || [];
+        if (en.length) return res.status(409).json({ error: 'Elle tourne en ce moment : arrête-la d\'abord.' });
+      } catch { /* historique indisponible : on continue */ }
+      // déjà supprimée dans n8n (404) : il ne reste qu'à la retirer de Twiin
+      await n8nApi(`/workflows/${encodeURIComponent(id)}`, { method: 'DELETE' }).catch((e) => { if (!/404/.test(e.message)) throw e; });
+    }
+    ecrirePlans(lirePlans().filter((p) => p.id !== id));
+    await sb(`automations?n8n_id=eq.${encodeURIComponent(id)}`, { method: 'DELETE', prefer: 'return=minimal' });
+    console.log(`Automatisation supprimée : ${id}`);
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ error: `Suppression impossible : ${e.message}` });
+  }
+});
+
 // Arrêter : l'exécution en cours (Twiin), le rejeu Holo qu'elle a lancé (souris et clavier rendus) et l'exécution dans n8n.
 app.post('/api/automations/:id/stop', async (req, res) => {
   const id = req.params.id;
@@ -2469,7 +2667,10 @@ async function lancerAutomatisation(id, origine = 'à la main') {
   const est = estimation(a);
   const proc = spawn(PYTHON, ['-u', N8N_GEN, '--run', id], { cwd: REPO_ROOT });
   proc.stderr.on('data', (d) => process.stderr.write(`[n8n] ${d}`));
-  const me = automationRun = { id, name: a.name, proc, startedAt: Date.now(), estimate_s: est, sur_mac: surMac, stopped: false };
+  const me = automationRun = { id, name: a.name, proc, startedAt: Date.now(), estimate_s: est, sur_mac: surMac, stopped: false, noeuds: [] };
+  proc.stdout.on('data', (d) => String(d).split('\n').forEach((l) => { // étapes n8n terminées (pour les jumeaux guides)
+    try { const e = JSON.parse(l); if (e.type === 'node') me.noeuds.push({ nom: e.name, ok: !e.error && e.status !== 'error' }); } catch { /* ligne de journal */ }
+  }));
   notifier('Twiin', surMac
     ? `« ${a.name} » utilise ton Mac pendant environ ${Math.ceil(est / 60)} min. Ne touche à rien, double Échap pour arrêter.`
     : `« ${a.name} » tourne en arrière-plan : tu peux continuer à travailler.`);
@@ -2487,6 +2688,337 @@ async function lancerAutomatisation(id, origine = 'à la main') {
 app.post('/api/automations/:id/run', async (req, res) => {
   try { await lancerAutomatisation(req.params.id); res.json({ ok: true }); }
   catch (e) { res.status(409).json({ error: e.message }); }
+});
+
+// --- Équipe : un espace partagé (vidéos partagées, comme un SharePoint) et un espace perso par membre ------------------
+// Chaque navigateur choisit son membre (en-tête x-twiin-membre, envoyé par espace.js). Gardé sur ce poste : workflows/equipe.json.
+const EQUIPE_FILE = path.join(REPO_ROOT, 'workflows', 'equipe.json');
+const EQUIPE_DEFAUT = { nom: 'Équipe Twiin', membres: ['JC', 'Noah', 'Baudouin', 'Stéphane', 'Jules', 'Mathieu', 'Nolwenn'].map((p) => ({ id: slugify(p), prenom: p })), partages: [] };
+const equipe = () => readJson(EQUIPE_FILE, null) || EQUIPE_DEFAUT;
+const ecrireEquipe = (e) => fs.writeFileSync(EQUIPE_FILE, JSON.stringify(e, null, 1));
+const membreDe = (req) => { const id = String(req.get('x-twiin-membre') || ''); return equipe().membres.find((m) => m.id === id) || null; };
+app.get('/api/equipe', (req, res) => res.json({ ...equipe(), moi: membreDe(req)?.id || null }));
+app.post('/api/equipe/membres', (req, res) => {
+  const prenom = String(req.body?.prenom || '').trim().slice(0, 40);
+  if (!prenom) return res.status(400).json({ error: 'Prénom manquant.' });
+  const e = equipe();
+  let id = slugify(prenom), n = 2;
+  while (e.membres.some((m) => m.id === id)) id = `${slugify(prenom)}-${n++}`;
+  e.membres.push({ id, prenom });
+  ecrireEquipe(e);
+  res.json({ id, prenom });
+});
+app.delete('/api/equipe/membres/:id', (req, res) => {
+  const e = equipe();
+  e.membres = e.membres.filter((m) => m.id !== req.params.id);
+  ecrireEquipe(e);
+  res.json({ ok: true });
+});
+app.post('/api/equipe/nom', (req, res) => { const e = equipe(); e.nom = String(req.body?.nom || '').trim().slice(0, 60) || e.nom; ecrireEquipe(e); res.json({ nom: e.nom }); });
+// Partager une vidéo avec l'équipe (ou retirer le partage)
+app.post('/api/equipe/partages', (req, res) => {
+  const ref = path.basename(String(req.body?.ref || ''));
+  if (!fs.existsSync(path.join(VIDEO_OUT, `${ref}.mp4`))) return res.status(404).json({ error: 'Vidéo introuvable.' });
+  const e = equipe();
+  if (!e.partages.some((x) => x.type === 'tuto' && x.ref === ref)) e.partages.unshift({ type: 'tuto', ref, par: membreDe(req)?.id || null, le: new Date().toISOString() });
+  ecrireEquipe(e);
+  res.json({ ok: true });
+});
+app.delete('/api/equipe/partages/:ref', (req, res) => {
+  const e = equipe();
+  e.partages = e.partages.filter((x) => x.ref !== req.params.ref);
+  ecrireEquipe(e);
+  res.json({ ok: true });
+});
+
+// --- Connexions aux comptes (Google : Gmail, Sheets, Drive) depuis Twiin, sans configurer n8n à la main ---------------
+// Une fois pour l'entreprise : la DSI crée une « application OAuth » Google et colle son identifiant dans Mise en service
+// (gardé sur le poste, workflows/connexions.json, jamais renvoyé à la page). Ensuite chaque employé clique « Connecter Google » :
+// Google demande son accord, Twiin reçoit les jetons et crée les connexions Gmail, Google Sheets et Google Drive dans n8n.
+const CONNEXIONS_FILE = path.join(REPO_ROOT, 'workflows', 'connexions.json');
+const N8N_CONNEXIONS = path.join(REPO_ROOT, 'automation', 'n8n_connexions.py');
+const GOOGLE_TYPES = [
+  ['gmailOAuth2', 'Gmail', ['https://www.googleapis.com/auth/gmail.labels', 'https://www.googleapis.com/auth/gmail.addons.current.action.compose',
+    'https://www.googleapis.com/auth/gmail.addons.current.message.action', 'https://mail.google.com/', 'https://www.googleapis.com/auth/gmail.modify',
+    'https://www.googleapis.com/auth/gmail.compose']],
+  ['googleSheetsOAuth2Api', 'Google Sheets', ['https://www.googleapis.com/auth/drive.file', 'https://www.googleapis.com/auth/spreadsheets']],
+  ['googleDriveOAuth2Api', 'Google Drive', ['https://www.googleapis.com/auth/drive', 'https://www.googleapis.com/auth/drive.appdata',
+    'https://www.googleapis.com/auth/drive.photos.readonly']],
+];
+const googleApp = () => readJson(CONNEXIONS_FILE, {})?.google || null;
+const googleRetour = (req) => `${req.protocol}://${req.get('host')}/api/google/retour`;
+const etatsOAuth = new Map(); // state → expiration (10 min)
+app.get('/api/connexions', async (req, res) => {
+  let creds = [];
+  try { creds = (await n8nApi('/credentials?limit=100')).data || []; } catch { /* n8n arrêté */ }
+  const g = googleApp();
+  res.json({
+    google: { app_configuree: !!(g?.client_id && g?.client_secret), client_id_fin: g?.client_id ? g.client_id.slice(-24) : null, retour: googleRetour(req),
+      services: GOOGLE_TYPES.map(([type, label]) => ({ type, label, connexions: creds.filter((c) => c.type === type).map((c) => c.name) })) },
+  });
+});
+app.post('/api/connexions/google/app', (req, res) => {
+  const id = String(req.body?.client_id || '').trim(), secret = String(req.body?.client_secret || '').trim();
+  if (!/^[\w.-]+\.apps\.googleusercontent\.com$/.test(id) || secret.length < 10) return res.status(400).json({ error: 'Identifiant ou secret Google invalide.' });
+  const c = readJson(CONNEXIONS_FILE, {});
+  c.google = { client_id: id, client_secret: secret };
+  fs.writeFileSync(CONNEXIONS_FILE, JSON.stringify(c), { mode: 0o600 });
+  res.json({ ok: true });
+});
+app.get('/api/google/connecter', (req, res) => {
+  const g = googleApp();
+  if (!g) return res.redirect('/mise-en-service.html#connexions');
+  const state = crypto.randomBytes(18).toString('base64url');
+  etatsOAuth.set(state, Date.now() + 10 * 60e3);
+  const scopes = ['openid', 'email', ...new Set(GOOGLE_TYPES.flatMap(([, , s]) => s))];
+  const u = new URL('https://accounts.google.com/o/oauth2/v2/auth');
+  Object.entries({ client_id: g.client_id, redirect_uri: googleRetour(req), response_type: 'code', scope: scopes.join(' '),
+    access_type: 'offline', prompt: 'consent', include_granted_scopes: 'true', state }).forEach(([k, v]) => u.searchParams.set(k, v));
+  res.redirect(u.toString());
+});
+app.get('/api/google/retour', async (req, res) => {
+  const fin = (q) => res.redirect(`/mise-en-service.html?${q}#connexions`);
+  try {
+    const { code, state, error } = req.query;
+    if (error) return fin(`google=refus`);
+    if (!state || !(etatsOAuth.get(state) > Date.now())) return fin('google=expire');
+    etatsOAuth.delete(state);
+    const g = googleApp();
+    const r = await fetch('https://oauth2.googleapis.com/token', { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({ code, client_id: g.client_id, client_secret: g.client_secret, redirect_uri: googleRetour(req), grant_type: 'authorization_code' }) });
+    const jetons = await r.json();
+    if (!r.ok || !jetons.refresh_token) throw new Error(jetons.error_description || jetons.error || 'pas de jeton de rafraîchissement');
+    let email = '';
+    try { email = JSON.parse(Buffer.from(String(jetons.id_token || '').split('.')[1] || '', 'base64url').toString()).email || ''; } catch { /* sans adresse */ }
+    const nom = `Google${email ? ` · ${email}` : ''}`;
+    const { id_token, ...tokenData } = jetons; // le jeton d'identité ne sert pas à n8n
+    const demandes = GOOGLE_TYPES.map(([type]) => ({ type, name: nom, data: { clientId: g.client_id, clientSecret: g.client_secret, oauthTokenData: tokenData } }));
+    const out = await new Promise((resolve) => {
+      const p = spawn(PYTHON, ['-u', N8N_CONNEXIONS], { cwd: REPO_ROOT, env: { ...process.env, PYTHONUTF8: '1' } });
+      let o = ''; p.stdout.on('data', (d) => (o += d)); p.stderr.on('data', () => {});
+      p.on('close', (c) => resolve({ ok: c === 0, o }));
+      p.stdin.end(JSON.stringify(demandes));
+    });
+    if (!out.ok) throw new Error((() => { try { return JSON.parse(out.o.trim().split('\n').at(-1)).error; } catch { return 'import dans n8n impossible'; } })());
+    console.log(`Connexions Google créées dans n8n (${GOOGLE_TYPES.map(([, l]) => l).join(', ')})`);
+    fin('google=ok');
+  } catch (e) {
+    console.error('Connexion Google :', e.message);
+    fin(`google=erreur&detail=${encodeURIComponent(String(e.message).slice(0, 160))}`);
+  }
+});
+
+// --- Marque de l'entreprise cliente : nom, logo et couleur, appliqués au SaaS (shell.js) et aux vidéos de formation.
+// Tout reste sur le poste (workflows/marque.json) ; copié dans tuto/video/public/ pour le rendu Remotion.
+const MARQUE_FILE = path.join(REPO_ROOT, 'workflows', 'marque.json');
+const MARQUE_LOGOS = { 'image/png': 'png', 'image/jpeg': 'jpg', 'image/svg+xml': 'svg', 'image/webp': 'webp' };
+const marqueLue = () => readJson(MARQUE_FILE, null);
+// Charte : couleur principale (boutons, liens), secondaire (fonds, puces), police (Google Fonts, liste fermée), formes (arrondis)
+const MARQUE_POLICES = ['Google Sans Flex', 'Inter', 'Roboto', 'Open Sans', 'Lato', 'Montserrat', 'Poppins', 'DM Sans', 'Work Sans', 'IBM Plex Sans', 'Source Sans 3', 'Noto Sans', 'Manrope', 'Figtree'];
+const MARQUE_FORMES = ['carre', 'doux', 'arrondi'];
+const marquePublique = (m) => ({ nom: m?.nom || '', couleur: m?.couleur || null, couleur2: m?.couleur2 || null, police: m?.police || null, forme: m?.forme || null,
+  logo: m?.logo ? `/marque/logo?v=${m.v || 0}` : null });
+function marqueVersVideo(m) {
+  const pub = path.join(VIDEO_DIR, 'public');
+  for (const f of fs.readdirSync(pub).filter((x) => /^marque(-logo\.\w+)?\.json$|^marque-logo\.\w+$/.test(x))) fs.rmSync(path.join(pub, f));
+  if (!m) return;
+  if (m.logo) fs.copyFileSync(path.join(REPO_ROOT, 'workflows', m.logo), path.join(pub, m.logo));
+  fs.writeFileSync(path.join(pub, 'marque.json'), JSON.stringify({ nom: m.nom || '', couleur: m.couleur || null, couleur2: m.couleur2 || null, police: m.police || null, logo: m.logo || null }));
+}
+app.get('/api/marque', (req, res) => res.json({ ...marquePublique(marqueLue()), polices: MARQUE_POLICES }));
+app.get('/marque/logo', (req, res) => {
+  const m = marqueLue();
+  if (!m?.logo) return res.status(404).end();
+  res.sendFile(path.join(REPO_ROOT, 'workflows', m.logo));
+});
+app.post('/api/marque', express.json({ limit: '3mb' }), (req, res) => {
+  try {
+    const b = req.body || {};
+    if (b.effacer) {
+      const m = marqueLue();
+      if (m?.logo) fs.rmSync(path.join(REPO_ROOT, 'workflows', m.logo), { force: true });
+      fs.rmSync(MARQUE_FILE, { force: true });
+      marqueVersVideo(null);
+      return res.json(marquePublique(null));
+    }
+    const avant = marqueLue() || {};
+    const hexa = (k) => (k in b ? (/^#[0-9a-f]{6}$/i.test(b[k] || '') ? b[k].toLowerCase() : null) : avant[k] || null);
+    const m = { nom: String(b.nom ?? avant.nom ?? '').trim().slice(0, 60), couleur: hexa('couleur'), couleur2: hexa('couleur2'),
+      police: 'police' in b ? (MARQUE_POLICES.includes(b.police) ? b.police : null) : avant.police || null,
+      forme: 'forme' in b ? (MARQUE_FORMES.includes(b.forme) ? b.forme : null) : avant.forme || null, logo: avant.logo || null, v: Date.now() };
+    if (typeof b.logo === 'string' && b.logo.startsWith('data:')) {
+      const [, type, b64] = b.logo.match(/^data:([\w/+.-]+);base64,(.+)$/) || [];
+      if (!MARQUE_LOGOS[type]) return res.status(400).json({ error: 'Logo en PNG, JPG, SVG ou WebP.' });
+      const buf = Buffer.from(b64, 'base64');
+      if (buf.length > 2e6) return res.status(400).json({ error: 'Logo trop lourd (2 Mo au plus).' });
+      if (avant.logo) fs.rmSync(path.join(REPO_ROOT, 'workflows', avant.logo), { force: true });
+      m.logo = `marque-logo.${MARQUE_LOGOS[type]}`;
+      fs.writeFileSync(path.join(REPO_ROOT, 'workflows', m.logo), buf);
+    } else if (b.logo === null) {
+      if (avant.logo) fs.rmSync(path.join(REPO_ROOT, 'workflows', avant.logo), { force: true });
+      m.logo = null;
+    }
+    fs.writeFileSync(MARQUE_FILE, JSON.stringify(m, null, 1));
+    marqueVersVideo(m);
+    console.log(`Marque : ${m.nom || '(sans nom)'} ${m.couleur || ''}${m.logo ? ' + logo' : ''}`);
+    res.json(marquePublique(m));
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// --- Titres courts : les titres longs déjà enregistrés (« Analyser un cas Awwwards avec Claude et… ») passent une fois par
+// le petit modèle ; le résultat est gardé sur le poste. Les pages l'affichent, le titre complet reste au survol.
+const TITRES_FICHIER = path.join(REPO_ROOT, 'workflows', 'titres-courts.json');
+const TITRE_DEJA_COURT = (t) => t.split(/\s+/).length <= 5 && !/\(|\bavec\b|\bvia\b|\bsur (?:google|chrome|excel)/i.test(t);
+let titresEnCours = null;
+app.post('/api/titres-courts', async (req, res) => {
+  try { res.json({ titres: await raccourcir(req.body?.titres || []) }); } catch (e) { res.status(500).json({ error: e.message }); }
+});
+async function raccourcir(titres) {
+  {
+    const cache = readJson(TITRES_FICHIER, {});
+    const demandes = [...new Set(titres.map((t) => String(t).trim().slice(0, 300)).filter(Boolean))].slice(0, 40);
+    const manquants = demandes.filter((t) => !(t in cache) && !TITRE_DEJA_COURT(t));
+    if (manquants.length) {
+      while (titresEnCours) await titresEnCours.catch(() => {}); // une seule requête au modèle à la fois
+      const encore = manquants.filter((t) => !(t in readJson(TITRES_FICHIER, {})));
+      if (encore.length) {
+        titresEnCours = client.chat.completions.create({
+          model: HF_MODEL, max_tokens: 3000, temperature: 0, reasoning_effort: REASONING_EFFORT,
+          messages: [{ role: 'user', content: `Rewrite each French title below as a SHORT, explicit French title: 2 to 5 words, no app or tool names ` +
+            `(Claude, Chrome, Excel, Google Sheets, LinkedIn… are shown as logos), no parentheses, no final period. Keep the real subject ` +
+            `(company, client, topic). Examples: « Analyser un cas Awwwards avec Claude et demander des inspirations de design » → « Inspirations design Awwwards » ; ` +
+            `« Veille concurrence L'Oréal (LinkedIn → Google Sheets → OneNote) » → « Veille concurrence L'Oréal ».\n` +
+            `Return ONLY JSON: {"titres": ["...", ...]} in the same order.\n\n${encore.map((t, i) => `${i + 1}. ${t}`).join('\n')}` }],
+        });
+        try {
+          const r = await titresEnCours;
+          const out = parseWorkflows(r.choices?.[0]?.message?.content || '').result?.titres || [];
+          const c = readJson(TITRES_FICHIER, {});
+          encore.forEach((t, i) => { const v = String(out[i] || '').trim().replace(/[.。]$/, ''); if (v && v.length < t.length) c[t] = v.slice(0, 60); else c[t] = t; });
+          fs.writeFileSync(TITRES_FICHIER, JSON.stringify(c, null, 1));
+        } finally { titresEnCours = null; }
+      }
+    }
+    const c = readJson(TITRES_FICHIER, {});
+    return Object.fromEntries(demandes.map((t) => [t, c[t] || t]));
+  }
+}
+
+// --- Personnaliser une automatisation : changer ce sur quoi elle travaille ---------------------------------------------
+// Une automatisation est créée à partir d'UNE tâche filmée (ex. la veille sur L'Oréal). On en tire une fois un modèle
+// général où le sujet devient {{cible}} (le petit modèle, peu cher), puis l'employé choisit ses cibles (« LVMH, Kering… »
+// ou « le luxe », que Twiin transforme en liste). Le workflow n8n est reconstruit avec une chaîne d'étapes par cible.
+// Le plan d'origine n'est jamais modifié (veille-loreal.json sert aussi d'exemple au modèle) : tout vit dans automation/cibles/.
+const CIBLES_DIR = path.join(REPO_ROOT, 'automation', 'cibles');
+const MAX_CIBLES = 8;
+function planDe(id) {
+  for (const f of fs.existsSync(N8N_PLANS) ? fs.readdirSync(N8N_PLANS).filter((x) => x.endsWith('.json')) : []) {
+    const p = readJson(path.join(N8N_PLANS, f));
+    if (p && (p.id || ('twiin' + slugify(p.name || '').replace(/-/g, '')).slice(0, 16)) === id) return p;
+  }
+  return null;
+}
+const ciblesFichier = (id) => path.join(CIBLES_DIR, `${id.replace(/[^\w-]/g, '')}.json`);
+const GENERALISER = `You receive an automation plan (JSON) that was recorded for ONE specific subject: a company, a brand, a person, a product, a city, a website… Your job: make it reusable for ANY subject of the same kind.
+Return ONLY a JSON object:
+{"valeur": "<the specific subject, as written, e.g. L'Oréal>", "type": "<the kind of subject in French, singular, lowercase, e.g. entreprise>",
+ "label": "<short French label for the list of subjects, e.g. Entreprises suivies>", "nom": "<the plan name in French without the subject and without parentheses, e.g. Veille concurrence>",
+ "exemple": "<a French example of a group of such subjects, e.g. le luxe>", "blocks": [ ...the same blocks... ]}
+Rules for "blocks": keep EXACTLY the same blocks, order, types, names, fields and references like {{Holo — lire LinkedIn.entreprise}}. Only replace every mention of the subject with the placeholder {{cible}}.
+If a URL is specific to the subject (e.g. https://www.linkedin.com/company/loreal/about/), replace it with an instruction to find that page for {{cible}} (e.g. "search LinkedIn for the official company page of {{cible}} and open its « À propos » tab").
+In "verify" rules, a pattern that checks the subject becomes "{{cible}}". Do not translate, do not add or remove steps.
+If the plan is not about one specific subject, return {"valeur": null}.`;
+async function modeleDe(id) {
+  const f = ciblesFichier(id);
+  const deja = readJson(f);
+  if (deja?.modele) return deja;
+  const plan = planDe(id);
+  if (!plan) return { modele: { valeur: null } };
+  const { data: resp } = await client.chat.completions.create({
+    model: HF_MODEL, max_tokens: MAX_OUTPUT_TOKENS, temperature: 0, reasoning_effort: REASONING_EFFORT,
+    messages: [{ role: 'system', content: GENERALISER }, { role: 'user', content: JSON.stringify({ name: plan.name, blocks: plan.blocks }) }],
+  }).withResponse();
+  const m = parseWorkflows(resp.choices?.[0]?.message?.content || '').result || {};
+  const ok = m.valeur && Array.isArray(m.blocks) && m.blocks.length === plan.blocks.length && JSON.stringify(m.blocks).includes('{{cible}}');
+  const modele = ok ? { valeur: m.valeur, type: m.type || 'cible', label: m.label || 'Cibles', nom: m.nom || plan.name, exemple: m.exemple || '', blocks: m.blocks }
+                    : { valeur: null };
+  const res = { modele, cibles: ok ? [m.valeur] : [] };
+  fs.mkdirSync(CIBLES_DIR, { recursive: true });
+  fs.writeFileSync(f, JSON.stringify(res, null, 2));
+  console.log(`Personnalisation ${id} : ${ok ? `sujet « ${m.valeur} » (${modele.type})` : 'pas de sujet unique'} · ${resp.usage?.cost ?? '?'} $`);
+  return res;
+}
+// Une chaîne d'étapes par cible ; avec plusieurs cibles, chaque étape prend le nom « … · cible » et ses références suivent.
+function deroulerPlan(id, modele, cibles, plan) {
+  const echapper = (v) => v.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/['’]/g, "['’]"); // LinkedIn écrit souvent L’Oréal
+  const blocks = cibles.flatMap((v) => {
+    const suffixe = cibles.length > 1 ? ` · ${v}` : '';
+    const noms = modele.blocks.map((b) => b.name);
+    const remplacer = (x) => {
+      if (typeof x !== 'string') return x;
+      let t = x.replaceAll('{{cible}}', v);
+      if (suffixe) for (const n of noms) { t = t.replaceAll(`{{${n}.`, `{{${n}${suffixe}.`); if (t === n) t = n + suffixe; }
+      return t;
+    };
+    return modele.blocks.map((b0) => {
+      const b = JSON.parse(JSON.stringify(b0), (k, x) => (k === 'pattern' && typeof x === 'string' ? x.replaceAll('{{cible}}', echapper(v)) : x));
+      const out = JSON.parse(JSON.stringify(b), (k, x) => remplacer(x));
+      // plusieurs cibles : une branche n8n par cible ; une valeur douteuse écarte CETTE cible seulement, les autres continuent
+      if (cibles.length > 1) { out.branche = v; if (out.type === 'verify') out.on_problem = 'skip'; }
+      return out;
+    });
+  });
+  const nom = `${modele.nom} — ${cibles.length <= 2 ? cibles.join(' et ') : `${cibles.length} ${modele.type}s`}`;
+  return { ...plan, id, name: nom, blocks };
+}
+app.get('/api/automations/:id/cibles', async (req, res) => {
+  try {
+    const { modele, cibles } = await modeleDe(req.params.id);
+    res.json(modele.valeur ? { type: modele.type, label: modele.label, exemple: modele.exemple, cibles } : { cibles: null });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+// « le luxe » → une liste de cibles proposées, que l'employé garde ou retire
+app.post('/api/automations/:id/cibles/proposer', async (req, res) => {
+  try {
+    const groupe = String(req.body?.groupe || '').slice(0, 120).trim();
+    if (!groupe) return res.status(400).json({ error: 'Écris un groupe, par exemple « le luxe ».' });
+    const { modele } = await modeleDe(req.params.id);
+    const { data: resp } = await client.chat.completions.create({
+      model: HF_MODEL, max_tokens: 2000, temperature: 0, reasoning_effort: REASONING_EFFORT,
+      messages: [{ role: 'user', content: `List the ${MAX_CIBLES} most important ${modele.type || 'items'} (French context) matching: « ${groupe} ». ` +
+        `Use their usual short public names. Return ONLY JSON: {"valeurs": ["...", "..."]}` }],
+    }).withResponse();
+    const v = parseWorkflows(resp.choices?.[0]?.message?.content || '').result?.valeurs;
+    res.json({ valeurs: (Array.isArray(v) ? v : []).map((x) => String(x).trim()).filter(Boolean).slice(0, MAX_CIBLES) });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+// Enregistrer les cibles : reconstruit le workflow (même id, même horaire)
+app.post('/api/automations/:id/cibles', async (req, res) => {
+  const id = String(req.params.id || '');
+  try {
+    if (automationRun?.id === id) return res.status(409).json({ error: 'Elle tourne : arrête-la avant de la modifier.' });
+    const cibles = [...new Set((req.body?.cibles || []).map((x) => String(x).trim().slice(0, 80)).filter(Boolean))].slice(0, MAX_CIBLES);
+    if (!cibles.length) return res.status(400).json({ error: 'Garde au moins une cible.' });
+    const { modele } = await modeleDe(id);
+    if (!modele.valeur) return res.status(400).json({ error: 'Cette automatisation ne se personnalise pas.' });
+    await ensureN8n();
+    const avant = await automationSummary(await n8nApi(`/workflows/${encodeURIComponent(id)}`));
+    const plan = deroulerPlan(id, modele, cibles, planDe(id));
+    const planFile = path.join(CIBLES_DIR, `${id.replace(/[^\w-]/g, '')}.plan.json`);
+    fs.writeFileSync(planFile, JSON.stringify(plan, null, 2));
+    const r = await new Promise((resolve) => {
+      const p = spawn(PYTHON, ['-u', N8N_GEN, planFile, '--no-run'], { cwd: REPO_ROOT, env: { ...process.env, PYTHONUTF8: '1' } });
+      let out = '', err = '';
+      p.stdout.on('data', (d) => (out += d)); p.stderr.on('data', (d) => (err += d));
+      p.on('close', () => resolve({ ok: /"type": "imported"/.test(out), err: err.trim().split(/\r?\n/).filter(Boolean).at(-1) || '' }));
+    });
+    if (!r.ok) return res.status(500).json({ error: r.err || 'reconstruction impossible' });
+    fs.writeFileSync(ciblesFichier(id), JSON.stringify({ modele, cibles }, null, 2));
+    if (avant.active && avant.schedule?.type !== 'manual') await planifier(id, avant.schedule); // l'import remet le flow en pause
+    await sb(`automations?n8n_id=eq.${encodeURIComponent(id)}`, { method: 'PATCH', prefer: 'return=minimal', body: { name: plan.name, blocks: plan.blocks } });
+    console.log(`Personnalisation ${id} : ${cibles.join(', ')}`);
+    res.json(await automationSummary(await n8nApi(`/workflows/${encodeURIComponent(id)}`)));
+  } catch (e) { console.error(e.message); res.status(500).json({ error: e.message }); }
 });
 
 // Arrêter : Holo ET l'exécution n8n (sinon n8n relance le bloc suivant)
@@ -2554,6 +3086,41 @@ setInterval(async () => {
 }, 20000);
 
 // État pour le bandeau commun des pages : ce qui tourne, depuis quand, temps estimé, prochain lancement programmé
+// --- Jumeaux guides : pendant une automatisation, Iris et Ilo suivent la souris et disent ce qui se passe -----------
+// (fenêtre transparente de l'app Mac, desktop/guide). L'étape Holo en cours (en anglais pour l'agent) devient une phrase
+// courte en français, traduite une fois par le petit modèle et gardée sur le poste.
+const PHRASES_FICHIER = path.join(REPO_ROOT, 'workflows', 'guide-phrases.json');
+const phrasesEnCours = new Set();
+function phraseGuide(etape) {
+  const cache = readJson(PHRASES_FICHIER, {});
+  if (cache[etape]) return cache[etape];
+  if (!phrasesEnCours.has(etape)) {
+    phrasesEnCours.add(etape);
+    client.chat.completions.create({ model: HF_MODEL, max_tokens: 400, temperature: 0, reasoning_effort: REASONING_EFFORT,
+      messages: [{ role: 'user', content: `Résume cette consigne donnée à un agent qui utilise l'ordinateur en UNE phrase courte en français (12 mots maximum), ` +
+        `à la première personne du pluriel, au présent, sans guillemets ni emoji. Exemple : « On ouvre la page LinkedIn de L'Oréal et on lit ses chiffres. »\n\n${etape.slice(0, 1200)}` }] })
+      .then((r) => {
+        const t = String(r.choices?.[0]?.message?.content || '').replace(/<think>[\s\S]*?<\/think>/g, '').trim().split('\n')[0].replace(/^[«"\s]+|[»"\s]+$/g, '');
+        if (t) { const c = readJson(PHRASES_FICHIER, {}); c[etape] = t.slice(0, 140); fs.writeFileSync(PHRASES_FICHIER, JSON.stringify(c, null, 1)); }
+      }).catch(() => {}).finally(() => phrasesEnCours.delete(etape));
+  }
+  return null;
+}
+app.get('/api/guide', (req, res) => {
+  const r = automationRun;
+  if (!r && !replay?.running) return res.json({ actif: false });
+  const evs = replay?.running ? readJsonl(replay.events) : [];
+  const etape = [...evs].reverse().find((e) => e.type === 'step_start');
+  const session = [...evs].reverse().find((e) => e.type === 'session')?.url || null;
+  const bloc = replay?.running ? String(replay.name || '').replace(/^n8n\s+/, '') : null;
+  let phrase = etape?.step ? phraseGuide(String(etape.step)) : null;
+  if (!phrase && bloc) phrase = bloc.replace(/^Holo\s*[—-]\s*/i, '').replace(/^./, (c) => c.toUpperCase()) + '…';
+  if (!phrase) { const der = r?.noeuds?.at(-1); phrase = der ? `${der.nom.replace(/^Holo\s*[—-]\s*/i, '')} : ${der.ok ? 'fait' : 'à vérifier'}.` : 'On prépare l\'automatisation…'; }
+  res.json({ actif: true, titre: r?.name || bloc || 'Holo', sur_mac: replay?.running ? replay.env !== 'cloud' : !!r?.sur_mac, cloud: replay?.running && replay.env === 'cloud',
+    bloc, phrase, index: Number(etape?.index) || null, total: Number(etape?.total) || null, faits: (r?.noeuds || []).map((n) => n.nom),
+    direct: session, depuis_s: r ? Math.round((Date.now() - r.startedAt) / 1000) : null });
+});
+
 app.get('/api/automations/etat', (req, res) => {
   const r = automationRun;
   const prochain = lirePlans().sort((x, y) => x.at.localeCompare(y.at))[0] || null;

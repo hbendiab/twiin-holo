@@ -64,11 +64,11 @@ function findIcons(text, max = 3) {
 const fmtDur = (x) => (x == null ? '—' : x >= 60 ? `${Math.floor(x / 60)} min ${String(Math.round(x % 60)).padStart(2, '0')} s` : `${Math.round(x)} s`);
 const iconImg = (e, cls = 'ticon') => `<img class="${cls}" src="icons/${e.file}" alt="" title="${escapeHtml(e.label)}">`;
 const iconsHtml = (text, max) => findIcons(text, max).map((e) => iconImg(e)).join('');
-// Bandeau « outils utilisés » : logo + nom, pour une liste d'étapes
+// Bandeau « outils utilisés » : le logo seul (le nom au survol et pour les lecteurs d'écran), pour une liste d'étapes
 function appsStrip(texts) {
   const seen = new Map();
   for (const t of texts) for (const e of findIcons(t, 5)) if (!seen.has(e.key)) seen.set(e.key, e);
-  return [...seen.values()].map((e) => `<span class="app-pill">${iconImg(e)}${escapeHtml(e.label)}</span>`).join('');
+  return [...seen.values()].map((e) => `<span class="app-pill logo-seul" title="${escapeHtml(e.label)}" role="img" aria-label="${escapeHtml(e.label)}">${iconImg(e)}</span>`).join('');
 }
 
 // --- Thème : clair par défaut, sombre au choix (mémorisé sur ce navigateur) -----------------------------------------
@@ -122,7 +122,10 @@ function makeCells(container) {
   };
 }
 const drawLogo = () => {}; // le logo est la vidéo des deux sphères (shell.js)
-const drawAnalysis = makeCells(document.getElementById('analysisCells'));
+// Attente de l'analyse : Iris et Ilo (les mêmes jumeaux que partout, rendus par jumeaux.js), qui parlent pendant qu'ils analysent
+const analysisTwins = document.getElementById('analysisCells');
+if (analysisTwins) analysisTwins.innerHTML = '<span class="tw-twins" aria-hidden="true"><i class="tw-orb iris"></i><i class="tw-orb ilo"></i></span>';
+const drawAnalysis = () => analysisTwins?.classList.toggle('parle', analysisMotion.mode === 'working');
 let analysisMotion = { mode: 'idle', since: 0 }; // working : la cellule s'étire ; done : elle se divise
 function animateCells(now) {
   drawLogo(0.42 + 0.1 * Math.sin(now / 1400));   // le logo « respire » : deux lobes collés
@@ -855,7 +858,9 @@ async function renderCardPicks(card, token) {
     pill.className = 'app-pill pick';
     pill.setAttribute('role', 'checkbox');
     pill.tabIndex = 0;
-    pill.innerHTML = `${iconsHtml(a.app, 1)}${escapeHtml(a.app)}<span class="t">${fmt(a.time_s)}</span>`;
+    // le logo suffit : le nom de l'appli seulement quand on n'a pas son logo (il reste au survol et pour les lecteurs d'écran)
+    pill.innerHTML = `${iconsHtml(a.app, 1) || escapeHtml(a.app)}<span class="t">${fmt(a.time_s)}</span>`;
+    pill.setAttribute('aria-label', a.app);
     const paint = () => {
       pill.setAttribute('aria-checked', String(!off.has(a.app)));
       pill.classList.toggle('off', off.has(a.app));
@@ -902,7 +907,7 @@ function workflowCard(wf, example = false, collapsed = false) {
   let original = { name: wf.name, summary: wf.summary, steps: [...(wf.steps || [])] };
   const nSteps = (wf.steps || []).length;
   card.innerHTML = `
-    <input class="wf-name" value="${escapeHtml(wf.name || 'Workflow')}" title="Nom de la tâche (modifiable)">
+    <input class="wf-name" data-court value="${escapeHtml(wf.name || 'Workflow')}" title="Nom de la tâche (modifiable)">
     <div class="apps-strip"></div>
     <p class="wf-summary" hidden>${escapeHtml(wf.summary || '')}</p>
     <div class="part-relire">
@@ -1090,7 +1095,7 @@ function workflowCard(wf, example = false, collapsed = false) {
                           ['Copier-coller', st.copies + st.pastes]].map(([k, v]) => `<div class="tile"><span>${k}</span><b>${v}</b></div>`).join('') : '';
       const recos = (adv.recommendations || []).map((x) => `<li><b>${escapeHtml(x.title || '')}</b>${x.gain ? ` <span class="gain">${escapeHtml(x.gain)}</span>` : ''}
           <div>${escapeHtml(x.suggestion || '')}</div></li>`).join('');
-      const plan = (ver.plan || []).map((p) => `<li>${iconsHtml(p.tool, 1)}<b>${escapeHtml(p.tool || '')}</b> : ${escapeHtml(p.what || '')}</li>`).join('');
+      const plan = (ver.plan || []).map((p) => `<li>${iconsHtml(p.tool, 1) ? `${iconsHtml(p.tool, 1)}<span title="${escapeHtml(p.tool || '')}">${escapeHtml(p.what || '')}</span>` : `<b>${escapeHtml(p.tool || '')}</b> : ${escapeHtml(p.what || '')}`}</li>`).join('');
       const gain = [ver.time_saved ? `Gain estimé : ${escapeHtml(ver.time_saved)}` : '', ver.frequency_hint ? escapeHtml(ver.frequency_hint) : ''].filter(Boolean).join(' · ');
       const bTuto = `<button class="btn-tuto" type="button">Créer la vidéo de formation</button>`;
       const bAuto = `<button class="btn-n8n" type="button">Créer l'automatisation</button>`;
@@ -1227,7 +1232,7 @@ const TUTO_PHASES = [
 ];
 async function createTuto(wf, example, el) {
   el.hidden = false;
-  el.innerHTML = `<div class="tuto"><h4>Tuto vidéo · ${escapeHtml(wf.name)}</h4><ol class="phases"></ol>
+  el.innerHTML = `<div class="tuto"><h4>Tuto vidéo · <span data-court>${escapeHtml(wf.name)}</span></h4><ol class="phases"></ol>
     <p class="phase-note">Compte 1 à 3 minutes. La vidéo s'affichera ici.</p><div class="tuto-video"></div></div>`;
   const phases = el.querySelector('.phases'), note = el.querySelector('.phase-note'), box = el.querySelector('.tuto-video');
   try {
@@ -1441,8 +1446,8 @@ function renderMyTasks(list) {
     const date = w.created_at ? new Date(w.created_at).toLocaleString('fr-FR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '';
     return `<li class="card task-card">
       <span class="tc-logos" aria-hidden="true">${logos.length ? logos.map((x) => `<img src="icons/${x.file}" alt="" title="${escapeHtml(x.label)}">`).join('') : '<span class="tc-vide"></span>'}</span>
-      <span class="tc-txt"><b>${escapeHtml(w.name || 'Tâche')}</b>
-        <span class="tc-meta">${logos.length ? `${logos.map((x) => escapeHtml(x.label)).join(' · ')} · ` : ''}${(w.steps || []).length} étapes${date ? ` · ${date}` : ''}</span></span>
+      <span class="tc-txt"><b data-court>${escapeHtml(w.name || 'Tâche')}</b>
+        <span class="tc-meta">${(w.steps || []).length} étapes${date ? ` · ${date}` : ''}</span></span>
       <span class="tc-actions">
         <button type="button" class="primary" data-open="${i}">Rouvrir</button>
         ${w.session ? `<a class="btn tc-ajout" href="/?session=${encodeURIComponent(w.session)}&ajout=1#enregistrer">${PLUS}Ajouter un passage oublié</a>` : ''}
@@ -1515,3 +1520,12 @@ iconsReady.then(async () => {
     statusEl.textContent = `Ouverture impossible : ${e.message}`;
   }
 });
+
+// Durées affichées partout dans le SaaS : des heures entières (« 12 h »), jamais de virgule ; sous une heure, des minutes
+function fmtTemps(minutes) {
+  const m = Math.max(0, Number(minutes) || 0);
+  if (m >= 59.5) return `${Math.round(m / 60)} h`;
+  if (m < 1) return '0 h';
+  return `${m > 10 ? Math.round(m / 5) * 5 : Math.round(m)} min`;
+}
+const fmtHeures = (h) => fmtTemps((Number(h) || 0) * 60);

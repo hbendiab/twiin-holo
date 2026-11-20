@@ -28,20 +28,28 @@ export type TutoData = {
   outroAudio: string | null;
   outroFrames: number;
   scenes: Scene[];
+  marque?: Marque | null;
+  logos?: string[]; // logos des applis de la tâche (couverture)
 };
 
+// DA Twiin : blanc et lavande, encre presque noire ; la couleur forte devient celle de l'entreprise cliente si elle est réglée
 export const COLORS = {
-  bg: "#0e1014",
-  panel: "#171a21",
-  line: "#272b35",
-  text: "#e8eaed",
-  dim: "#9aa0a6",
-  accent: "#4ea1ff",
-  ok: "#36d399",
-  warn: "#ffd166",
-  click: "#ff6b5b",
+  bg: "#f7f8fc",
+  panel: "#ffffff",
+  line: "#dce2f0",
+  text: "#161615",
+  dim: "#5d5d58",
+  accent: "#56669c",
+  lavender: "#c9d2e7",
+  chip: "#e6ebf5",
+  ok: "#1f8a5b",
+  warn: "#e8a33d",
+  click: "#e2533f",
 };
 
-export const FONT = '-apple-system, BlinkMacSystemFont, "Segoe UI", Inter, sans-serif';
+export type Marque = { nom: string; couleur: string | null; couleur2?: string | null; police?: string | null; logo: string | null };
+
+export const FONT = '"Google Sans Flex", -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, sans-serif';
+export const MONO = '"Geist Mono", ui-monospace, "SF Mono", Menlo, monospace';
 
 export const TRANSITION_FRAMES = 12;

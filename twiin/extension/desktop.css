@@ -14,3 +14,25 @@ body.compact .pill { display: flex; align-items: center; gap: 10px; height: 100v
 .pill button { -webkit-app-region: no-drag; }
 .pill .b { padding: 8px 14px; }
 .pill .round { width: 32px; height: 32px; }
+
+/* Mode réduit hors enregistrement : pas de point rouge ni de « Terminer » */
+body.compact:not(.recording) .pill .pdot, body.compact:not(.recording) .pill #pillStop { display: none; }
+body.compact .pill b { font-size: 15px; font-weight: 600; letter-spacing: -.02em; }
+/* Fenêtre étroite : rien ne déborde, le statut reste sur une ligne */
+.chip { white-space: nowrap; }
+@media (max-width: 340px) { .top .chip { display: none; } .card { padding: 12px !important; } .task h2 { font-size: 16px !important; } }
+@media (max-height: 460px) { .top { margin-bottom: 8px; } .foot { display: none; } }
+
+/* Barre d'enregistrement : mini (300 × 40), sans les ronds — point rouge, chrono, pause, Terminer, arrêt */
+body.compact .pill { gap: 8px !important; padding: 0 6px 0 12px !important; font: 12.5px -apple-system, "SF Pro Text", Inter, sans-serif !important; background: var(--canvas, #fff) !important; }
+body.compact .pill .pdot { width: 8px; height: 8px; background: #d6403f; }
+body.rec-pause.compact .pill .pdot { animation: none; opacity: .4; }
+body.compact .pill b { font: 600 14px ui-monospace, "SF Mono", Menlo, monospace !important; letter-spacing: 0 !important; }
+body.compact .pill .pinfo { font: 12px -apple-system, "SF Pro Text", Inter, sans-serif !important; color: var(--dim, #6f6f6a); }
+body.compact .pill .b { padding: 5px 11px !important; font-size: 12.5px !important; border-radius: 8px !important; }
+.pill .pbtn { -webkit-app-region: no-drag; width: 26px; height: 26px; flex: none; display: grid; place-items: center; padding: 0; border: 0; border-radius: 7px;
+  background: var(--brand-chip, #e6ebf5); color: var(--ink, #161615); cursor: pointer; }
+.pill .pbtn svg { width: 13px; height: 13px; stroke: currentColor; stroke-width: 2.2; fill: none; stroke-linecap: round; stroke-linejoin: round; }
+.pill .pbtn.on svg { fill: currentColor; stroke-width: 1; }
+.pill .pbtn.px { background: transparent; color: var(--dim, #6f6f6a); }
+.pill .pbtn.px:hover { background: rgba(214, 64, 63, .1); color: #d6403f; }

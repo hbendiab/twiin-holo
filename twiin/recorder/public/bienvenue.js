@@ -5,15 +5,25 @@
   if (window.TwiinBienvenue) return;
 
   // Ce qu'ils disent : voix ElevenLabs générées une fois (voix/*.mp3), avec l'instant où commence chaque mot.
+  // Le texte se change avec recorder/scripts/accueil.mjs, qui écrit voix/accueil.json (lu au démarrage) ; ci-dessous, la version par défaut.
   // Iris (voix « Victoria ») salue, Ilo (voix « Corentin ») donne l'accroche, puis les deux ensemble : « On se met au travail ? »
-  const SEGS = [
+  let SEGS = [
     { qui: [0], clips: ['iris-1'], ton: 'ink', mots: [["Bonjour", 0.0], ["!", 0.488], ["Bienvenue", 0.557], ["sur", 0.906], ["Twiin", 1.057], ["!", 1.382]], fin: 1.533 },
     { qui: [1], clips: ['ilo-1'], ton: 'dim', mots: [["Analyse", 0.0], ["tes", 0.453], ["tâches.", 0.604], ["Automatise", 1.08], ["tes", 1.73], ["process.", 1.846]], fin: 2.554 },
     { qui: [0, 1], clips: ['iris-2', 'ilo-2'], ton: null, mots: [], fin: 1.393 },
   ];
-  // Volume de chaque réplique (mesuré) : les deux voix au même niveau, et à deux, Ilo ne couvre pas Iris
-  const VOLUME = { 'iris-1': .56, 'ilo-1': .91, 'iris-2': .52, 'ilo-2': .85 };
-  SEGS.reduce((at, sg, i) => (sg.at = at, at + sg.fin + (i ? .45 : .3)), 0);
+  let BOUTON = 'Allons-y';
+  const placer = () => SEGS.reduce((at, sg, i) => (sg.at = at, at + sg.fin + (i ? .45 : .3)), 0);
+  placer();
+  // Volume égalisé automatiquement : chaque réplique est ramenée au même niveau moyen (≈ -22 dB), Iris comme Ilo
+  async function egaliser(nom, audio) {
+    try {
+      const buf = await new OfflineAudioContext(1, 1, 44100).decodeAudioData(await (await fetch(`/voix/${nom}.mp3`)).arrayBuffer());
+      const d = buf.getChannelData(0); let s2 = 0, n = 0;
+      for (let i = 0; i < d.length; i += 4) { const v = Math.abs(d[i]); if (v > .02) { s2 += v * v; n++; } }
+      if (n) audio.volume = Math.min(1, Math.pow(10, -22 / 20) / Math.sqrt(s2 / n)) * (nom === 'ilo-2' ? .9 : 1); // à deux, Ilo un peu en retrait
+    } catch { /* volume par défaut */ }
+  }
 
 
   const CSS = `
@@ -55,10 +65,10 @@
 .twb-go { margin-top: 22px; opacity: 0; transform: translateY(8px); transition: opacity .6s cubic-bezier(.16,1,.3,1), transform .6s cubic-bezier(.16,1,.3,1); }
 .twb.done .twb-go { opacity: 1; transform: none; }
 .twb button.twb-go { padding: 12px 18px !important; font: 600 15px var(--font, system-ui) !important; border: 1px solid transparent !important; cursor: pointer;
-  background: var(--brand, #c9d2e7) !important; color: var(--brand-ink, #181520) !important;
-  box-shadow: inset 0 1px 0 rgba(255,255,255,.55), 0 10px 22px -14px rgba(86,102,156,.8) !important; }
-.twb button.twb-go:hover { background: var(--brand-hover, #b9c4df) !important; box-shadow: 0 0 0 4px rgba(201,210,231,.55), 0 12px 26px -14px rgba(86,102,156,.85) !important; }
-.twb-go kbd { background: rgba(255,255,255,.55) !important; color: var(--brand-ink, #181520); }
+  background: var(--brand-strong, #56669c) !important; color: #fff !important;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.22), 0 10px 22px -12px rgba(56,66,110,.7) !important; }
+.twb button.twb-go:hover { background: var(--accent-hover, #44528a) !important; box-shadow: 0 0 0 4px rgba(86,102,156,.18), 0 12px 26px -12px rgba(56,66,110,.75) !important; }
+.twb-go kbd { background: rgba(255,255,255,.2) !important; color: #fff; }
 .twb.done .twb-skip { opacity: 0; }
 .twb-skip { transition: opacity .4s; }
 .twb-go kbd { font: 500 12px var(--mono, ui-monospace, monospace); background: rgba(255,255,255,.14); border-radius: 6px; padding: 2px 7px; margin-left: 8px; }
@@ -164,7 +174,12 @@ void main(){
   }
   const F = 1.55, CAM = 4.2; // focale assez courte pour que la goutte ne touche jamais les bords du cadre, même en rebondissant
 
-  function show({ onDone } = {}) {
+  async function show({ onDone } = {}) {
+    if (document.querySelector('.twb')) return;
+    try { // le texte du moment (démo, client…), généré par recorder/scripts/accueil.mjs
+      const c = await (await fetch('/voix/accueil.json', { cache: 'no-store' })).json();
+      if (c?.segs?.length === 3) { SEGS = c.segs; BOUTON = c.bouton || BOUTON; placer(); }
+    } catch { /* version par défaut */ }
     if (document.querySelector('.twb')) return;
     const still = matchMedia('(prefers-reduced-motion: reduce)').matches;
     if (!document.getElementById('twb-css')) { const st = document.createElement('style'); st.id = 'twb-css'; st.textContent = CSS; document.head.append(st); }
@@ -179,7 +194,7 @@ void main(){
         <div class="twb-logo" role="heading" aria-level="1" aria-label="Twiin"><span style="--k:0" aria-hidden="true">T</span><span style="--k:1" aria-hidden="true">w</span><span style="--k:2" aria-hidden="true">i</span><span style="--k:3" aria-hidden="true">i</span><span style="--k:4" aria-hidden="true">n</span></div>
         <div class="twb-stage" aria-hidden="true"><canvas></canvas>${face}${face}${face}</div>
         <p class="twb-say">${SEGS.filter((sg) => sg.ton).map((sg) => sg.mots.map(([m, at]) => `<span class="${sg.ton}" data-at="${(sg.at + at).toFixed(3)}">${m}</span>`).join(' ')).join('<br>')}</p>
-        <button type="button" class="btn primary twb-go">Allons-y<kbd>⏎</kbd></button>
+        <button type="button" class="btn primary twb-go">${BOUTON.replace(/[<>&]/g, '')}<kbd>⏎</kbd></button>
       </div>
       <span class="twb-skip" aria-hidden="true">Clic pour passer</span>
       <button type="button" class="twb-son" hidden><svg viewBox="0 0 24 24" aria-hidden="true" style="width:15px;height:15px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round;vertical-align:-3px;margin-right:6px"><path d="M4 9h4l5-4v14l-5-4H4z"/><path d="M16 9a4 4 0 0 1 0 6M18.5 6.5a7.5 7.5 0 0 1 0 11"/></svg>Écouter Iris et Ilo</button>`;
@@ -233,7 +248,7 @@ void main(){
 
     // Voix : on tente la lecture ; si le navigateur bloque le son (pas encore de clic sur la page), l'animation continue
     // en silence et un bouton propose de rejouer avec le son.
-    const audios = Object.fromEntries(SEGS.flatMap((sg) => sg.clips).map((c) => { const a = new Audio(`/voix/${c}.mp3`); a.preload = 'auto'; a.volume = VOLUME[c] ?? 1; return [c, a]; }));
+    const audios = Object.fromEntries(SEGS.flatMap((sg) => sg.clips).map((c) => { const a = new Audio(`/voix/${c}.mp3?v=${SEGS[0].fin}`); a.preload = 'auto'; egaliser(c, a); return [c, a]; }));
     const effets = CUES.map(([, f, rate, vol]) => { const a = new Audio(`/sons/${f}.mp3`); a.preload = 'auto'; a.volume = vol; a.playbackRate = rate; a.preservesPitch = false; return a; });
     const faits = new Set();
     const stopSon = () => [...Object.values(audios), ...effets].forEach((a) => { a.pause(); a.currentTime = 0; });

@@ -5,7 +5,7 @@
 const Capture = (() => {
   const MIN_GAP_MS = 1500, SETTLE_MAX_MS = 3000, HEARTBEAT_MS = 60000;
   const CHANGE_THRESHOLD = 3, STABLE_THRESHOLD = 1.5, MODEL_MAX_DIMENSION = 1024, OCR_MAX_DIMENSION = 1600;
-  const S = { recording: false, analyzing: false, phase: null, hadVoice: false, startedAt: 0, frames: 0, screens: [], thumbs: [], error: null, result: null, review: null };
+  const S = { recording: false, paused: false, ajout: null, analyzing: false, phase: null, hadVoice: false, startedAt: 0, frames: 0, screens: [], thumbs: [], error: null, result: null, review: null };
   let base = 'http://localhost:3000', token = null, onUpdate = () => {}, transport = null;
   let shared = [], nextScreen = 1, sessionId = null, journalNext = 0, uploads = [], uploadErrors = 0, busy = false, stopping = false;
 
@@ -55,19 +55,30 @@ const Capture = (() => {
     if (S.recording) return addScreen(opts);
     const stream = await ask(opts); // avant tout le reste : le clic de l'employé n'est valable qu'un instant
     const mic = await globalThis.Voice?.open(); // voix : seulement si voice.js est chargé et l'interrupteur activé
-    Object.assign(S, { recording: true, analyzing: false, phase: null, hadVoice: false, startedAt: Date.now(), frames: 0, screens: [], thumbs: [], error: null, result: null, review: null });
+    Object.assign(S, { recording: true, paused: false, ajout: opts?.ajouterA ? { id: opts.ajouterA, titre: opts.titre || '' } : null,
+      analyzing: false, phase: null, hadVoice: false, startedAt: Date.now(), frames: 0, screens: [], thumbs: [], error: null, result: null, review: null });
     shared = []; nextScreen = 1; uploads = []; uploadErrors = 0; journalNext = 0;
     addStream(stream);
-    sessionId = (await post('/api/actions/start', { startedAt: S.startedAt }, 15000)).session || null;
+    // « Ajouter un passage oublié » : ces étapes s'ajouteront à la fin de la tâche ajouterA (comme dans le SaaS)
+    sessionId = (await post('/api/actions/start', { startedAt: S.startedAt, ajouterA: S.ajout?.id || null }, 15000)).session || null;
     if (!sessionId) { S.error = 'Twiin ne répond pas sur ce Mac : enregistrement impossible.'; await stop({ cancel: true }); }
     if (sessionId && S.recording) globalThis.Voice?.start(mic); else mic?.getTracks().forEach((t) => t.stop()); // micro seulement si l'enregistrement a démarré
     emit();
   }
   async function addScreen(opts) { addStream(await ask(opts)); }
+  // Pause / reprise : pendant la pause, rien n'est observé ni noté (ni images, ni clics)
+  async function pause() {
+    if (!S.recording) return;
+    const d = await post('/api/actions/pause', {}, 5000);
+    if (d.error) { S.error = d.error; return emit(); }
+    S.paused = !!d.paused;
+    globalThis.Voice?.state?.recording && (S.paused ? globalThis.Voice?.pause?.() : globalThis.Voice?.resume?.());
+    emit();
+  }
 
   // Cadence : un worker, pour ne pas être ralenti si le panneau passe en arrière-plan
   new Worker('ticker.js').onmessage = async () => {
-    if (!S.recording || busy || stopping) return;
+    if (!S.recording || S.paused || busy || stopping) return;
     busy = true;
     try { const now = Date.now(); await Promise.all(S.screens.map((s) => observe(s, now))); await pollJournal(); } finally { busy = false; }
   };
@@ -78,7 +89,7 @@ const Capture = (() => {
     for (const e of d.events) forceCaptureAfter(e);
   }
   function forceCaptureAfter(e) { // une saisie ou un clic change parfois peu de pixels : image forcée juste après
-    if (!S.recording || !['typing', 'shortcut', 'click', 'key'].includes(e.type)) return;
+    if (!S.recording || S.paused || !['typing', 'shortcut', 'click', 'key'].includes(e.type)) return;
     const sh = shared.find((x) => new RegExp(`^screen:${e.display}:`).test(x.label));
     for (const scr of sh ? S.screens.filter((s) => s.n === sh.n) : S.screens) {
       clearTimeout(scr.forceTimer);
@@ -131,7 +142,7 @@ const Capture = (() => {
     if (!S.recording || stopping) return;
     stopping = true;
     if (!cancel) { S.analyzing = true; S.phase = 'upload'; } // l'écran d'analyse s'affiche tout de suite
-    S.recording = false;
+    S.recording = false; S.paused = false;
     emit();
     if (!cancel) await pollJournal();
     await post('/api/actions/stop', {}, 5000);
@@ -196,7 +207,7 @@ const Capture = (() => {
   return {
     state: S,
     config(o) { if (o.base) base = o.base; if ('token' in o) token = o.token; if (o.onUpdate) onUpdate = o.onUpdate; if (o.transport) transport = o.transport; },
-    start, addScreen, reanalyze, stop, cancel: () => stop({ cancel: true }), analyse,
+    start, addScreen, pause, reanalyze, stop, cancel: () => stop({ cancel: true }), analyse,
     clear() { S.error = null; S.result = null; emit(); },
     // Relecture : retirer / remettre une image, texte seul, ou tout supprimer (rien n'est envoyé)
     toggle(i) { const r = S.review?.remove; if (!r) return; r.has(i) ? r.delete(i) : r.add(i); emit(); },

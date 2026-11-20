@@ -9,21 +9,23 @@
 <link rel="stylesheet" href="desktop.css">
 <link rel="stylesheet" href="voice.css">
 <link rel="stylesheet" href="reco.css">
+<link rel="stylesheet" href="twiin-da.css">
 </head>
 <body>
   <header class="top">
-    <span class="brand"><img class="tw-logo" src="logo-twiin.webp" alt="">Twiin</span>
+    <span class="brand"><span class="tw-twins" aria-hidden="true"><i class="tw-orb iris"></i><i class="tw-orb ilo"></i></span>Twiin</span>
     <span id="conn" class="chip">…</span>
     <button id="openTwiin" class="round" type="button" aria-label="Ouvrir Twiin dans le navigateur" title="Ouvrir Twiin dans le navigateur"><svg viewBox="0 0 24 24"><path d="M14 4h6v6"/><path d="M20 4l-9 9"/><path d="M18 14v6H4V6h6"/></svg></button>
-    <button id="hideWin" class="round" type="button" aria-label="Masquer (⌥⌘T pour revenir)" title="Masquer (⌥⌘T pour revenir)"><svg viewBox="0 0 24 24"><path d="M6 12h12"/></svg></button>
+    <button id="hideWin" class="round" type="button" aria-label="Réduire dans le Dock" title="Réduire dans le Dock (⌥⌘T pour masquer)"><svg viewBox="0 0 24 24"><path d="M6 12h12"/></svg></button>
   </header>
 
   <!-- Pastille pendant un enregistrement -->
   <div class="pill" aria-live="polite">
-    <span class="pdot"></span><img class="tw-logo" src="logo-twiin.webp" alt=""><b id="pillTime">00:00</b>
+    <span class="pdot"></span><b id="pillTime">00:00</b>
     <span class="pinfo" id="pillInfo"></span>
+    <button class="pbtn" id="pillPause" type="button" aria-label="Pause" title="Pause"><svg viewBox="0 0 24 24"><path d="M9 6v12M15 6v12"/></svg></button>
     <button class="b dark" id="pillStop" type="button">Terminer</button>
-    <button class="round" id="pillOpen" type="button" aria-label="Agrandir" title="Agrandir"><svg viewBox="0 0 24 24"><path d="M4 14v6h6"/><path d="M20 10V4h-6"/></svg></button>
+    <button class="pbtn px" id="pillCancel" type="button" aria-label="Arrêter sans analyser" title="Arrêter sans analyser"><svg viewBox="0 0 24 24"><path d="M7 7l10 10M17 7L7 17"/></svg></button>
   </div>
 
   <div class="voicebar"><span id="voiceSlot"></span></div>
@@ -31,7 +33,7 @@
   <main id="app"><p class="muted">Connexion à Twiin…</p></main>
 
   <footer class="foot">
-    <span class="keys"><kbd>⌥⌘T</kbd> afficher / masquer Twiin, depuis n'importe quelle appli · Twiin n'apparaît pas dans tes enregistrements.</span>
+    <span class="keys"><kbd>⌥⌘T</kbd> afficher / masquer</span>
     <label class="switch" hidden><input type="checkbox" id="bubbleToggle"></label>
     <button id="resetHidden" class="link" type="button" hidden></button>
   </footer>
@@ -41,5 +43,6 @@
 <script src="capture.js"></script>
 <script src="panel.js"></script>
 <script src="desktop.js"></script>
+<script src="jumeaux.js"></script>
 </body>
 </html>

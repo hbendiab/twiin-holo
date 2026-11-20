@@ -142,7 +142,9 @@
   /* --- attente de l'analyse : cellules + étapes cochées --- */
   #analysis { display: grid; grid-template-columns: 150px minmax(0, 1fr); gap: 20px; align-items: center;
               background: var(--panel); border: 1px solid var(--panel-border); border-radius: 18px; padding: 18px 22px; margin: 0 0 24px; }
-  #analysis svg { width: 150px; height: 96px; display: block; }
+  #analysisCells { display: grid; place-items: center; }
+  #analysisCells .tw-orb { --s: 58px; }
+  #analysisCells .tw-twins { gap: 6px; }
   #analysis h4 { margin: 0 0 8px; font-size: 15px; font-weight: 600; }
   .phases { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; font-size: 14px; }
   .phases li { display: flex; align-items: center; gap: 10px; color: var(--text-dim); }
@@ -316,6 +318,8 @@
   #example .ex-meta { display: flex; align-items: center; gap: 10px; }
   #example .ex-meta .apps-strip { margin: 0; }
   /* bulles d'applis cliquables (ignorer une appli ouverte par erreur) : petites, discrètes */
+  .app-pill.logo-seul { padding: 4px; } .app-pill.logo-seul .ticon { margin-right: 0; }
+  .app-pill.pick .ticon { margin-right: 0; }
   .app-pill.pick { cursor: pointer; user-select: none; gap: 0; transition: opacity 0.15s ease; }
   .app-pill.pick .t { margin-left: 6px; font-size: 11px; color: var(--text-dim); font-weight: 400; }
   .app-pill.pick.off { opacity: 0.45; text-decoration: line-through; }
@@ -435,18 +439,74 @@
   .a2 textarea { width: 100%; min-height: 80px; resize: vertical; }
   .a2-intro ol { margin: 8px 0 14px; padding-left: 20px; font-size: 14px; display: grid; gap: 4px; }
   .a2-consent { display: grid; gap: 8px; padding: 12px 14px; border-radius: 12px; background: var(--panel-2); margin: 10px 0; }
-  /* « Mon travail » : priorités, poste, tâches, outils (l'historique de l'audit) */
+  /* « Mon travail » : le parcours, UNE prochaine étape (un seul bouton plein), puis le reste en plus discret */
   #a2.a2-fini > .a2-top, #a2.a2-fini > .a2-nav { display: none !important; }
-  .mt-bloc + .mt-bloc { margin-top: 30px; }
+  .mt-parcours { list-style: none; display: flex; gap: 6px; margin: 0 0 22px; padding: 0; counter-reset: none; flex-wrap: wrap; }
+  .mt-parcours li { display: flex; align-items: center; gap: 8px; font-size: 13.5px; color: color-mix(in srgb, var(--ink) 55%, transparent); padding: 6px 12px 6px 6px; border-radius: 999px; }
+  .mt-parcours li span { width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center; font: 600 11.5px var(--mono); background: var(--brand-chip, var(--chip)); }
+  .mt-parcours li + li::before { content: ""; width: 18px; height: 1px; background: var(--brand-rule, var(--rule)); margin: 0 4px 0 -10px; }
+  .mt-parcours li.fait span { background: var(--brand-strong, var(--accent)); color: #fff; font-size: 0; }
+  .mt-parcours li.fait span::after { content: "✓"; font-size: 12px; }
+  .mt-parcours li.ici { color: var(--ink); font-weight: 600; background: var(--brand-chip, var(--chip)); }
+  .mt-parcours li.ici span { background: var(--ink); color: var(--canvas); }
+  .mt-hero { padding: 24px 26px; border-radius: var(--r-panel, 12px); background: var(--glass-fill, var(--wash)); border: 1px solid var(--brand-strong, var(--accent));
+    box-shadow: var(--glass-shadow, none); }
+  .mt-kicker { margin: 0 0 6px; font: 500 12px var(--mono); text-transform: uppercase; letter-spacing: .06em; color: var(--brand-strong, var(--accent)); }
+  .mt-hero h3 { margin: 0; font-size: clamp(21px, 2.4vw, 26px); font-weight: 600; letter-spacing: -0.025em; line-height: 1.2; }
+  .mt-why { margin: 8px 0 14px; font-size: 15px; line-height: 1.5; color: color-mix(in srgb, var(--ink) 72%, transparent); max-width: 60ch; }
+  .mt-chips { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 18px; }
+  .mt-chip { font-size: 13.5px; padding: 6px 12px; border-radius: 999px; background: #fff; border: 1px solid var(--brand-rule, var(--rule)); }
+  :root[data-theme="dark"] .mt-chip { background: transparent; }
+  .mt-chip b { font-weight: 600; }
+  .mt .mt-cta { padding: 13px 22px !important; font-size: 15.5px !important; }
+  .mt-bloc { margin-top: 30px; }
   .mt-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 10px; }
-  .mt-head h3 { margin: 0; font-size: 19px; font-weight: 600; letter-spacing: -0.02em; }
+  .mt-head h3 { margin: 0; font-size: 17px; font-weight: 600; letter-spacing: -0.015em; }
   .mt-date { font: 500 12px var(--mono); color: var(--brand-strong, var(--accent)); }
-  .mt .rc-keys { margin: 0; }
+  .mt-rows { list-style: none; margin: 0; padding: 0; border-top: 1px solid var(--brand-rule, var(--rule)); }
+  .mt-rows li { display: flex; align-items: center; gap: 14px; padding: 12px 4px; border-bottom: 1px solid var(--brand-rule, var(--rule)); }
+  .mt-rang { flex: none; width: 26px; height: 26px; border-radius: 8px; display: grid; place-items: center; font: 600 12px var(--mono); background: var(--brand-chip, var(--chip)); }
+  .mt-nom { flex: 1; min-width: 0; font-size: 15px; font-weight: 500; }
+  .mt-bonjour { display: flex; align-items: baseline; gap: 12px; margin: 0 0 6px; }
+  .mt-bonjour h2 { margin: 0; font-size: clamp(28px, 3vw, 38px); font-weight: 600; letter-spacing: -0.035em; }
+  .mt-bonjour input { font: inherit; letter-spacing: inherit; width: 8em; border: 0; border-bottom: 2px solid var(--brand-strong); background: transparent; color: inherit; padding: 0 2px; }
+  .mt-bonjour input:focus { outline: none; }
+  .mt-prenom { font-size: 13px; padding: 4px 8px; }
+  .mt-verif { display: flex; gap: 16px; align-items: flex-start; margin: 0 0 16px; padding: 20px 22px; border-radius: var(--r-panel, 10px);
+    border: 1px solid color-mix(in srgb, #e8a33d 55%, transparent); background: color-mix(in srgb, #e8a33d 9%, var(--canvas, #fff)); }
+  .mt-verif-ico img, .mt-verif-ico .noicon { width: 44px; height: 44px; border-radius: 12px; background: #fff; padding: 6px; border: 1px solid var(--brand-rule, var(--rule)); object-fit: contain; }
+  .mt-verif-corps { flex: 1; min-width: 0; }
+  .mt-verif .mt-kicker { color: #a8661a; }
+  .mt-verif h3 { margin: 2px 0 4px; font-size: 20px; font-weight: 600; letter-spacing: -0.02em; }
+  .mt-verif-why { margin: 0 0 14px; font-size: 14px; color: color-mix(in srgb, var(--ink) 70%, transparent); }
+  .mt-verif-champs { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
+  .mt-verif-champs input { flex: 1 1 240px; min-width: 0; }
+  .mt-verif-champs input, .mt-verif-champs select { font: inherit; font-size: 14px; padding: 9px 11px; border-radius: var(--r-card, 8px); border: 1px solid var(--brand-rule, var(--rule)); background: var(--canvas, #fff); color: var(--ink); }
+  .mt-verif-acts { display: flex; gap: 8px; flex-wrap: wrap; }
+  .mt-compteur { display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap; margin: 0 0 22px; }
+  .mt-compteur b { font-size: clamp(56px, 7vw, 88px); font-weight: 600; letter-spacing: -0.055em; line-height: .95; color: var(--brand-strong, #56669c); }
+  .mt-compteur span { font-size: 19px; font-weight: 500; letter-spacing: -0.015em; }
+  .mt-compteur em { font: 500 13px var(--mono, ui-monospace, monospace); font-style: normal; text-transform: uppercase; letter-spacing: .05em;
+    padding: 7px 12px; border-radius: 999px; background: var(--brand-chip, #e6ebf5); color: var(--brand-strong, #56669c); margin-left: auto; align-self: center; }
+  .mt-hero h3 + .mt-cta { margin-top: 18px; }
+  .mt-gain { flex: none; font: 600 15px var(--mono, ui-monospace, monospace); letter-spacing: -.02em; padding: 7px 13px; border-radius: 999px;
+    background: var(--brand-chip, #e6ebf5); color: var(--brand-strong, #56669c); }
+  .mt-gain small { font-size: 12px; font-weight: 500; opacity: .8; }
+  .mt-nom small { display: block; font-size: 13px; font-weight: 400; color: color-mix(in srgb, var(--ink) 62%, transparent); margin-top: 2px; }
+  .mt-poste { display: flex; gap: 28px; align-items: center; flex-wrap: wrap; padding: 14px 4px; }
+  .mt-poste small { display: block; font: 500 11px var(--mono); text-transform: uppercase; letter-spacing: .06em; color: color-mix(in srgb, var(--ink) 55%, transparent); }
+  .mt-poste b { font-size: 17px; font-weight: 600; }
+  .mt-logos { display: flex; margin-left: auto; align-items: center; }
+  .mt-logos img, .mt-logos .noicon { width: 30px; height: 30px; border-radius: 9px; background: #fff; padding: 4px; border: 1px solid var(--brand-rule, var(--rule)); object-fit: contain; }
+  .mt-logos img + img { margin-left: -8px; }
+  .mt-logos em { font: 500 12px var(--mono); font-style: normal; margin-left: 8px; color: color-mix(in srgb, var(--ink) 60%, transparent); }
+  .mt-detail { margin-top: 6px; border-top: 1px solid var(--brand-rule, var(--rule)); padding-top: 10px; }
+  .mt-detail summary { cursor: pointer; font-size: 14.5px; font-weight: 500; color: var(--brand-strong, var(--accent)); padding: 4px 0; }
+  .mt-detail[open] summary { margin-bottom: 10px; }
+  .mt-alerte ul { margin: 0; padding-left: 20px; font-size: 14px; line-height: 1.6; }
   .rc-tasks .nom em.dim { color: color-mix(in srgb, var(--ink) 60%, transparent); background: transparent; border: 1px solid var(--brand-rule, var(--rule)); }
-  .mt-fin { margin-top: 26px; display: flex; justify-content: flex-end; }
-  .mt-fin button { padding: 11px 18px !important; font-size: 14.5px !important; background: #fff !important; border: 1px solid var(--brand-strong, var(--accent)) !important;
-    color: var(--brand-strong, var(--accent)) !important; border-radius: var(--r-btn, 10px) !important; }
-  :root[data-theme="dark"] .mt-fin button { background: transparent !important; }
+  .mt-fin { margin-top: 22px; display: flex; justify-content: flex-end; }
+  @media (max-width: 640px) { .mt-logos { margin-left: 0; } .mt-rows li { flex-wrap: wrap; } }
 
   /* « Mes tâches déjà enregistrées » : une carte par tâche, avec les logos de ses applis */
   .task-card { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 14px; align-items: center; padding: 14px 16px !important; }

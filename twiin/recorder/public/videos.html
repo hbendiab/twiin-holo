@@ -26,6 +26,18 @@
                     background: rgba(0, 0, 0, .65); padding: 1px 7px; border-radius: 6px; }
   .card .body { padding: 10px 12px 12px; display: grid; gap: 2px; }
   .card .body b { font-size: 14px; font-weight: 600; color: var(--text); }
+  #grid { display: block !important; }
+  .vtabs { display: inline-flex; gap: 2px; margin: 0 0 22px; padding: 3px; border-radius: 12px; background: var(--brand-chip); }
+  .vtabs button { font: 500 14px var(--font) !important; padding: 8px 16px !important; border-radius: 9px !important; border: 0 !important; background: transparent !important; box-shadow: none !important; color: var(--ink) !important; }
+  .vtabs button[aria-selected="true"] { background: var(--canvas, #fff) !important; box-shadow: 0 2px 8px -4px rgba(40,46,80,.4) !important; }
+  .partage-info { margin: 8px 0 0; font-size: 13px; color: var(--brand-strong); }
+  .partage-info:empty { display: none; }
+  .grid-cat { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 16px; margin-bottom: 26px; }
+  .cats { display: flex; gap: 8px; flex-wrap: wrap; }
+  .cat { font: 500 12.5px var(--mono, ui-monospace, monospace) !important; text-transform: uppercase; letter-spacing: .04em; padding: 8px 14px !important;
+    border-radius: 999px !important; background: var(--brand-chip) !important; color: var(--ink) !important; border: 0 !important; box-shadow: none !important; }
+  .cat[aria-pressed="true"] { background: var(--brand-strong) !important; color: #fff !important; }
+  .cat-titre { margin: 4px 0 12px; font-size: 18px; font-weight: 600; letter-spacing: -0.02em; }
   @media (max-width: 760px) { .player { grid-template-columns: minmax(0, 1fr); } }
 </style>
 <link rel="stylesheet" href="theme.css">
@@ -38,6 +50,7 @@
   </header>
 
   <h1>Mes vidéos de formation</h1>
+  <div class="vtabs" role="tablist"><button type="button" role="tab" data-vue="mes">Mes vidéos</button><button type="button" role="tab" data-vue="equipe">Équipe</button></div>
 
   <section class="player" id="player" hidden>
     <video id="video" controls preload="metadata"></video>
@@ -46,7 +59,9 @@
       <div class="facts" id="pFacts"></div>
       <p class="intro" id="pIntro"></p>
       <ol id="pSteps"></ol>
-      <div class="actions"><a class="btn primary" id="pDownload" download>Télécharger la vidéo</a></div>
+      <div class="actions"><a class="btn primary" id="pDownload" download>Télécharger la vidéo</a>
+        <button type="button" id="pShare">Partager avec l'équipe</button></div>
+      <p class="partage-info" id="pShareInfo"></p>
     </div>
   </section>
 
@@ -70,11 +85,23 @@ function show(name, scroll) {
   document.getElementById('player').hidden = false;
   const v = document.getElementById('video');
   if (!v.src.endsWith(t.url)) { v.src = t.url; v.poster = t.thumb || ''; }
-  document.getElementById('pTitle').innerHTML = `${iconsHtml(t.steps.map((s) => s.narration).join(' '), 3)} ${escapeHtml(t.title)}`;
-  document.getElementById('pFacts').innerHTML = [fmtDur(t.seconds), `${t.steps.length} étapes`, fmtDate(t.created), `${t.size_mb} Mo`]
+  document.getElementById('pTitle').innerHTML = `${iconsHtml(t.steps.map((s) => s.narration).join(' '), 3)} <span data-court>${escapeHtml(t.title)}</span>`;
+  document.getElementById('pFacts').innerHTML = [fmtDur(t.seconds), `${t.steps.length} étapes`, fmtDate(t.created)]
     .map((x) => `<span>${escapeHtml(x)}</span>`).join('');
   document.getElementById('pIntro').textContent = t.intro;
   document.getElementById('pSteps').innerHTML = t.steps.map((s) => `<li><b>${escapeHtml(s.title)}</b>${s.tip ? `<span>Astuce : ${escapeHtml(s.tip)}</span>` : ''}</li>`).join('');
+  const sh = document.getElementById('pShare'), info = document.getElementById('pShareInfo');
+  sh.textContent = t.partage ? 'Retirer de l\'équipe' : 'Partager avec l\'équipe';
+  info.textContent = t.partage ? `Partagée avec l'équipe${t.partage.par ? ` par ${t.partage.par}` : ''}` : '';
+  sh.onclick = async () => {
+    sh.disabled = true;
+    const r = await fetch(t.partage ? `/api/equipe/partages/${encodeURIComponent(t.name)}` : '/api/equipe/partages',
+      t.partage ? { method: 'DELETE' } : { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ ref: t.name }) }).catch(() => null);
+    sh.disabled = false;
+    if (!r?.ok) { info.textContent = 'Partage impossible : le serveur ne répond pas.'; return; }
+    t.partage = t.partage ? null : { par: window.TwiinEspace?.membre?.prenom || null, le: new Date().toISOString() };
+    show(t.name);
+  };
   const dl = document.getElementById('pDownload');
   dl.href = t.url; dl.download = `${t.name}.mp4`;
   document.querySelectorAll('.card').forEach((c) => c.classList.toggle('on', c.dataset.name === t.name));
@@ -84,14 +111,43 @@ function show(name, scroll) {
 Promise.all([fetch('/api/tutos').then((r) => r.json()), iconsReady]).then(([d]) => {
   tutos = d.tutos || [];
   document.getElementById('empty').hidden = tutos.length > 0;
-  document.getElementById('countTitle').textContent = tutos.length ? `${tutos.length} tuto${tutos.length > 1 ? 's' : ''}` : '';
-  document.getElementById('grid').innerHTML = tutos.map((t) => `
+  // Catégories : une rangée de filtres, et les vidéos regroupées par catégorie
+  const tous = tutos;
+  let vue = location.hash === '#equipe' ? 'equipe' : 'mes', cats = [], filtre = null;
+  const choisirVue = (v) => {
+    vue = v; filtre = null;
+    history.replaceState(null, '', v === 'equipe' ? '#equipe' : location.pathname);
+    tutos = vue === 'equipe' ? tous.filter((t) => t.partage) : tous;
+    cats = (d.categories || []).filter((c) => tutos.some((t) => t.categorie === c));
+    document.querySelectorAll('.vtabs [data-vue]').forEach((b) => b.setAttribute('aria-selected', String(b.dataset.vue === vue)));
+    document.getElementById('empty').hidden = tutos.length > 0;
+    document.getElementById('empty').innerHTML = vue === 'equipe' ? `<b>Rien de partagé pour l'instant</b>Ouvre une de tes vidéos et clique « Partager avec l'équipe ».`
+      : `<b>Aucun tuto pour l'instant</b>Analyse une tâche, puis choisis « Créer la vidéo ».<p><a class="btn primary" href="/#enregistrer">Analyser une tâche</a></p>`;
+    document.getElementById('player').hidden = !tutos.length;
+    dessiner();
+    if (tutos.length) show(tutos.some((t) => t.name === document.querySelector('.card.on')?.dataset.name) ? document.querySelector('.card.on').dataset.name : tutos[0].name);
+  };
+  document.querySelectorAll('.vtabs [data-vue]').forEach((b) => (b.onclick = () => choisirVue(b.dataset.vue)));
+  const carte = (t) => `
     <button class="card" data-name="${escapeHtml(t.name)}" type="button">
       <span class="thumb" style="${t.thumb ? `background-image:url('${t.thumb}')` : ''}"><em>${fmtDur(t.seconds)}</em></span>
-      <span class="body"><b>${escapeHtml(t.title)}</b><span class="meta">${t.steps.length} étapes · ${fmtAgo(t.created)}</span></span>
-    </button>`).join('');
-  document.querySelectorAll('.card').forEach((c) => c.addEventListener('click', () => show(c.dataset.name, true)));
-  show(decodeURIComponent(location.hash.slice(1)));
+      <span class="body"><b data-court>${escapeHtml(t.title)}</b><span class="meta">${vue === 'equipe' && t.partage
+        ? `Partagée${t.partage.par ? ` par ${escapeHtml(t.partage.par)}` : ''} · ${fmtAgo(t.partage.le)}` : `${t.steps.length} étapes · ${fmtAgo(t.created)}`}</span></span>
+    </button>`;
+  const dessiner = () => {
+    document.getElementById('countTitle').innerHTML = tutos.length < 2 || cats.length < 2 ? '' : `<span class="cats" role="group" aria-label="Catégories">${
+      [[null, `Toutes · ${tutos.length}`], ...cats.map((c) => [c, `${c} · ${tutos.filter((t) => t.categorie === c).length}`])]
+        .map(([c, l]) => `<button type="button" class="cat" data-cat="${c || ''}" aria-pressed="${filtre === c}">${escapeHtml(l)}</button>`).join('')}</span>`;
+    document.getElementById('grid').innerHTML = (filtre ? [filtre] : cats.length ? cats : [null]).map((c) => {
+      const l = tutos.filter((t) => !c || t.categorie === c);
+      return `${c && !filtre && cats.length > 1 ? `<h4 class="cat-titre">${escapeHtml(c)}</h4>` : ''}<div class="grid-cat">${l.map(carte).join('')}</div>`;
+    }).join('');
+    document.querySelectorAll('.card').forEach((x) => x.addEventListener('click', () => show(x.dataset.name, true)));
+    document.querySelectorAll('.cat').forEach((x) => x.addEventListener('click', () => { filtre = x.dataset.cat || null; dessiner(); }));
+  };
+  choisirVue(vue);
+  const h = decodeURIComponent(location.hash.slice(1));
+  if (h && h !== 'equipe') show(h);
 }).catch(() => { document.getElementById('empty').hidden = false; });
 </script>
 </body>

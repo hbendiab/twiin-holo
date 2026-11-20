@@ -24,6 +24,91 @@
   .flow .blk.holo.cloud { border-color: var(--ok); }
   .flow .blk em { font-style: normal; font-size: 10.5px; font-weight: 600; margin-left: 4px; color: var(--text-dim); }
   .flow .arrow { color: var(--text-dim); font-size: 12px; }
+  .zone-suppr { margin-top: 22px; padding-top: 16px; border-top: 1px solid var(--brand-rule, var(--panel-border)); display: flex; justify-content: flex-end; }
+  .zone-suppr button { background: transparent !important; color: var(--bad, #c0392b) !important; border: 1px solid rgba(214, 64, 63, .35) !important; padding: 9px 14px !important; }
+  .zone-suppr button:hover:not(:disabled) { background: rgba(214, 64, 63, .08) !important; }
+  /* Fiche façon n8n : une toile pointillée avec les étapes en nœuds reliés, et une carte à rubriques en petites capitales */
+  .dash { padding: 14px !important; background: var(--brand-tint, #f3f5fb) !important; border-radius: 22px !important; }
+  .vitrine { display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; }
+  .toile { position: relative; min-height: 150px; border-radius: 16px; overflow: hidden;
+    background-image: radial-gradient(circle, color-mix(in srgb, var(--brand-strong, #56669c) 22%, transparent) 1px, transparent 1.3px); background-size: 18px 18px; }
+  .noeuds { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; flex-wrap: nowrap; gap: 0; padding: 20px; overflow-x: auto; }
+  .noeud { position: relative; flex: none; width: 64px; height: 64px; border-radius: 16px; background: #fff; display: grid; place-items: center; z-index: 1;
+    box-shadow: 0 10px 24px -16px rgba(24, 21, 32, .45); border: 1px solid var(--brand-rule, #dce2f0); }
+  :root[data-theme="dark"] .noeud { background: var(--canvas); }
+  .noeud img { width: 34px; height: 34px; object-fit: contain; }
+  .noeud .vide { width: 26px; height: 26px; color: var(--brand-strong, #56669c); }
+  .noeud.mac::after, .noeud.cloud::after { content: ""; position: absolute; top: -4px; right: -4px; width: 12px; height: 12px; border-radius: 50%; border: 2px solid #fff; }
+  .noeud.mac::after { background: #e8a33d; } .noeud.cloud::after { background: var(--ok, #1f8a5b); }
+  .fil { display: block; position: relative; flex: none; width: 34px; height: 2px; background: var(--brand-rule, #dce2f0); }
+  .fil::before, .fil::after { content: ""; position: absolute; top: -4px; width: 10px; height: 10px; border-radius: 50%; background: var(--brand-strong, #56669c); opacity: .55; }
+  .fil::before { left: -6px; } .fil::after { right: -6px; }
+  .fiche { padding: 28px 28px 26px; border-radius: 18px; background: var(--glass-fill, #fff); border: 1px solid var(--glass-line, #dce2f0);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.9), 0 16px 34px -26px rgba(56, 66, 110, .5); }
+  .fiche h2 { font-size: clamp(26px, 2.6vw, 34px) !important; font-weight: 600 !important; letter-spacing: -0.035em; line-height: 1.1; margin: 0 0 12px !important; }
+  .fiche .phrase { font-size: 15.5px; line-height: 1.5; margin: 0 0 22px; color: var(--ink); display: block; }
+  .lab { margin: 0 0 8px; font: 500 11.5px var(--mono); text-transform: uppercase; letter-spacing: .06em; color: var(--ink); }
+  .puces { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 20px; }
+  .puce { font: 500 12.5px var(--mono); text-transform: uppercase; letter-spacing: .03em; padding: 8px 14px; border-radius: 999px; background: var(--brand-chip, #e6ebf5); color: var(--ink); }
+  .puce.ok { background: color-mix(in srgb, var(--ok, #1f8a5b) 14%, transparent); color: var(--ok, #1f8a5b); }
+  .puce.run { background: color-mix(in srgb, var(--brand-strong, #56669c) 16%, transparent); color: var(--brand-strong, #56669c); }
+  .tuiles { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 24px; }
+  .tuile { width: 40px; height: 40px; border-radius: 9px; background: #fff; display: grid; place-items: center; border: 1px solid var(--brand-rule, #dce2f0); }
+  :root[data-theme="dark"] .tuile { background: var(--canvas); }
+  .tuile img { width: 24px; height: 24px; object-fit: contain; }
+  .fiche .actions > button { font: 500 13px var(--mono) !important; text-transform: uppercase; letter-spacing: .04em; border-radius: 999px !important; padding: 12px 20px !important; }
+  .dash > .section, .dash > .choice, .dash > .planned, .dash > .msg, .dash > details { margin-left: 14px; margin-right: 14px; }
+  @media (min-width: 1500px) { .vitrine { grid-template-columns: minmax(0, .9fr) minmax(0, 1.1fr); gap: 14px; } .toile { min-height: 300px; } }
+  /* Cibles (sur quoi elle travaille) */
+  .puce.cible { display: inline-flex; align-items: center; gap: 6px; background: #fff; border: 1px solid var(--brand-rule, #dce2f0); text-transform: none; letter-spacing: 0; font: 500 13.5px var(--sans, inherit); padding: 7px 8px 7px 14px; }
+  :root[data-theme="dark"] .puce.cible { background: var(--canvas); }
+  .puce.cible button { border: 0; background: transparent; color: var(--ink-3, #8a8a85); width: 20px; height: 20px; padding: 0; border-radius: 50%; font-size: 15px; line-height: 1; cursor: pointer; }
+  .puce.cible button:hover { background: var(--brand-chip, #e6ebf5); color: var(--ink); }
+  .puces.cib { margin-bottom: 10px; }
+  .cib-ajout { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 10px; }
+  .cib-ajout input { flex: 1 1 240px; min-width: 0; font: inherit; font-size: 14px; padding: 9px 12px; border-radius: 10px; border: 1px solid var(--brand-rule, #dce2f0); background: #fff; color: var(--ink); }
+  :root[data-theme="dark"] .cib-ajout input { background: var(--canvas); }
+  .cib-ajout button { font-size: 13.5px; padding: 8px 12px; }
+  .puces.props { margin-bottom: 10px; }
+  .puces.props .puce.prop { padding: 6px 12px !important; border-radius: 999px !important; box-shadow: none !important; min-height: 0; }
+  .puce.prop { border: 1px dashed color-mix(in srgb, var(--brand-strong, #56669c) 45%, transparent); background: transparent; color: var(--brand-strong, #56669c); text-transform: none; letter-spacing: 0; font: 500 13px var(--sans, inherit); cursor: pointer; }
+  .puces.props .puce.prop { background: transparent !important; border: 1px dashed color-mix(in srgb, var(--brand-strong, #56669c) 45%, transparent) !important; color: var(--brand-strong, #56669c) !important; }
+  .puces.props .puce.prop.tout { border-style: solid !important; }
+  .puces.props .puce.prop:hover { background: var(--brand-chip, #e6ebf5) !important; }
+  .puce.prop.tout { border-style: solid; }
+  .cib-save { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 8px; }
+  .cib-msg:empty, .cib-att + .cib-msg { display: none; }
+  .cib-msg { margin: 0 0 14px; color: var(--bad, #d6403f); }
+  .cib-att { margin: 0 0 18px; }
+  #cibles { margin-bottom: 18px; }
+  .gain-gros { margin: 0 0 20px; font-size: 30px; font-weight: 600; letter-spacing: -0.035em; color: var(--brand-strong, #56669c); }
+  .item .gain { font: 500 11.5px var(--mono, ui-monospace, monospace); color: var(--brand-strong, #56669c); margin-left: 8px; }
+  .item .etat { font-size: 13px; color: var(--text-dim); display: flex; align-items: center; gap: 6px; }
+  .etat::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: #b9b9b4; flex: none; }
+  .etat.ok::before { background: var(--ok, #1f8a5b); } .etat.run::before { background: var(--brand-strong, #56669c); animation: pulse 1s infinite; } .etat.ko::before { background: var(--bad, #d6403f); }
+  @keyframes pulse { 50% { opacity: .35; } }
+  .item .logos img { width: 18px; height: 18px; }
+  .phrase { display: flex; align-items: center; gap: 8px; font-size: 15px; margin: 0 0 18px; color: color-mix(in srgb, var(--ink) 75%, transparent); }
+  .phrase .etat::before { width: 9px; height: 9px; }
+  .echec { font-size: 14px; color: var(--bad, #d6403f); margin: -6px 0 16px; }
+  .lien { all: unset; cursor: pointer; font-weight: 600; text-decoration: underline; }
+  .lien-res { display: inline-flex; align-items: center; gap: 6px; font-size: 14px; font-weight: 500; text-decoration: none; color: var(--brand-strong, var(--accent)); margin-left: 6px; }
+  .dash .actions { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+  .dash .actions > button { padding: 11px 18px !important; font-size: 15px !important; }
+  details.details { margin-top: 26px; }
+  details.details summary { cursor: pointer; font-size: 14.5px; font-weight: 500; color: var(--brand-strong, var(--accent)); }
+  details.details h3 { font-size: 14px; margin: 18px 0 8px; }
+  .resume { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin: 0 0 18px; font-size: 14.5px; }
+  .next { padding: 18px 20px; border-radius: var(--r-card, 10px); border: 1px solid var(--brand-strong, var(--accent)); background: var(--brand-tint, var(--wash)); margin-bottom: 16px; }
+  .next .kick { margin: 0 0 4px; font: 500 11.5px var(--mono); text-transform: uppercase; letter-spacing: .06em; color: var(--brand-strong, var(--accent)); }
+  .next .titre { margin: 0; font-size: 17px; font-weight: 600; letter-spacing: -0.01em; }
+  .next .quoi { margin: 4px 0 14px; font-size: 14.5px; color: color-mix(in srgb, var(--ink) 70%, transparent); }
+  .next .actions .primary-danger { background: var(--bad, #c0392b) !important; color: #fff !important; }
+  .stats { font-size: 14px; color: color-mix(in srgb, var(--ink) 70%, transparent); margin: 6px 0 0; }
+  .stats b { color: var(--ink); font-variant-numeric: tabular-nums; }
+  .section.focus { outline: 2px solid var(--brand-strong, var(--accent)); outline-offset: 8px; border-radius: 6px; transition: outline-color .4s; }
+  details.histo summary { cursor: pointer; font-size: 15px; font-weight: 600; }
+  details.histo[open] summary { margin-bottom: 10px; }
   .kpis { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin-bottom: 20px; }
   .kpi { padding: 12px 14px; border-radius: 12px; background: var(--panel-2); }
   .kpi span { display: block; font-size: 12px; color: var(--text-dim); }
@@ -114,7 +199,7 @@ async function load(keep) {
     return;
   }
   n8nUrl = d.n8n_url;
-  row.innerHTML = `<span>${d.automations.length} automatisation${d.automations.length > 1 ? 's' : ''}</span>`;
+  row.innerHTML = '';
   items = d.automations.sort((a, b) => (b.stats.last || b.updated || '').localeCompare(a.stats.last || a.updated || ''));
   document.getElementById('empty').hidden = items.length > 0;
   document.getElementById('layout').hidden = !items.length;
@@ -125,13 +210,19 @@ async function load(keep) {
   if (running) watch(running.id); // une exécution lancée avant d'ouvrir la page
 }
 
+// L'état en quelques mots (liste et détail)
+// Titre affiché : sans ce qui est entre parenthèses (« Veille L'Oréal (LinkedIn → …) » → « Veille L'Oréal »)
+const titre = (n) => String(n || '').replace(/\s*\([^)]*\)/g, '').replace(/\s{2,}/g, ' ').trim() || n;
+// Temps gagné : par semaine si elle tourne régulièrement, sinon par lancement
+const gainTexte = (a) => (!a.gain || a.gain.minutes_par_lancement < 1 ? '' : a.gain.minutes_semaine >= 1 ? `${fmtTemps(a.gain.minutes_semaine)} gagnées / sem.`
+  : `${fmtTemps(a.gain.minutes_par_lancement)} gagnées par lancement`);
+const etatCourt = (a) => a.failed ? 'Pas créée' : a.running ? 'En cours…' : a.active ? escapeHtml(a.freq_label) : 'En pause';
 function renderList() {
   document.getElementById('list').innerHTML = items.map((a) => `
     <button class="item ${a.id === current ? 'on' : ''}" data-id="${a.id}" type="button">
-      <span class="row">${a.blocks.map(blockIcon).join('')}</span>
-      <b>${escapeHtml(a.name)}</b>
-      <span class="row">${statusPill(a)}<span class="meta">${escapeHtml(a.freq_label)}</span></span>
-      <span class="meta">${a.failed ? `Création échouée ${fmtAgo(a.stats.last)}` : `Dernière exécution : ${fmtAgo(a.stats.last)} · ${a.stats.total ? `${Math.round((100 * a.stats.success) / a.stats.total)} % réussies` : 'jamais lancée'}`}</span>
+      <span class="row logos">${[...new Set(a.blocks.map(blockIcon))].join('')}</span>
+      <b data-court>${escapeHtml(titre(a.name))}</b>
+      <span class="etat ${a.failed ? 'ko' : a.running ? 'run' : a.active ? 'ok' : ''}">${etatCourt(a)}${a.gain?.minutes_semaine >= 1 ? `<span class="gain">${fmtTemps(a.gain.minutes_semaine)} / sem.</span>` : ''}</span>
     </button>`).join('');
   document.querySelectorAll('.item').forEach((b) => b.addEventListener('click', () => select(b.dataset.id)));
 }
@@ -144,18 +235,18 @@ function select(id) {
   document.querySelectorAll('.item').forEach((b) => b.classList.toggle('on', b.dataset.id === id));
   if (a.failed) { // création échouée : la cause, de quoi la corriger, et réessayer
     document.getElementById('dash').innerHTML = `
-      <h2>${escapeHtml(a.name)}</h2>
-      <div class="pills"><span class="pill bad">Pas créée</span></div>
-      <p class="note warn"><b>Cause :</b> ${escapeHtml(a.error || 'inconnue')}</p>
+      <h2 data-court>${escapeHtml(titre(a.name))}</h2>
+      <p class="echec">Elle n'a pas pu être créée : ${escapeHtml(a.error || 'cause inconnue')}.</p>
       <p class="meta">${/google sheets|credential|connexion/i.test(a.error || '')
         ? 'Il manque une connexion dans n8n : ajoute-la une fois (Credentials → New), elle servira ensuite à toutes les automatisations.'
         : 'Ouvre n8n pour voir le détail, puis réessaie.'}</p>
-      <div class="flow">${a.blocks.map((b, i) => `${i ? '<span class="arrow">→</span>' : ''}<span class="blk ${b.kind}">${escapeHtml(b.name)}</span>`).join('')}</div>
       <div class="actions">
         <a class="btn primary" href="${a.fix_url}" target="_blank" rel="noopener">${iconsHtml('n8n', 1)}Configurer dans n8n</a>
-        <button id="retryBtn" type="button">Réessayer la création</button>
+        <button id="retryBtn" type="button">Réessayer</button>
       </div>
-      <div class="msg" id="msg"></div>`;
+      <div class="msg" id="msg"></div>
+      <div class="zone-suppr"><button class="danger" id="delBtn" type="button">Supprimer l'automatisation</button></div>`;
+    brancherSuppression(a);
     document.getElementById('retryBtn').onclick = async (ev) => {
       ev.target.disabled = true;
       document.getElementById('msg').textContent = 'Création dans n8n…';
@@ -169,26 +260,43 @@ function select(id) {
   const holoMac = a.blocks.filter((b) => b.kind === 'holo' && b.env !== 'cloud').length;
   const est = a.stats.avg_s || Math.max(60, holo * 150);
   const rate = a.stats.total ? `${Math.round((100 * a.stats.success) / a.stats.total)} %` : '—';
+  const derniere = a.executions[0];
+  // Les étiquettes « État » disent déjà en pause / active : la phrase ne reste que pendant qu'elle tourne
+  const phrase = a.running ? (holoMac ? 'Elle tourne sur ton Mac : ne touche à rien.' : 'Elle tourne en ce moment.') : '';
+  // Les applis de l'automatisation, sans doublon, pour les nœuds et les tuiles (logo principal de chaque étape)
+  const logoDe = (b) => (findIcons(b.kind === 'holo' ? b.name.replace(/^Holo\s*[—-]\s*/i, '') : b.kind === 'sheets' ? 'Google Sheets' : b.name, 1)[0]
+    || findIcons(b.kind === 'holo' ? 'Holo' : b.name, 1)[0]);
+  const base = (n) => n.replace(/\s·\s.*$/, '');
+  const noeuds = [...new Map(a.blocks.map((b) => [base(b.name), { b: { ...b, name: base(b.name) }, l: logoDe(b) }])).values()];
+  const applis = [...new Map(noeuds.filter((x) => x.l).map((x) => [x.l.file, x.l])).values()];
+  const img = (l, cls = '') => (l ? `<img class="${cls}" src="icons/${l.file}" alt="" title="${escapeHtml(l.label)}">` : '<svg class="vide" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m8 7-5 5 5 5M16 7l5 5-5 5"/></svg>');
   document.getElementById('dash').innerHTML = `
-    <h2>${escapeHtml(a.name)}</h2>
-    <div class="pills">${statusPill(a)}<span class="pill">${escapeHtml(a.freq_label)}</span>${holoMac ? '<span class="pill warn">Utilise ton ordinateur</span>' : ''}</div>
-    <div class="flow">${a.blocks.map((b, i) => `${i ? '<span class="arrow">→</span>' : ''}<span class="blk ${b.kind}${b.env === 'cloud' ? ' cloud' : ''}" title="${escapeHtml(b.kind === 'holo' ? (b.env === 'cloud' ? 'Holo dans le navigateur cloud de H : ne touche pas ton ordinateur' : 'Holo sur ton ordinateur : prend la souris') : KIND[b.kind])}">${blockIcon(b)}${escapeHtml(b.name)}</span>`).join('')}</div>
-    <div class="kpis">
-      <div class="kpi"><span>Exécutions</span><b>${a.stats.total}</b></div>
-      <div class="kpi"><span>Réussite</span><b>${rate}</b></div>
-      <div class="kpi"><span>Durée moyenne</span><b>${fmtDur(a.stats.avg_s)}</b></div>
-      <div class="kpi"><span>Dernière</span><b style="font-size:15px">${fmtAgo(a.stats.last)}</b></div>
+    <div class="vitrine">
+      <div class="toile" aria-hidden="true">
+        <div class="noeuds">${noeuds.map(({ b, l }, i) => `${i ? '<span class="fil"></span>' : ''}<span class="noeud ${b.kind === 'holo' ? (b.env === 'cloud' ? 'cloud' : 'mac') : ''}" title="${escapeHtml(b.name)}">${img(l)}</span>`).join('')}</div>
+      </div>
+      <div class="fiche">
+        <h2 data-court>${escapeHtml(titre(a.name))}</h2>
+        ${phrase ? `<p class="phrase">${phrase}</p>` : ''}
+        ${derniere?.status === 'error' && !a.running ? `<p class="echec">La dernière exécution a échoué. <button class="lien" id="retryBtn" type="button">Relancer là où ça a planté</button></p>` : ''}
+        <p class="lab">État</p>
+        <div class="puces"><span class="puce ${a.running ? 'run' : a.active ? 'ok' : ''}">${a.running ? 'En cours' : a.active ? 'Active' : 'En pause'}</span>
+          <span class="puce">${escapeHtml(a.active ? a.freq_label : 'Manuelle')}</span>${holoMac ? '<span class="puce">Utilise ton Mac</span>' : ''}</div>
+        ${gainTexte(a) ? `<p class="lab">Temps gagné</p><p class="gain-gros">${gainTexte(a)}</p>` : ''}
+        <div id="cibles" hidden></div>
+        <p class="lab">Applis utilisées</p>
+        <div class="tuiles">${applis.map((l) => `<span class="tuile">${img(l)}</span>`).join('')}</div>
+        <div class="actions">
+          <button class="primary" id="runBtn" type="button" ${a.running ? 'hidden' : ''}>Lancer maintenant</button>
+          <button class="danger" id="stopBtn" type="button" ${a.running ? '' : 'hidden'}>Arrêter</button>
+          <button id="progBtn" type="button" aria-expanded="false" ${a.running ? 'hidden' : ''}>${a.active ? 'Changer l\'horaire' : 'Programmer'}</button>
+          ${a.sheet ? `<a class="lien-res" href="${a.sheet.url}" target="_blank" rel="noopener">${iconsHtml('Google Sheets', 1)}Voir le résultat</a>` : ''}
+        </div>
+      </div>
     </div>
-    <div class="actions">
-      <button class="primary" id="runBtn" type="button" ${a.running ? 'disabled' : ''}>${a.running ? 'En cours…' : holoMac ? 'Lancer…' : 'Lancer maintenant'}</button>
-      <button class="danger" id="stopBtn" type="button" ${a.running ? '' : 'hidden'}>Arrêter l'automatisation</button>
-      ${!a.running && a.executions[0]?.status === 'error' ? `<button id="retryBtn" type="button" title="Rejoue la dernière exécution en échec à partir de l'étape qui a planté. Les étapes réussies ne sont pas refaites.">Relancer l'étape échouée</button>` : ''}
-      ${a.sheet ? `<a class="btn" href="${a.sheet.url}" target="_blank" rel="noopener">${iconsHtml('Google Sheets', 1)}Ouvrir le résultat</a>` : ''}
-    </div>
-    ${holoMac ? '<p class="note warn">Elle utilise ton ordinateur pendant qu\'elle tourne : ne touche à rien.</p>' : ''}
-    ${a.plan ? `<p class="planned">Lancement programmé <b>${escapeHtml(quand(a.plan))}</b>. Tu seras prévenu 2 min avant. <a href="#" id="unplan">Annuler</a></p>` : ''}
+    ${a.plan ? `<p class="planned">Lancement prévu <b>${escapeHtml(quand(a.plan))}</b>. <a href="#" id="unplan">Annuler</a></p>` : ''}
     <div class="choice" id="runChoice" hidden>
-      <p><b>Elle a besoin de ton ordinateur pendant environ ${Math.ceil(est / 60)} min</b> (souris et clavier). Quand veux-tu la lancer ?</p>
+      <p><b>Elle a besoin de ton ordinateur pendant environ ${Math.ceil(est / 60)} min.</b> Quand veux-tu la lancer ?</p>
       <div class="actions">
         <button type="button" data-when="now" class="primary">Maintenant</button>
         ${CRENEAUX.map(([k, l]) => `<button type="button" data-when="${k}">${l}</button>`).join('')}
@@ -196,9 +304,7 @@ function select(id) {
       <div class="actions" style="margin-top:8px"><label class="meta">Autre heure <input type="time" id="whenOther" value="17:00"></label>
         <button type="button" data-when="other">Programmer</button></div>
     </div>
-    <div class="msg" id="msg"></div>
-
-    <div class="section"><h3>Quand elle tourne</h3>
+    <div class="section" id="quand" hidden><h3>Quand elle tourne</h3>
       <div class="freq">
         <select id="sType" aria-label="Type de planification">
           ${[['manual', 'Manuellement (en pause)'], ['daily', 'Chaque jour'], ['weekly', 'Certains jours de la semaine'], ['monthly', 'Un jour précis du mois']]
@@ -211,17 +317,27 @@ function select(id) {
         <label class="meta" id="sAt">à <select id="sHour">${Array.from({ length: 24 }, (_, h) => h)
           .map((h) => `<option value="${h}" ${(a.schedule?.hour ?? 9) === h ? 'selected' : ''}>${String(h).padStart(2, '0')} h</option>`).join('')}</select>
           <select id="sMinute">${[0, 15, 30, 45].map((m) => `<option value="${m}" ${(a.schedule?.minute || 0) === m ? 'selected' : ''}>${String(m).padStart(2, '0')}</option>`).join('')}</select></label>
-        <button id="saveFreq" type="button">Enregistrer</button>
+        <button id="saveFreq" class="primary" type="button">Enregistrer</button>
       </div>
-      ${holoMac ? '<p class="note">Choisis un moment où tu n\'utilises pas ton ordinateur (allumé, sans veille).</p>' : ''}
     </div>
+    <div class="msg" id="msg"></div>
 
-    <div class="section"><h3>Historique</h3>
+    <details class="section details"><summary>Détails</summary>
+      <h3>Ce qu'elle fait</h3>
+      <div class="flow">${a.blocks.map((b, i) => `${i ? '<span class="arrow">→</span>' : ''}<span class="blk ${b.kind}${b.env === 'cloud' ? ' cloud' : ''}">${blockIcon(b)}${escapeHtml(b.name)}</span>`).join('')}</div>
+      <h3>Historique</h3>
       ${a.executions.length ? `<div class="table-wrap"><table><thead><tr><th>Date</th><th>Durée</th><th>Résultat</th></tr></thead><tbody>
-        ${a.executions.map((e) => `<tr><td class="num">${fmtDate(e.startedAt)}</td>
+        ${a.executions.slice(0, 8).map((e) => `<tr><td class="num">${fmtDate(e.startedAt)}</td>
           <td class="num">${e.stoppedAt ? fmtDur((new Date(e.stoppedAt) - new Date(e.startedAt)) / 1000) : '—'}</td><td>${execPill(e)}</td></tr>`).join('')}</tbody></table></div>`
-        : '<p class="meta">Pas encore d\'exécution.</p>'}
-    </div>`;
+        : '<p class="meta">Pas encore lancée.</p>'}
+      <div class="zone-suppr"><button class="danger" id="delBtn" type="button">Supprimer l'automatisation</button></div>
+    </details>`;
+  brancherSuppression(a);
+  brancherCibles(a);
+  document.getElementById('progBtn').addEventListener('click', (ev) => { // l'horaire n'apparaît que quand on veut le régler
+    const q = document.getElementById('quand'); q.hidden = !q.hidden; ev.currentTarget.setAttribute('aria-expanded', String(!q.hidden));
+    const t = document.getElementById('sType'); if (!q.hidden && t.value === 'manual') { t.value = 'daily'; t.dispatchEvent(new Event('change')); }
+  });
 
   const lancer = async () => {
     const msg = document.getElementById('msg');
@@ -288,6 +404,85 @@ function select(id) {
     Object.assign(items.find((x) => x.id === id), d);
     renderList(); select(id);
     document.getElementById('msg').textContent = d.active ? `Activée : ${d.freq_label.toLowerCase()}.` : 'En pause : tu la lances quand tu veux.';
+  };
+}
+
+// Supprimer : action définitive, donc en bas du détail, en rouge discret, avec confirmation
+// Sur quoi elle travaille : les cibles (ex. les entreprises de la veille), modifiables. « le luxe » → une liste proposée.
+async function brancherCibles(a) {
+  const box = document.getElementById('cibles');
+  if (!box || a.running) return;
+  box.hidden = false;
+  box.innerHTML = '<p class="lab">Sur quoi elle travaille</p><p class="meta cib-att">Twiin regarde sur quoi elle travaille…</p>';
+  let d;
+  try { d = await (await fetch(`/api/automations/${encodeURIComponent(a.id)}/cibles`)).json(); } catch { d = { error: 1 }; }
+  if (document.getElementById('cibles') !== box) return; // une autre automatisation a été ouverte entre-temps
+  if (d.error || !d.cibles) { box.hidden = true; return; }
+  const saved = [...d.cibles];
+  let cibles = [...d.cibles], props = [];
+  const sameAs = () => cibles.length === saved.length && cibles.every((c, i) => c === saved[i]);
+  const minutes = (n) => Math.max(1, Math.round(((a.stats.avg_s || 180) * n) / saved.length / 60));
+  const draw = () => {
+    box.innerHTML = `
+      <p class="lab">${escapeHtml(d.label)}</p>
+      <div class="puces cib">${cibles.map((c, i) => `<span class="puce cible">${escapeHtml(c)}${cibles.length > 1 ? `<button type="button" data-del="${i}" aria-label="Retirer ${escapeHtml(c)}">×</button>` : ''}</span>`).join('')}</div>
+      <form class="cib-ajout" id="cibForm">
+        <input id="cibIn" type="text" maxlength="80" autocomplete="off" placeholder="Un nom, ou un groupe : ${escapeHtml(d.exemple || 'le luxe')}" aria-label="Ajouter une ${escapeHtml(d.type)} ou un groupe">
+        <button type="submit">Ajouter</button>
+        <button type="button" id="cibProp" title="Twiin propose une liste à partir d'un groupe">Proposer une liste</button>
+      </form>
+      ${props.length ? `<div class="puces props">${props.map((c, i) => `<button type="button" class="puce prop" data-add="${i}">+ ${escapeHtml(c)}</button>`).join('')}
+        <button type="button" class="puce prop tout" id="cibTout">Tout ajouter</button></div>` : ''}
+      ${sameAs() ? '' : `<div class="cib-save"><button class="primary" type="button" id="cibSave">Enregistrer les ${cibles.length} ${escapeHtml(d.type)}${cibles.length > 1 ? 's' : ''}</button>
+        <button type="button" id="cibAnnuler">Annuler</button><span class="meta">Environ ${minutes(cibles.length)} min par lancement.</span></div>`}
+      <p class="meta cib-msg" id="cibMsg"></p>`;
+    const msg = (t) => { document.getElementById('cibMsg').textContent = t; };
+    const ajouter = (liste) => { for (const v of liste) if (v && !cibles.some((c) => c.toLowerCase() === v.toLowerCase())) cibles.push(v); cibles = cibles.slice(0, 8); };
+    box.querySelectorAll('[data-del]').forEach((b) => (b.onclick = () => { cibles.splice(+b.dataset.del, 1); draw(); }));
+    box.querySelectorAll('[data-add]').forEach((b) => (b.onclick = () => { ajouter([props[+b.dataset.add]]); props.splice(+b.dataset.add, 1); draw(); }));
+    const tout = document.getElementById('cibTout'); if (tout) tout.onclick = () => { ajouter(props); props = []; draw(); };
+    document.getElementById('cibForm').onsubmit = (ev) => {
+      ev.preventDefault();
+      const v = document.getElementById('cibIn').value.trim();
+      if (!v) return;
+      ajouter(v.split(/\s*[,;]\s*/)); draw(); document.getElementById('cibIn').focus();
+    };
+    document.getElementById('cibProp').onclick = async (ev) => {
+      const v = document.getElementById('cibIn').value.trim();
+      if (!v) { msg(`Écris d'abord un groupe, par exemple « ${d.exemple || 'le luxe'} ».`); document.getElementById('cibIn').focus(); return; }
+      ev.target.disabled = true; ev.target.textContent = 'Twiin cherche…';
+      const r = await (await fetch(`/api/automations/${encodeURIComponent(a.id)}/cibles/proposer`, { method: 'POST', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ groupe: v }) })).json().catch(() => ({ error: 'Le serveur ne répond pas.' }));
+      if (r.error || !r.valeurs?.length) { ev.target.disabled = false; ev.target.textContent = 'Proposer une liste'; msg(r.error || 'Aucune proposition : précise le groupe.'); return; }
+      props = r.valeurs.filter((x) => !cibles.some((c) => c.toLowerCase() === x.toLowerCase())); draw();
+    };
+    const annuler = document.getElementById('cibAnnuler'); if (annuler) annuler.onclick = () => { cibles = [...saved]; props = []; draw(); };
+    const save = document.getElementById('cibSave');
+    if (save) save.onclick = async () => {
+      save.disabled = true; save.textContent = 'Twiin reconstruit l\'automatisation…';
+      const r = await (await fetch(`/api/automations/${encodeURIComponent(a.id)}/cibles`, { method: 'POST', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ cibles }) })).json().catch(() => ({ error: 'Le serveur ne répond pas.' }));
+      if (r.error) { save.disabled = false; save.textContent = 'Réessayer'; msg(r.error); return; }
+      load(a.id);
+    };
+  };
+  draw();
+}
+
+function brancherSuppression(a) {
+  const b = document.getElementById('delBtn');
+  if (!b) return;
+  b.disabled = !!a.running;
+  b.title = a.running ? 'Arrête-la d\'abord' : '';
+  b.onclick = async () => {
+    if (!confirm(`Supprimer « ${titre(a.name)} » ?\n\nElle sera retirée de Twiin et de n8n, avec son historique. C'est définitif.`)) return;
+    b.disabled = true; b.textContent = 'Suppression…';
+    const r = await fetch(`/api/automations/${encodeURIComponent(a.id)}`, { method: 'DELETE' });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok || d.error) { b.disabled = false; b.textContent = 'Supprimer l\'automatisation'; document.getElementById('msg').textContent = d.error || 'Suppression impossible.'; return; }
+    items = items.filter((x) => x.id !== a.id);
+    history.replaceState(null, '', location.pathname);
+    load();
   };
 }
 

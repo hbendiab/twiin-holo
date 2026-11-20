@@ -133,7 +133,15 @@ def compile_plan(plan):
         nodes[-1]["position"] = [x, 120]
         nodes[-1]["disabled"] = True
     chain = []
+    # Plusieurs cibles (« branche » sur chaque bloc, ex. une entreprise) : une branche par cible, toutes partent du déclencheur.
+    # n8n (ordre v1) les exécute l'une après l'autre ; si une cible échoue, les suivantes tournent quand même.
+    branches, branche_de = [], {}
     for b in plan["blocks"]:
+        br = b.get("branche")
+        if br is not None and br not in branches:
+            branches.append(br)
+            x = 0
+        n0, c0 = len(nodes), len(chain)
         x += 300
         t = b["type"]
         if t == "holo":
@@ -209,6 +217,10 @@ def compile_plan(plan):
                 "row['Vérification'] = problems.length ? '⚠️ ' + problems.join(' ; ') : '✅ OK';\n"
                 + ("if (problems.length) throw new Error('Écriture bloquée, valeurs douteuses : ' + problems.join(' ; '));\n"
                    if b.get("on_problem", "stop") == "stop" else "")
+                # « skip » : cette cible s'arrête là (rien n'est écrit), la trace reste dans l'exécution, les autres cibles continuent
+                + ("if (problems.length) { try { $execution.customData.set(" + json.dumps(("Écartée · " + str(b.get("branche") or ""))[:50], ensure_ascii=False)
+                   + ", problems.join(' ; ').slice(0, 250)); } catch (e) {}\n  return []; }\n"
+                   if b.get("on_problem") == "skip" else "")
                 + "return [{ json: row }];"
             )
             nodes.append(node(b["name"], "n8n-nodes-base.code", 2, {"jsCode": code}, x))
@@ -253,12 +265,21 @@ def compile_plan(plan):
         else:
             raise SystemExit(f"Type de bloc inconnu : {t}")
         chain.append(b["name"])
+        for nom in chain[c0:]:
+            branche_de[nom] = br
+        if br is not None:
+            for n in nodes[n0:]:
+                n["position"] = [n["position"][0], 300 + 260 * branches.index(br)]
+                if t != "verify":
+                    n["onError"] = "continueRegularOutput"  # une page introuvable ne fait pas planter les autres cibles
     connections = {}
     starts = [trigger] + (["Planification Hebdomadaire"] if plan.get("schedule_cron") else [])
+    tetes = [next(n for n in chain if branche_de.get(n) == br) for br in branches] if branches else [chain[0]]
     for s in starts:
-        connections[s] = {"main": [[{"node": chain[0], "type": "main", "index": 0}]]}
+        connections[s] = {"main": [[{"node": h, "type": "main", "index": 0} for h in tetes]]}
     for a, b in zip(chain, chain[1:]):
-        connections[a] = {"main": [[{"node": b, "type": "main", "index": 0}]]}
+        if branche_de.get(a) == branche_de.get(b):
+            connections[a] = {"main": [[{"node": b, "type": "main", "index": 0}]]}
     return {"id": plan.get("id") or secrets.token_hex(8)[:16], "name": "Twiin — " + plan["name"], "nodes": nodes,
             "connections": connections, "active": False, "settings": {"executionOrder": "v1", "timezone": "Europe/Paris", "availableInMCP": True}, "pinData": {}}
 

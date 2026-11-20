@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Twiin</title>
+<!-- Notification de l'app Mac (vidéo prête, automatisation créée…) : même DA que le SaaS, avec Iris et Ilo.
+     Ouverte par desktop/main.js dans une petite fenêtre sans cadre, en haut à droite de l'écran. -->
+<style>
+  :root { --ink: #161615; --dim: #6f6f6a; --strong: #56669c; --chip: #e6ebf5; --rule: #dce2f0; --ok: #1f8a5b; --bad: #d6403f;
+    --glass: linear-gradient(135deg, rgba(255,255,255,.98) 0%, rgba(243,245,251,.96) 50%, rgba(226,232,244,.95) 100%); color-scheme: light; }
+  @media (prefers-color-scheme: dark) { :root { --ink: #f5f5f2; --dim: #a5a5a0; --strong: #aab7e0; --chip: #222839; --rule: #2b3247;
+    --glass: linear-gradient(135deg, rgba(40,46,66,.97), rgba(22,25,36,.97)); color-scheme: dark; } }
+  html, body { margin: 0; height: 100%; background: transparent; overflow: hidden; }
+  body { font: 14px/1.4 -apple-system, BlinkMacSystemFont, "SF Pro Text", Inter, sans-serif; color: var(--ink); letter-spacing: -.006em; padding: 8px 12px 14px 8px; box-sizing: border-box; }
+  .t { height: 100%; display: flex; align-items: center; gap: 14px; padding: 14px 14px 14px 16px; border-radius: 12px; background: var(--glass); border: 1px solid var(--rule);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.9), 3px 4px 0 -1px rgba(201,210,231,.8), 0 16px 30px -18px rgba(56,66,110,.55);
+    animation: entre .45s cubic-bezier(.16,1,.3,1) both; box-sizing: border-box; -webkit-app-region: no-drag; }
+  .t.sort { animation: sort .3s ease-in both; }
+  @keyframes entre { from { opacity: 0; transform: translateX(24px); } }
+  @keyframes sort { to { opacity: 0; transform: translateX(24px); } }
+  .tw-twins { display: inline-flex; gap: 3px; flex: none; }
+  .tw-orb { --s: 30px; width: var(--s); height: var(--s); border-radius: 50%; display: block; position: relative; overflow: hidden;
+    background: radial-gradient(circle at 32% 26%, #fff 0 9%, transparent 22%), radial-gradient(120% 70% at 50% 108%, #f4f4f1 0 22%, transparent 46%),
+      conic-gradient(from 20deg at 50% 55%, #1b1b1a, #8d8d88, #f2f2ee, #5c5c58, #d9d9d4, #2a2a28, #b6b6b1, #1b1b1a); }
+  .txt { flex: 1; min-width: 0; }
+  .kick { margin: 0 0 2px; font: 500 10.5px ui-monospace, "SF Mono", Menlo, monospace; text-transform: uppercase; letter-spacing: .07em; color: var(--strong); }
+  .t.echec .kick { color: var(--bad); }
+  h1 { margin: 0; font-size: 15px; line-height: 1.25; font-weight: 600; letter-spacing: -.015em; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  p.d { margin: 2px 0 0; font-size: 13px; color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .acts { display: flex; align-items: center; gap: 4px; flex: none; }
+  button { font: 600 13px inherit; font-family: inherit; border: 0; border-radius: 9px; padding: 8px 13px; cursor: pointer; }
+  .voir { background: var(--strong); color: #fff; box-shadow: inset 0 1px 0 rgba(255,255,255,.22), 0 8px 16px -10px rgba(56,66,110,.7); }
+  @media (prefers-color-scheme: dark) { .voir { color: #0e0e0d; } }
+  .x { background: transparent; color: var(--dim); width: 28px; height: 28px; padding: 0; font-size: 17px; line-height: 1; }
+  .x:hover { background: var(--chip); color: var(--ink); }
+  @media (prefers-reduced-motion: reduce) { .t, .t.sort { animation: none; } }
+</style>
+</head>
+<body>
+  <div class="t" id="t" role="status" aria-live="polite">
+    <span class="tw-twins" aria-hidden="true"><i class="tw-orb iris"></i><i class="tw-orb ilo"></i></span>
+    <div class="txt"><p class="kick" id="kick"></p><h1 id="titre"></h1><p class="d" id="texte"></p></div>
+    <div class="acts"><button type="button" class="voir" id="voir">Voir</button><button type="button" class="x" id="x" aria-label="Fermer">×</button></div>
+  </div>
+<script>
+(() => {
+  const q = new URLSearchParams(location.search);
+  const $ = (id) => document.getElementById(id);
+  $('kick').textContent = q.get('kick') || 'Twiin';
+  $('titre').textContent = q.get('titre') || '';
+  $('texte').textContent = q.get('texte') || '';
+  if (q.get('echec')) $('t').classList.add('echec');
+  const lien = q.get('lien');
+  if (!lien) $('voir').hidden = true;
+  const D = window.twiinDesktop;
+  const fermer = () => { $('t').classList.add('sort'); setTimeout(() => D?.closeToast ? D.closeToast() : window.close(), 280); };
+  $('x').onclick = fermer;
+  $('voir').onclick = () => { if (lien && D?.openExternal) D.openExternal(new URL(lien, location.origin).href); fermer(); };
+  // se ferme seule au bout de 12 s, sauf si la souris est dessus
+  let minuteur = setTimeout(fermer, 12000);
+  $('t').addEventListener('mouseenter', () => clearTimeout(minuteur));
+  $('t').addEventListener('mouseleave', () => { minuteur = setTimeout(fermer, 4000); });
+})();
+</script>
+<script src="/jumeaux.js"></script>
+</body>
+</html>

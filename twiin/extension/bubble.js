@@ -21,31 +21,33 @@
   const root = host.attachShadow({ mode: 'open' });
   root.innerHTML = `<style>
     :host { all: initial; }
-    * { box-sizing: border-box; font-family: "Plus Jakarta Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
-    .wrap { position: fixed; right: 20px; bottom: 20px; z-index: 2147483645; display: flex; flex-direction: column; align-items: flex-end; gap: 10px; color: #16181d; }
-    .fab { width: 48px; height: 48px; border-radius: 50%; border: 1px solid rgba(255,255,255,.8); background: rgba(247,248,250,.92); cursor: pointer;
-      backdrop-filter: blur(14px); box-shadow: 0 12px 28px -12px rgba(30,40,80,.45); display: grid; place-items: center; padding: 0; transition: transform .15s; }
+    * { box-sizing: border-box; font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", Inter, "Segoe UI", sans-serif; letter-spacing: -.006em; }
+    .wrap { position: fixed; right: 20px; bottom: 20px; z-index: 2147483645; display: flex; flex-direction: column; align-items: flex-end; gap: 10px; color: #161615; }
+    .tw2 { display: inline-flex; gap: 2px; }
+    .tw2 img { width: 17px; height: 17px; display: block; }
+    .fab { width: 50px; height: 50px; border-radius: 14px; border: 1px solid #dce2f0; background: linear-gradient(135deg, #fff, #f3f5fb 55%, #e6ebf5); cursor: pointer;
+      backdrop-filter: blur(14px); box-shadow: inset 0 1px 0 #fff, 3px 4px 0 -1px rgba(201,210,231,.8), 0 14px 28px -16px rgba(56,66,110,.5); display: grid; place-items: center; padding: 0; transition: transform .15s; }
     .fab:hover { transform: translateY(-2px); }
-    .fab img { width: 32px; height: auto; display: block; }
-    .pill { display: flex; align-items: center; gap: 10px; padding: 8px 8px 8px 14px; border-radius: 999px; background: #f7f8fa; font-size: 13px; max-width: min(420px, calc(100vw - 40px));
-      border: 1px solid rgba(255,255,255,.8); box-shadow: 0 14px 30px -12px rgba(30,40,80,.4); }
-    .pill .dot { width: 9px; height: 9px; border-radius: 50%; background: #7d9be3; flex: none; animation: p 1.2s ease-in-out infinite; }
+    .fab .tw2 img { width: 19px; height: 19px; }
+    .pill { display: flex; align-items: center; gap: 10px; padding: 8px 8px 8px 14px; border-radius: 12px; background: linear-gradient(135deg, #fff, #f3f5fb); font-size: 13px; max-width: min(420px, calc(100vw - 40px));
+      border: 1px solid #dce2f0; box-shadow: 0 14px 30px -14px rgba(56,66,110,.45); }
+    .pill .dot { width: 9px; height: 9px; border-radius: 50%; background: #56669c; flex: none; animation: p 1.2s ease-in-out infinite; }
     .pill.mac .dot { background: #e05a5a; }
     .pill.plan .dot { background: #6b7180; animation: none; }
     .pill .t { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .pill b { font-weight: 700; }
-    button.b { font: 600 13px inherit; font-family: inherit; border-radius: 999px; padding: 8px 14px; cursor: pointer; border: 1px solid #e3e6ec; background: #fff; color: #16181d; white-space: nowrap; }
-    button.b.dark { background: #121418; color: #fff; border-color: #121418; }
+    button.b { font: 600 13px inherit; font-family: inherit; border-radius: 10px; padding: 8px 14px; cursor: pointer; border: 1px solid transparent; background: #e6ebf5; color: #181520; white-space: nowrap; }
+    button.b.dark { background: #56669c; color: #fff; border-color: #56669c; }
     button.b.red { color: #e05a5a; border-color: rgba(224,90,90,.35); }
-    .menu { width: 300px; max-width: calc(100vw - 40px); background: rgba(247,248,250,.97); backdrop-filter: blur(18px); border-radius: 26px; padding: 14px;
-      border: 1px solid rgba(255,255,255,.85); box-shadow: 0 24px 50px -18px rgba(30,40,80,.45); font-size: 13.5px; }
-    .menu h4 { margin: 4px 6px 8px; font-size: 11.5px; font-weight: 600; color: #6b7180; text-transform: uppercase; letter-spacing: .06em; }
-    .item { display: flex; align-items: center; gap: 10px; width: 100%; text-align: left; border: 0; background: transparent; padding: 10px; border-radius: 14px; cursor: pointer; color: #16181d; font: 500 13.5px inherit; font-family: inherit; }
-    .item:hover { background: #fff; }
-    .item .ic { width: 30px; height: 30px; border-radius: 50%; background: #fff; display: grid; place-items: center; flex: none; border: 1px solid #e9ecf1; }
-    .item.main .ic { background: #121418; color: #fff; border-color: #121418; }
+    .menu { width: 300px; max-width: calc(100vw - 40px); background: linear-gradient(135deg, rgba(255,255,255,.98), rgba(243,245,251,.96)); backdrop-filter: blur(18px); border-radius: 12px; padding: 12px;
+      border: 1px solid #dce2f0; box-shadow: inset 0 1px 0 #fff, 3px 4px 0 -1px rgba(201,210,231,.8), 0 24px 50px -22px rgba(56,66,110,.5); font-size: 13.5px; }
+    .menu h4 { margin: 4px 6px 8px; font: 500 10.5px ui-monospace, "SF Mono", Menlo, monospace; color: #6f6f6a; text-transform: uppercase; letter-spacing: .07em; }
+    .item { display: flex; align-items: center; gap: 10px; width: 100%; text-align: left; border: 0; background: transparent; padding: 10px; border-radius: 8px; cursor: pointer; color: #161615; font: 500 13.5px inherit; font-family: inherit; }
+    .item:hover { background: #e6ebf5; }
+    .item .ic { width: 30px; height: 30px; border-radius: 8px; background: #fff; display: grid; place-items: center; flex: none; border: 1px solid #dce2f0; }
+    .item.main .ic { background: #56669c; color: #fff; border-color: #56669c; }
     .item svg { width: 15px; height: 15px; stroke: currentColor; fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
-    .auto { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-radius: 14px; background: #fff; margin: 0 0 6px; }
+    .auto { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-radius: 8px; background: #fff; border: 1px solid #dce2f0; margin: 0 0 6px; }
     .auto span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .auto small { display: block; color: #6b7180; font-size: 11.5px; }
     .muted { color: #6b7180; font-size: 12.5px; margin: 2px 6px 8px; line-height: 1.45; }
@@ -57,7 +59,8 @@
     @media (prefers-reduced-motion: reduce) { .pill .dot { animation: none; } }
   </style><div class="wrap"></div>`;
   const wrap = root.querySelector('.wrap');
-  const LOGO = `<img src="${chrome.runtime.getURL('logo-twiin.webp')}" alt="">`;
+  // Iris et Ilo : les mêmes images que dans le SaaS (rendu chrome liquide)
+  const LOGO = `<span class="tw2" aria-hidden="true"><img src="${chrome.runtime.getURL('img/iris.png')}" alt=""><img src="${chrome.runtime.getURL('img/ilo.png')}" alt=""></span>`;
   const I = {
     rec: '<circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3" fill="currentColor"/>',
     auto: '<path d="M7 7h10v10H7z"/><path d="M12 2v5M12 17v5M2 12h5M17 12h5"/>',

@@ -416,40 +416,88 @@
       const dateAudit = f.date_audit ? new Date(f.date_audit).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' }) : '';
       const facile = (o) => (o.tranche_facilite === 'facile' ? 'Facile à automatiser' : o.tranche_facilite === 'moyen' ? 'Moyennement facile' : 'Difficile à automatiser');
       spoken = '';
+      const p1 = top[0], suite = top.slice(1);
+      // Le grand compteur : le temps déjà gagné par les automatisations (chaque semaine), et ce qui reste à gagner
+      fetch('/api/automations').then((x) => x.json()).then((d) => {
+        const gagne = (d.automations || []).reduce((n, a) => n + (a.gain?.minutes_semaine || 0), 0);
+        const el = document.getElementById('mtCompteur');
+        if (!el || gagne < 1) return;
+        el.innerHTML = `<b>${fmtTemps(gagne)}</b><span>gagnées chaque semaine</span><em>${fmtTemps(Math.max(0, aGagner * 60 - gagne))} à gagner encore</em>`;
+      }).catch(() => {});
+      const gain = (o) => `<span class="mt-chip"><b>${(o.gain_heures_semaine ?? 0).toLocaleString('fr-FR')} h</b> par semaine</span><span class="mt-chip"><b>≈ ${fmtE(o.gain_euros_an || 0)}</b> par an</span>`;
+      const aGagner = f.opportunites.reduce((n, o) => n + (o.gain_heures_semaine || 0), 0);
+      // Points à vérifier : en haut, et on peut y répondre (une tâche à ajouter, ou un outil qui ne sert pas au travail)
+      const ecartees = new Set(r().alertes_ecartees || []);
+      const alertes = f.alertes.filter((x) => !ecartees.has(x.application_id || x.message)).slice(0, 3);
+      const appNom = (id) => (f.applications || []).find((x) => x.id === id)?.nom || id;
+      // le prénom de l'espace choisi (équipe), sinon celui saisi ici
+      const prenom = (window.TwiinEspace?.membre?.prenom || r().prenom || '').trim();
+      if (!window.TwiinEspace?.membre) document.addEventListener('twiin-espace', (e) => {
+        const h = screenEl.querySelector('.mt-bonjour h2');
+        if (e.detail?.prenom && h) { h.textContent = `Bonjour ${e.detail.prenom}`; $('mtPrenom')?.remove(); }
+      }, { once: true });
       screenEl.innerHTML = `<div class="mt">
-        <section class="mt-bloc">
-          <header class="mt-head"><h3>Mes priorités</h3>${dateAudit ? `<span class="mt-date">Audit du ${dateAudit}</span>` : ''}</header>
-          ${top.length ? `<p class="a2-total">Ensemble, elles représentent <b>${hTop.toLocaleString('fr-FR', { maximumFractionDigits: 1 })} h par semaine</b>, soit environ <b>${fmtE(eTop)} par an</b>
-            (au coût horaire de ${f.dirigeant?.cout_horaire ?? 35} €).</p>` : '<p class="a2-total">Pas encore de tâche assez lourde pour être automatisée.</p>'}
-          <div class="a2-top3">${top.map((o, k) => `<div class="a2-opp"><span class="n">Priorité ${k + 1}</span><b>${escapeHtml(byId[o.tache_id]?.libelle || o.tache_id)}</b>
-              <span class="big">${(o.gain_heures_semaine ?? 0).toLocaleString('fr-FR')} h <small>par semaine</small></span>
-              <span class="eur">≈ ${fmtE(o.gain_euros_an || 0)} par an</span>
-              <span class="tags">${facile(o)}${byId[o.tache_id]?.deleguer_en_premier ? ' · celle que tu délèguerais en premier' : ''}</span>
-              <button type="button" data-observe="${o.tache_id}">Observer cette tâche</button></div>`).join('')}</div>
-        </section>
+        <header class="mt-bonjour"><h2>Bonjour${prenom ? ` ${escapeHtml(prenom)}` : ''}</h2>
+          ${window.TwiinEspace?.membre ? '' : `<button type="button" class="quiet mt-prenom" id="mtPrenom">${prenom ? 'Modifier' : 'Ajouter ton prénom'}</button>`}</header>
+        <section class="mt-compteur" id="mtCompteur" aria-live="polite"><b>${fmtHeures(aGagner)}</b><span>à gagner chaque semaine</span></section>
+        ${alertes.map((x, k) => {
+          const [constat, question] = String(x.message).split(/\s*:\s*(?=[^:]*\?\s*$)/);
+          const q = (question || 'À quoi te sert-il ?').replace(/vous sert-il/gi, 'te sert-il').replace(/\bvous\b/gi, 'tu');
+          return `<form class="mt-verif" data-k="${k}">
+            <span class="mt-verif-ico">${x.application_id ? toolIcon(appNom(x.application_id)) : ''}</span>
+            <div class="mt-verif-corps"><p class="mt-kicker">À vérifier</p><h3>${escapeHtml(x.application_id ? `À quoi te sert ${appNom(x.application_id)} ?` : q[0].toUpperCase() + q.slice(1))}</h3>
+              <p class="mt-verif-why">${escapeHtml(x.application_id ? 'Très utilisé sur ton poste, mais dans aucune de tes tâches.' : constat || '')}</p>
+              <div class="mt-verif-champs">
+                <input type="text" name="lib" maxlength="120" required placeholder="Ce que tu y fais, en quelques mots" aria-label="${escapeHtml(q)}">
+                <select name="freq" aria-label="Combien de fois par semaine">${FREQ.map(([v, l]) => `<option value="${v}" ${v === '2-5' ? 'selected' : ''}>${l} / sem.</option>`).join('')}</select>
+                <select name="duree" aria-label="Combien de temps à chaque fois">${DUREE.map(([v, l]) => `<option value="${v}" ${v === '15-30' ? 'selected' : ''}>${l}</option>`).join('')}</select>
+              </div>
+              <div class="mt-verif-acts"><button type="submit" class="primary">Ajouter cette tâche</button>
+                <button type="button" class="quiet" data-ecarter>Pas pour mon travail</button></div></div></form>`; }).join('')}
+        <ol class="mt-parcours" aria-label="Ton parcours">
+          <li class="fait" data-etape="audit"><span>1</span>Audit de ton poste</li>
+          <li data-etape="observer"><span>2</span>Observer une tâche</li>
+          <li data-etape="automatiser"><span>3</span>L'automatiser</li>
+        </ol>
+        ${p1 ? `<section class="mt-hero">
+          <p class="mt-kicker">Ta prochaine étape${dateAudit ? ` · audit du ${dateAudit}` : ''}</p>
+          <h3>Observer « <span data-court>${escapeHtml(byId[p1.tache_id]?.libelle || p1.tache_id)}</span> »</h3>
+          <button type="button" class="primary mt-cta" data-observe="${p1.tache_id}">Observer cette tâche</button>
+        </section>` : `<section class="mt-hero"><p class="mt-kicker">Ta prochaine étape</p><h3>Enregistre une tâche répétitive</h3>
+          <p class="mt-why">Pas de tâche assez lourde dans ton audit : montre à Twiin une tâche que tu fais souvent.</p>
+          <button type="button" class="primary mt-cta" id="mtRec">Enregistrer une tâche</button></section>`}
+        ${suite.length ? `<section class="mt-bloc"><header class="mt-head"><h3>Ensuite</h3></header>
+          <ul class="mt-rows">${suite.map((o, k) => `<li><span class="mt-rang">${k + 2}</span><span class="mt-nom"><span data-court>${escapeHtml(byId[o.tache_id]?.libelle || o.tache_id)}</span></span>
+            <span class="mt-gain" title="Temps à gagner par semaine">${fmtHeures(o.gain_heures_semaine)}<small> / sem.</small></span>
+            <button type="button" data-observe="${o.tache_id}">Observer</button></li>`).join('')}</ul></section>` : ''}
         <section class="mt-bloc">
           <header class="mt-head"><h3>Mon poste</h3></header>
-          <div class="rc-keys">
-            <div class="rc-key"><span>Rôle</span><b>${escapeHtml(f.poste?.role_metier || r().role_metier || 'Non précisé')}</b></div>
-            <div class="rc-key"><span>Outils de travail</span><b>${outils.length}</b></div>
-            <div class="rc-key"><span>Tâches de la semaine</span><b>${ts.length}</b></div>
+          <div class="mt-poste">
+            <span><small>Rôle</small><b>${escapeHtml(f.poste?.role_metier || r().role_metier || 'Non précisé')}</b></span>
+            <span><small>Outils</small><b>${outils.length}</b></span>
+            <span><small>Tâches suivies</small><b>${ts.length}</b></span>
+            <span class="mt-logos" aria-hidden="true">${outils.slice(0, 6).map((o) => toolIcon(o.nom)).join('')}${outils.length > 6 ? `<em>+${outils.length - 6}</em>` : ''}</span>
           </div>
+          <details class="mt-detail"><summary>Voir mes tâches et mes outils</summary>
+            ${ts.length ? `<ul class="rc-tasks">${ts.map((t) => {
+              const o = f.opportunites.find((x) => x.tache_id === t.id);
+              return `<li><span class="nom"><span data-court>${escapeHtml(t.libelle)}</span>${rang[t.id] ? `<em>Priorité ${rang[t.id]}</em>` : o ? `<em class="dim">${escapeHtml(RECO[o.recommandation] || '')}</em>` : ''}</span>
+                <span class="val">${label(FREQ, t.frequence_tranche) ? `${escapeHtml(label(FREQ, t.frequence_tranche))} <small>/ sem.</small>` : '<small>?</small>'}</span>
+                <span class="val">${escapeHtml(label(DUREE, t.duree_tranche) || '?')}</span></li>`; }).join('')}</ul>` : ''}
+            <div class="rc-tools" style="margin-top:14px">${outils.map((o) => `<span class="rc-tool">${toolIcon(o.nom)}<span>${escapeHtml(o.nom)}</span></span>`).join('')}</div>
+          </details>
         </section>
-        <section class="mt-bloc">
-          <header class="mt-head"><h3>Mes tâches de la semaine</h3></header>
-          ${ts.length ? `<ul class="rc-tasks">${ts.map((t) => {
-            const o = f.opportunites.find((x) => x.tache_id === t.id);
-            return `<li${rang[t.id] ? ' class="deleg"' : ''}><span class="nom">${escapeHtml(t.libelle)}${rang[t.id] ? `<em>Priorité ${rang[t.id]}</em>` : o ? `<em class="dim">${escapeHtml(RECO[o.recommandation] || '')}</em>` : ''}</span>
-              <span class="val">${label(FREQ, t.frequence_tranche) ? `${escapeHtml(label(FREQ, t.frequence_tranche))} <small>/ sem.</small>` : '<small>?</small>'}</span>
-              <span class="val">${escapeHtml(label(DUREE, t.duree_tranche) || '?')}</span></li>`; }).join('')}</ul>` : '<p class="rc-vide">Aucune tâche.</p>'}
-        </section>
-        <section class="mt-bloc">
-          <header class="mt-head"><h3>Mes outils</h3></header>
-          <div class="rc-tools">${outils.map((o) => `<span class="rc-tool" title="${escapeHtml(o.nom)}">${toolIcon(o.nom)}<span>${escapeHtml(o.nom)}</span></span>`).join('') || '<p class="rc-vide">Aucun outil.</p>'}</div>
-        </section>
-        ${f.alertes.length ? `<div class="a2-alerts"><h4>À vérifier</h4><ul>${f.alertes.slice(0, 6).map((x) => `<li>${escapeHtml(x.message)}</li>`).join('')}</ul></div>` : ''}
-        <div class="mt-fin"><button type="button" id="a2Redo">Refaire l'audit</button></div>
+        <div class="mt-fin"><button type="button" class="quiet" id="a2Redo">Refaire l'audit</button></div>
       </div>`;
+      // fil du parcours : étape 2 faite s'il y a une tâche analysée, étape 3 s'il y a une automatisation
+      Promise.all([fetch('/api/sessions').then((x) => x.json()).catch(() => ({})), fetch('/api/automations').then((x) => x.json()).catch(() => ({}))]).then(([se, au]) => {
+        const obs = (se.sessions || []).some((x) => x.analyse && !x.supprime_le), auto = (au.automations || []).some((x) => !x.failed);
+        const li = (k) => screenEl.querySelector(`[data-etape="${k}"]`);
+        if (!li('observer')) return;
+        li('observer').classList.toggle('fait', obs); li('automatiser').classList.toggle('fait', auto);
+        (obs ? (auto ? null : li('automatiser')) : li('observer'))?.classList.add('ici');
+      });
+      $('mtRec')?.addEventListener('click', () => document.getElementById('toRecordBtn').click());
       screenEl.querySelectorAll('[data-observe]').forEach((b) => b.onclick = () => {
         const lib = byId[b.dataset.observe]?.libelle || '';
         setStep(2);
@@ -457,7 +505,31 @@
         statusEl.textContent = `À enregistrer : « ${lib} ». Clique sur « Enregistrer ma tâche », puis fais-la comme d'habitude.`;
       });
       $('a2Redo').onclick = () => go('intro');
-      setPrimary(screenEl.querySelector('[data-observe]') || document.getElementById('toRecordBtn'));
+      // Prénom (la fiche est à lui) : gardé avec ses réponses, sur le poste
+      if ($('mtPrenom')) $('mtPrenom').onclick = () => {
+        const h = screenEl.querySelector('.mt-bonjour h2');
+        h.innerHTML = `Bonjour <input type="text" id="mtPrenomIn" maxlength="40" value="${escapeHtml(prenom)}" placeholder="ton prénom" aria-label="Ton prénom">`;
+        const i = $('mtPrenomIn'); i.focus();
+        const ok = async () => { r().prenom = i.value.trim(); await save(); go('resultat'); };
+        i.onkeydown = (e) => { if (e.key === 'Enter') ok(); if (e.key === 'Escape') go('resultat'); };
+        i.onblur = ok;
+      };
+      // Réponses aux points à vérifier
+      screenEl.querySelectorAll('.mt-verif').forEach((fo) => {
+        const x = alertes[+fo.dataset.k], id = x.application_id;
+        const ecarter = () => { r().alertes_ecartees = [...new Set([...(r().alertes_ecartees || []), id || x.message])]; };
+        fo.onsubmit = async (e) => {
+          e.preventDefault();
+          r().taches = [...(r().taches || []), { id: `t_libre_${Date.now().toString(36)}`, libelle: fo.lib.value.trim(), source: 'saisie_libre',
+            applis_ids: id ? [id] : [], frequence_tranche: fo.freq.value, duree_tranche: fo.duree.value, deleguer_en_premier: false }];
+          ecarter(); await save(); go('resultat');
+        };
+        fo.querySelector('[data-ecarter]').onclick = async () => {
+          if (id && r().outils_confirmes) r().outils_confirmes = r().outils_confirmes.filter((a) => a !== id);
+          ecarter(); await save(); go('resultat');
+        };
+      });
+      setPrimary(screenEl.querySelector('.mt-cta') || document.getElementById('toRecordBtn'));
     },
   };
 
@@ -585,7 +657,7 @@
     $('a2Next').textContent = 'Suivant →';
     $('a2Next').hidden = st.screen === 'resultat';
     $('a2Back').hidden = st.screen === 'intro';
-    $('toRecordBtn').hidden = !['intro', 'resultat'].includes(st.screen); // pas de raccourci au milieu des questions
+    $('toRecordBtn').hidden = true; // l'action principale est dans l'écran lui-même (« Observer cette tâche »)
     if (name !== 'intro') $('sphereBox').hidden = true;
     RENDER[name](arg !== undefined ? Number(arg) : undefined);
     progress();
