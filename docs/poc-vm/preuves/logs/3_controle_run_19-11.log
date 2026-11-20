@@ -1,0 +1,7 @@
+job créé 773ebfd7-6b46-4924-b6d3-881c875a229a
+[0 s] statut : pending
+[286 s] statut : running
+[337 s] statut : done
+issue Holo : success | étapes : 6 | durée : 40.4 s | erreur : None
+  ERREUR INV-109 fournisseur 'Services Informatique' != 'Services Informatiques Girard'
+EXACTITUDE : 11/12 lignes parfaites ; lignes inventées : []

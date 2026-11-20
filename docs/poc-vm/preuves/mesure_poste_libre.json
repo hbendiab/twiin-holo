@@ -1,0 +1,158 @@
+{
+    "seconds":  300,
+    "mouse_moves_detected":  581,
+    "mouse_path_px":  27488,
+    "key_presses_detected":  1289,
+    "per_10s":  [
+                    {
+                        "t":  0,
+                        "mouse_px":  664,
+                        "keys":  12
+                    },
+                    {
+                        "t":  10,
+                        "mouse_px":  422,
+                        "keys":  0
+                    },
+                    {
+                        "t":  20,
+                        "mouse_px":  2667,
+                        "keys":  0
+                    },
+                    {
+                        "t":  30,
+                        "mouse_px":  2285,
+                        "keys":  69
+                    },
+                    {
+                        "t":  40,
+                        "mouse_px":  0,
+                        "keys":  94
+                    },
+                    {
+                        "t":  50,
+                        "mouse_px":  1777,
+                        "keys":  41
+                    },
+                    {
+                        "t":  60,
+                        "mouse_px":  11,
+                        "keys":  65
+                    },
+                    {
+                        "t":  70,
+                        "mouse_px":  0,
+                        "keys":  156
+                    },
+                    {
+                        "t":  80,
+                        "mouse_px":  0,
+                        "keys":  190
+                    },
+                    {
+                        "t":  90,
+                        "mouse_px":  0,
+                        "keys":  172
+                    },
+                    {
+                        "t":  100,
+                        "mouse_px":  0,
+                        "keys":  151
+                    },
+                    {
+                        "t":  110,
+                        "mouse_px":  0,
+                        "keys":  120
+                    },
+                    {
+                        "t":  120,
+                        "mouse_px":  1652,
+                        "keys":  103
+                    },
+                    {
+                        "t":  130,
+                        "mouse_px":  2552,
+                        "keys":  22
+                    },
+                    {
+                        "t":  140,
+                        "mouse_px":  2220,
+                        "keys":  4
+                    },
+                    {
+                        "t":  150,
+                        "mouse_px":  406,
+                        "keys":  0
+                    },
+                    {
+                        "t":  160,
+                        "mouse_px":  1514,
+                        "keys":  0
+                    },
+                    {
+                        "t":  170,
+                        "mouse_px":  2028,
+                        "keys":  5
+                    },
+                    {
+                        "t":  180,
+                        "mouse_px":  309,
+                        "keys":  1
+                    },
+                    {
+                        "t":  190,
+                        "mouse_px":  1199,
+                        "keys":  0
+                    },
+                    {
+                        "t":  200,
+                        "mouse_px":  1652,
+                        "keys":  0
+                    },
+                    {
+                        "t":  210,
+                        "mouse_px":  3155,
+                        "keys":  0
+                    },
+                    {
+                        "t":  220,
+                        "mouse_px":  303,
+                        "keys":  0
+                    },
+                    {
+                        "t":  230,
+                        "mouse_px":  0,
+                        "keys":  0
+                    },
+                    {
+                        "t":  240,
+                        "mouse_px":  0,
+                        "keys":  0
+                    },
+                    {
+                        "t":  250,
+                        "mouse_px":  0,
+                        "keys":  0
+                    },
+                    {
+                        "t":  260,
+                        "mouse_px":  0,
+                        "keys":  0
+                    },
+                    {
+                        "t":  270,
+                        "mouse_px":  0,
+                        "keys":  0
+                    },
+                    {
+                        "t":  280,
+                        "mouse_px":  1621,
+                        "keys":  0
+                    },
+                    {
+                        "t":  290,
+                        "mouse_px":  1050,
+                        "keys":  84
+                    }
+                ]
+}

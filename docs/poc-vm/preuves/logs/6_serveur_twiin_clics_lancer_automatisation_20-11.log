@@ -1,0 +1,50 @@
+workflow-recorder (Hugging Face) running at http://localhost:3001
+Transcription locale absente : installation automatique…
+Automatisation test-demo : lancée dans la VM (mode VM)
+   mission : échec (FileNotFoundError: [Errno 2] No such file or directory: '%USERPROFILE%\\Documents\\GitHub\\twiin-holo\\twiin\\workflows\\candidates.json'), mission précédente gardée
+   n8n (workflow de la VM) : 200
+Journal d'actions démarré : %USERPROFILE%\Documents\GitHub\twiin-holo\twiin\workflows\sessions\2026-11-20T00-07-05
+Journal d'actions arrêté (code 1)
+Masquage local : 0 zone(s) sensible(s) sur 0 image(s) {}
+Journal d'actions démarré : %USERPROFILE%\Documents\GitHub\twiin-holo\twiin\workflows\sessions\2026-11-20T00-10-05
+Journal d'actions arrêté (code 1)
+Masquage local : 0 zone(s) sensible(s) sur 0 image(s) {}
+Journal d'actions démarré : %USERPROFILE%\Documents\GitHub\twiin-holo\twiin\workflows\sessions\2026-11-20T00-10-52
+Journal d'actions arrêté (code 1)
+Masquage local : 0 zone(s) sensible(s) sur 0 image(s) {}
+Relecture : 1 image(s) retirée(s) par l'employé, 9 gardée(s)
+OCR local : 0 image(s), 0 lignes, 0 caractères gardés, 0.4 s · journal : 0 action(s)
+Modèle Qwen/Qwen3.8-27B via openrouter : 6648 tokens entrée, 1699 sortie, ≈ 0.0056 $
+Wrote 1 candidate workflow(s) to %USERPROFILE%\Documents\GitHub\twiin-holo\twiin\workflows\candidates.json
+Verdict : automatiser (moyenne), ≈ 0.0019 $
+Conseils process : 3 recommandation(s), ≈ 0.0012 $
+Automatisation n8n : Saisie factures QONTA (ComptaFaire → QONTA → Sheets) (9 blocs)
+Automatisation twiindemofacture : lancée dans la VM (mode VM)
+   mission : ComptaFaire — fournisseur, reference_fournisseur, date_facture, libelle, quantite, prix_unitaire_ht, taux_taxe, montant_ht (logiciel « ComptaFaire » absent de la VM : mission précédente conservée)
+   n8n (workflow de la VM) : 200
+Automatisation relance : lancée dans la VM (mode VM)
+   mission : ComptaFaire 4.2 — fournisseur, reference_fournisseur, date_facture, libelle, quantite, prix_unitaire_ht, taux_taxe, montant_ht (logiciel « ComptaFaire 4.2 » absent de la VM : mission précédente conservée)
+   n8n (workflow de la VM) : 200
+Journal d'actions démarré : %USERPROFILE%\Documents\GitHub\twiin-holo\twiin\workflows\sessions\2026-11-20T00-42-24
+Journal d'actions arrêté (code 1)
+Masquage local : 0 zone(s) sensible(s) sur 0 image(s) {}
+Enregistrement 2026-11-20T00-42-24 supprimé par l'employé
+Journal d'actions démarré : %USERPROFILE%\Documents\GitHub\twiin-holo\twiin\workflows\sessions\2026-11-20T00-45-37
+Journal d'actions arrêté (code 1)
+Masquage local : 0 zone(s) sensible(s) sur 0 image(s) {}
+OCR local : 0 image(s), 0 lignes, 0 caractères gardés, 0.4 s · journal : 0 action(s)
+Modèle Qwen/Qwen3.8-27B via openrouter : 7829 tokens entrée, 1727 sortie, ≈ 0.0046 $
+Wrote 1 candidate workflow(s) to %USERPROFILE%\Documents\GitHub\twiin-holo\twiin\workflows\candidates.json
+Verdict : accélérer (moyenne), ≈ 0.0026 $
+Conseils process : 3 recommandation(s), ≈ 0.0034 $
+Automatisation n8n : Saisie facture Papeterie Martin (QONTA) (5 blocs)
+Automatisation twiindemofacture : lancée dans la VM (mode VM)
+   mission : CompTaPro — fournisseur, numero, date, libelle, montant_ht, tva, total_ttc (réponse du modèle vide ou illisible)
+   n8n (workflow de la VM) : 200
+Automatisation twiinsaisiefactu : Manuelle
+Automatisation twiinsaisiefactu : lancée dans la VM (mode VM)
+   mission : CompTaPro — fournisseur, numero, date, libelle, montant_ht, tva, total_ttc (réponse du modèle vide ou illisible)
+   n8n (workflow de la VM) : 200
+Automatisation twiinsaisiefactu : lancée dans la VM (mode VM)
+   mission : CompTaPro — fournisseur, numero, date, libelle, montant_ht, tva, total_ttc (Connection error.)
+   n8n (workflow de la VM) : 200

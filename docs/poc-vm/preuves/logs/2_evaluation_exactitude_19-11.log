@@ -1,0 +1,6 @@
+job repris 011b872c-c6ac-4ddc-8a57-c4c72f5d9aeb
+[0 s] statut : running
+[61 s] statut : done
+issue Holo : success | étapes : 27 | durée : 191.2 s | erreur : None
+  ERREUR INV-109 fournisseur 'Services Informatique' != 'Services Informatiques Girard'
+EXACTITUDE : 11/12 lignes parfaites ; lignes inventées : []
