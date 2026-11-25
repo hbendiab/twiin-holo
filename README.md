@@ -22,9 +22,9 @@ Trois façons de le découvrir, de la plus simple à la plus complète :
 
 ### 1. En ligne, en 2 minutes (rien à installer)
 
-**Lien : https://beliefs-charges-while-lucas.trycloudflare.com · code d'accès : `twiin-holo-708`**
+**Lien : https://beliefs-charges-while-lucas.trycloudflare.com** (sans code d'accès)
 
-1. Ouvrez le lien et entrez le code. L'accueil d'Iris et Ilo se lance (pour le revoir : ajoutez `/?bienvenue` au lien).
+1. Ouvrez le lien : l'accueil d'Iris et Ilo se lance (pour le revoir : ajoutez `/?bienvenue` au lien).
 2. **Mon travail** : l'audit du poste et les heures à gagner.
 3. **Mes automatisations** → « Relève taux euro-dollar BCE » → **Lancer maintenant** : Holo lit le taux sur le site de la
    BCE, dans le cloud de H Company, en 30 secondes environ, et une notification s'affiche dans votre navigateur.
