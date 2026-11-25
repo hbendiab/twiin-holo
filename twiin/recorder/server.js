@@ -81,14 +81,16 @@ const DEMO_GET_NON = [/^\/api\/telecommande/, /^\/api\/back/, /^\/api\/google\//
 app.use(async (req, res, next) => {
   if (!estVisiteur(req)) return next();
   res.set('x-twiin-mode', 'demo');
-  if (!process.env.TWIIN_DEMO_CODE) return res.status(503).send('Mode démo non configuré.');
-  if (req.path === '/demo' && req.method === 'POST') {
+  // Sans TWIIN_DEMO_CODE : accès libre au mode démo (les protections ci-dessous restent : rien ne touche le Mac)
+  if (!process.env.TWIIN_DEMO_CODE) {
+    if (req.path === '/demo') return res.redirect('/');
+  } else if (req.path === '/demo' && req.method === 'POST') {
     const code = String(req.body?.code || '').trim();
     if (code.toLowerCase() !== String(process.env.TWIIN_DEMO_CODE).toLowerCase()) return res.redirect('/demo?faux=1');
     res.setHeader('Set-Cookie', `${DEMO_COOKIE}=${demoJeton()}; Path=/; Max-Age=172800; HttpOnly; Secure; SameSite=Lax`);
     return res.redirect('/');
   }
-  const ok = (req.get('cookie') || '').split(/;\s*/).some((c) => c === `${DEMO_COOKIE}=${demoJeton()}`);
+  const ok = !process.env.TWIIN_DEMO_CODE || (req.get('cookie') || '').split(/;\s*/).some((c) => c === `${DEMO_COOKIE}=${demoJeton()}`);
   if (!ok) {
     if (req.path.startsWith('/api/')) return res.status(401).json({ error: 'Code d\'accès requis.' });
     if (req.path !== '/demo' && !/\.(css|js|png|jpg|svg|woff2?|webp|ico)$/.test(req.path)) return res.redirect('/demo');
