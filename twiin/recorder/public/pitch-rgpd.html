@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Twiin · RGPD</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Google+Sans+Flex:wght@300;400;500;600;700&display=swap">
+<link rel="stylesheet" href="pages.css">
+<link rel="stylesheet" href="theme.css">
+<link rel="stylesheet" href="pitch.css">
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="/"><span id="logoCells"></span><span>Tw<b>ii</b>n</span></a>
+    <button id="themeBtn" type="button">Thème sombre</button>
+  </header>
+
+  <h1 class="pt-titre">Ce qui se passe sur le poste <em>reste sur le poste.</em></h1>
+  <p class="pt-sous">Twiin observe une tâche, pas un salarié. Il est conçu pour la protection des données dès le départ.</p>
+
+  <section class="pt-bloc">
+    <div class="pt-lab">Ce que Twiin fait déjà</div>
+    <div class="pt-ligne">
+      <div class="pt-carte fort"><h3>Masqué en local</h3><p>E-mails, clés et jetons sont floutés sur le Mac, avant toute analyse.</p></div>
+      <div class="pt-carte"><h3>Aucune touche</h3><p>Pas de keylogger : seulement des captures et un journal de clics, pendant un enregistrement lancé par le salarié.</p></div>
+      <div class="pt-carte"><h3>Écrans sur le poste</h3><p>Captures, audio et vidéos restent sur le Mac. Le cloud ne reçoit que du texte et des chiffres.</p></div>
+      <div class="pt-carte"><h3>Cloisonné</h3><p>Une entreprise ne voit que ses données (règles d'accès Supabase).</p></div>
+    </div>
+  </section>
+
+  <section class="pt-bloc">
+    <div class="pt-lab">Le salarié garde la main</div>
+    <div class="pt-ligne">
+      <div class="pt-carte"><h3>Il déclenche</h3><p>Rien n'est enregistré sans qu'il lance l'enregistrement.</p></div>
+      <div class="pt-carte"><h3>Il choisit</h3><p>L'audit compte les jours d'utilisation des applis, jamais ce qu'il y fait, et seulement s'il l'active.</p></div>
+      <div class="pt-carte"><h3>Il arrête</h3><p>Double Échap stoppe l'agent ; l'accès du téléphone se coupe en un geste.</p></div>
+    </div>
+  </section>
+
+  <details class="pt-bloc pt-details">
+    <summary><span class="pt-lab" style="display:inline">Données et sous-traitants</span> <span class="pt-plus">pour les questions</span></summary>
+    <table class="pt-table">
+      <tr><th>Service</th><th>Ce qu'il reçoit</th><th>Où</th></tr>
+      <tr><td>H Company · Holo</td><td>Les captures d'écran nécessaires à l'action, pendant l'exécution</td><td>Europe (agp.eu.hcompany.ai)</td></tr>
+      <tr><td>Qwen via Hugging Face</td><td>Le texte de l'écran déjà masqué, quelques images</td><td>Selon le fournisseur d'inférence, à fixer en Europe</td></tr>
+      <tr><td>Supabase</td><td>Comptes, tâches, automatisations, exécutions (texte et chiffres)</td><td>Région à fixer en Europe</td></tr>
+      <tr><td>Vercel</td><td>Les demandes du téléphone, en transit</td><td>À configurer en Europe</td></tr>
+      <tr><td>ElevenLabs</td><td>Le texte des voix off des vidéos de formation</td><td>Hors UE : contrat de sous-traitance nécessaire</td></tr>
+      <tr><td>n8n</td><td>Les automatisations et leurs résultats</td><td>Sur le poste du client</td></tr>
+    </table>
+  </details>
+
+  <section class="pt-bloc">
+    <div class="pt-lab">Ce qu'on fera avant le premier client</div>
+    <div class="pt-ligne">
+      <div class="pt-carte"><h3>Informer le CSE</h3><p>Et les salariés, avant tout déploiement d'un outil qui observe le poste.</p></div>
+      <div class="pt-carte"><h3>Analyse d'impact</h3><p>Une AIPD, et l'inscription au registre des traitements du client.</p></div>
+      <div class="pt-carte"><h3>Tout en Europe</h3><p>Hébergement européen et contrats de sous-traitance avec chaque fournisseur.</p></div>
+      <div class="pt-carte"><h3>Durées de conservation</h3><p>Purge automatique des enregistrements, droit d'accès et de suppression.</p></div>
+    </div>
+  </section>
+  <p class="pt-pied">Twiin · powered by H Company… and not a lot of sleep</p>
+
+<script src="shell.js" defer></script>
+<script src="common.js"></script>
+</body>
+</html>

@@ -184,15 +184,37 @@ JUMEAUX = {
 }
 
 
+def voix_mac(text, out: Path, vid):
+    """Voix gratuite de secours : les voix françaises intégrées à macOS (Amélie pour Iris, Thomas pour Ilo).
+    Sans compte ni clé, hors ligne. Utilisée quand ElevenLabs est absent ou refuse la demande."""
+    import shutil, subprocess, tempfile
+    nom = "Amélie" if vid == JUMEAUX["iris"][0] else "Thomas"
+    with tempfile.TemporaryDirectory() as d:
+        aiff = Path(d) / "voix.aiff"
+        subprocess.run(["say", "-v", nom, "-r", "185", "-o", str(aiff), text], check=True)
+        if shutil.which("ffmpeg"):
+            subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-i", str(aiff), "-codec:a", "libmp3lame", "-b:a", "160k", str(out)], check=True)
+        else:  # sans ffmpeg : AAC (le navigateur de Remotion reconnaît le contenu, quel que soit le nom du fichier)
+            subprocess.run(["afconvert", "-f", "m4af", "-d", "aac", str(aiff), str(out)], check=True)
+        dur = subprocess.run(["afinfo", str(aiff)], capture_output=True, text=True).stdout
+    m = re.search(r"estimated duration: ([\d.]+)", dur)
+    return float(m.group(1)) if m else 3.0
+
+
 def tts(text, out: Path, vid, reglages=None):
-    corps = {"text": text, "model_id": "eleven_multilingual_v2", **({"voice_settings": reglages} if reglages else {})}
-    r = requests.post(f"{ELEVEN_BASE}/v1/text-to-speech/{vid}?output_format=mp3_44100_192",
-                      headers={"xi-api-key": ENV["ELEVENLABS_API_KEY"].strip(), "Content-Type": "application/json"},
-                      json=corps, timeout=120)
-    if not r.ok:
-        raise SystemExit(f"ElevenLabs : {r.status_code} {r.text[:200]}")
-    out.write_bytes(r.content)
-    return MP3(out).info.length
+    cle = (ENV.get("ELEVENLABS_API_KEY") or "").strip()
+    if cle:
+        corps = {"text": text, "model_id": "eleven_multilingual_v2", **({"voice_settings": reglages} if reglages else {})}
+        try:
+            r = requests.post(f"{ELEVEN_BASE}/v1/text-to-speech/{vid}?output_format=mp3_44100_192",
+                              headers={"xi-api-key": cle, "Content-Type": "application/json"}, json=corps, timeout=120)
+            if r.ok:
+                out.write_bytes(r.content)
+                return MP3(out).info.length
+            print(f"ElevenLabs indisponible ({r.status_code}) : voix gratuite du Mac à la place", flush=True)
+        except requests.RequestException as e:
+            print(f"ElevenLabs injoignable ({e.__class__.__name__}) : voix gratuite du Mac à la place", flush=True)
+    return voix_mac(text, out, vid)
 
 
 def load_session(session: Path):

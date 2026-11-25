@@ -1,6 +1,6 @@
 {
   "name": "twiin-desktop",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "private": true,
   "description": "Twiin pour le Mac : fenêtre flottante par-dessus toutes les applis, icône dans la barre des menus.",
   "main": "main.js",

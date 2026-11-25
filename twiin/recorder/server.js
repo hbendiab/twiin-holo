@@ -71,7 +71,11 @@ app.use(express.urlencoded({ extended: false, limit: '4kb' }));
 const estVisiteur = (req) => !!(req.get('cf-ray') || req.get('cf-connecting-ip'));
 const DEMO_COOKIE = 'twiin_demo';
 const demoJeton = () => crypto.createHmac('sha256', String(process.env.TWIIN_DEMO_CODE || 'x') + (process.env.TWIIN_LOCAL_TOKEN || '')).update('demo').digest('base64url').slice(0, 32);
-const DEMO_POST_OK = [/^\/api\/titres-courts$/, /^\/api\/automations\/[\w-]+\/cibles\/proposer$/, /^\/api\/automations\/[\w-]+\/run$/];
+// Jury : il peut tout essayer dans l'interface (marque, équipe, cibles, audit, partage de vidéos, lancer une automatisation du cloud),
+// mais rien qui pilote le Mac, supprime des données ou touche aux comptes connectés.
+const DEMO_POST_OK = [/^\/api\/titres-courts$/, /^\/api\/automations\/[\w-]+\/cibles(\/proposer)?$/, /^\/api\/automations\/[\w-]+\/run$/,
+  /^\/api\/automations\/[\w-]+\/stop$/, /^\/api\/marque$/, /^\/api\/equipe\/(membres|nom|partages)$/, /^\/api\/tutos\/[\w-]+\/couverture$/,
+  /^\/api\/onboarding\/(profile|reponses|lourdes)$/, /^\/api\/audit\/(dirigeant|outils)$/, /^\/api\/discovery\/answer$/, /^\/api\/voice\/transcribe$/];
 const DEMO_GET_NON = [/^\/api\/telecommande/, /^\/api\/back/, /^\/api\/google\//, /^\/api\/sessions\/[^/]+\/(frames|images|frame|shot|screens|media)/i,
   /^\/sessions\//, /^\/api\/actions\/(start|stop|pause)/, /^\/api\/setup/, /^\/back\.html/, /^\/telecommande\.html/, /^\/api\/connexions/];
 app.use(async (req, res, next) => {
@@ -2033,33 +2037,54 @@ const ONBOARDING = {
 };
 app.get('/api/onboarding/voix-v1', (req, res) => res.json(ONBOARDING)); // ancien accueil vocal (8 questions)
 
-// Twiin parle : texte → voix (ElevenLabs), gardée en cache sur le disque.
+// Voix gratuite de secours : les voix françaises intégrées à macOS (Amélie pour Iris, Thomas pour Ilo et les autres).
+// Sans compte ni clé, hors ligne. Utilisée quand ElevenLabs est absent ou refuse la demande (clé désactivée, quota).
+function voixMac(text, qui, file) {
+  return new Promise((ok, ko) => {
+    const p = spawnRaw('say', ['-v', qui === 'iris' ? 'Amélie' : 'Thomas', '-r', '185', '--file-format=m4af', '--data-format=aac', '-o', file, text]);
+    p.on('error', ko);
+    p.on('close', (code) => (code === 0 ? ok() : ko(new Error(`voix du Mac : code ${code}`))));
+  });
+}
+
+// Twiin parle : texte → voix (ElevenLabs, sinon voix gratuite du Mac), gardée en cache sur le disque.
 app.get('/api/voice/say', async (req, res) => {
   try {
     if (!isLocal(req)) return res.status(403).end();
     const text = String(req.query.text || '').trim().slice(0, 600);
     if (!text) return res.status(400).end();
-    if (!ELEVEN_KEY) return res.status(503).json({ error: 'ELEVENLABS_API_KEY manquante dans .env' });
     fs.mkdirSync(VOICE_CACHE, { recursive: true });
     // Iris et Ilo posent les questions de l'audit avec leurs propres voix (les mêmes que sur la page d'ouverture)
     const voix = JUMEAUX[req.query.voix] || null;
     const voiceId = voix?.id || ELEVEN_VOICE;
-    const file = path.join(VOICE_CACHE, crypto.createHash('sha1').update(`${voiceId}|${voix ? 'v5' : ''}|${text}`).digest('hex') + '.mp3');
-    if (!fs.existsSync(file) && voixEnCours.has(file)) await voixEnCours.get(file);
-    if (!fs.existsSync(file)) {
-      let fini; voixEnCours.set(file, new Promise((ok) => { fini = ok; }));
-      try {
-        const r = await fetch(`${ELEVEN_BASE}/v1/text-to-speech/${voiceId}?output_format=mp3_44100_128`, {
-          method: 'POST', headers: { 'xi-api-key': ELEVEN_KEY, 'Content-Type': 'application/json' },
-          body: JSON.stringify({ text, model_id: 'eleven_multilingual_v2', ...(voix ? { language_code: 'fr', voice_settings: voix.reglages } : {}) }),
-        });
-        if (!r.ok) throw new Error(`ElevenLabs (voix) : ${r.status} ${(await r.text()).slice(0, 200)}`);
-        const tmp = `${file}.${process.pid}.tmp`; // écrit d'un bloc : jamais de fichier à moitié servi
-        fs.writeFileSync(tmp, Buffer.from(await r.arrayBuffer()));
-        fs.renameSync(tmp, file);
-      } finally { voixEnCours.delete(file); fini(); }
-    }
-    res.type('audio/mpeg').sendFile(file);
+    const cle = crypto.createHash('sha1').update(`${voiceId}|${voix ? 'v5' : ''}|${text}`).digest('hex');
+    const file = path.join(VOICE_CACHE, cle + '.mp3');
+    const fileMac = path.join(VOICE_CACHE, cle + '.mac.m4a');
+    if (fs.existsSync(file)) return res.type('audio/mpeg').sendFile(file);
+    if (voixEnCours.has(file)) await voixEnCours.get(file);
+    if (fs.existsSync(file)) return res.type('audio/mpeg').sendFile(file);
+    let fini; voixEnCours.set(file, new Promise((ok) => { fini = ok; }));
+    try {
+      if (ELEVEN_KEY) {
+        try {
+          const r = await fetch(`${ELEVEN_BASE}/v1/text-to-speech/${voiceId}?output_format=mp3_44100_128`, {
+            method: 'POST', headers: { 'xi-api-key': ELEVEN_KEY, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ text, model_id: 'eleven_multilingual_v2', ...(voix ? { language_code: 'fr', voice_settings: voix.reglages } : {}) }),
+          });
+          if (!r.ok) throw new Error(`ElevenLabs (voix) : ${r.status} ${(await r.text()).slice(0, 120)}`);
+          const tmp = `${file}.${process.pid}.tmp`; // écrit d'un bloc : jamais de fichier à moitié servi
+          fs.writeFileSync(tmp, Buffer.from(await r.arrayBuffer()));
+          fs.renameSync(tmp, file);
+          return res.type('audio/mpeg').sendFile(file);
+        } catch (e) { console.warn(`${e.message} : voix gratuite du Mac à la place`); }
+      }
+      if (!fs.existsSync(fileMac)) {
+        const tmp = `${fileMac}.${process.pid}.tmp.m4a`;
+        await voixMac(text, req.query.voix, tmp);
+        fs.renameSync(tmp, fileMac);
+      }
+      res.type('audio/mp4').sendFile(fileMac);
+    } finally { voixEnCours.delete(file); fini(); }
   } catch (err) {
     console.error(err.message);
     res.status(502).json({ error: err.message });
@@ -2671,7 +2696,7 @@ async function lancerAutomatisation(id, origine = 'à la main') {
   proc.stdout.on('data', (d) => String(d).split('\n').forEach((l) => { // étapes n8n terminées (pour les jumeaux guides)
     try { const e = JSON.parse(l); if (e.type === 'node') me.noeuds.push({ nom: e.name, ok: !e.error && e.status !== 'error' }); } catch { /* ligne de journal */ }
   }));
-  notifier('Twiin', surMac
+  if (origine !== 'jury') notifier('Twiin', surMac
     ? `« ${a.name} » utilise ton Mac pendant environ ${Math.ceil(est / 60)} min. Ne touche à rien, double Échap pour arrêter.`
     : `« ${a.name} » tourne en arrière-plan : tu peux continuer à travailler.`);
   proc.on('close', (code) => {
@@ -2680,13 +2705,14 @@ async function lancerAutomatisation(id, origine = 'à la main') {
     const ok = code === 0 && !run?.stopped;
     console.log(`Automatisation ${id} (${origine}) : ${run?.stopped ? 'arrêtée' : ok ? 'succès' : 'échec'}`);
     backLog('automatisation', { id, origine, ok, arretee: !!run?.stopped, seconds: Math.round((Date.now() - (run?.startedAt || Date.now())) / 1000) });
-    notifier('Twiin', run?.stopped ? `« ${a.name} » arrêtée.` : ok ? `« ${a.name} » terminée. Ton Mac est libre.`
+    if (origine !== 'jury') notifier('Twiin', run?.stopped ? `« ${a.name} » arrêtée.` : ok ? `« ${a.name} » terminée. Ton Mac est libre.`
       : `« ${a.name} » n'a pas abouti. Détails dans Mes automatisations.`);
   });
   return automationRun;
 }
 app.post('/api/automations/:id/run', async (req, res) => {
-  try { await lancerAutomatisation(req.params.id); res.json({ ok: true }); }
+  // lancée par un juré (lien public) : la notification s'affiche dans SON navigateur, pas sur le Mac de l'équipe
+  try { await lancerAutomatisation(req.params.id, estVisiteur(req) ? 'jury' : 'à la main'); res.json({ ok: true }); }
   catch (e) { res.status(409).json({ error: e.message }); }
 });
 
@@ -3319,7 +3345,11 @@ app.post('/api/onboarding/lourdes', async (req, res) => {
   try { res.json({ ids: await auditPy(['lourdes'], req.body?.taches || []) }); } catch (e) { res.status(500).json({ error: e.message }); }
 });
 // Réponses (brouillon à chaque écran : on peut reprendre plus tard ; envoi final après le récap)
-app.get('/api/onboarding/reponses', (req, res) => res.json({ reponses: readA2('reponses.json', null) }));
+// TWIIN_PRENOM (.env) : le nom affiché partout (« Bonjour … »), pour une démo devant un client ou un jury
+app.get('/api/onboarding/reponses', (req, res) => {
+  const rep = readA2('reponses.json', null);
+  res.json({ reponses: rep && process.env.TWIIN_PRENOM ? { ...rep, prenom: process.env.TWIIN_PRENOM } : rep });
+});
 app.post('/api/onboarding/reponses', (req, res) => {
   const r = req.body || {};
   const rep = { ...readA2('reponses.json', {}), ...r, mis_a_jour: new Date().toISOString() };
