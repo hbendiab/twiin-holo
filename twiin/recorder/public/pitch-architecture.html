@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Twiin · Architecture</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Google+Sans+Flex:wght@300;400;500;600;700&display=swap">
+<link rel="stylesheet" href="pages.css">
+<link rel="stylesheet" href="theme.css">
+<link rel="stylesheet" href="pitch.css">
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="/"><span id="logoCells"></span><span>Tw<b>ii</b>n</span></a>
+    <button id="themeBtn" type="button">Thème sombre</button>
+  </header>
+
+  <h1 class="pt-titre">Montrez une fois. <em>Twiin le fait partout.</em></h1>
+  <p class="pt-sous">Une tâche faite une fois devient une automatisation testée, avec ou sans API.</p>
+
+  <section class="pt-bloc">
+    <div class="pt-lab">Comment ça marche</div>
+    <div class="pt-flux">
+      <div class="pt-carte"><div class="pt-lab">1 · Observer</div><h3>Sur le poste</h3><p>L'écran est lu en local, les données sensibles masquées.</p></div>
+      <div class="pt-carte"><div class="pt-lab">2 · Comprendre</div><h3>Qwen</h3><p>Modèle open source, via Hugging Face.</p></div>
+      <div class="pt-carte"><div class="pt-lab">3 · Orchestrer</div><h3>n8n</h3><p>Un workflow lisible, vérifié avant chaque écriture.</p></div>
+      <div class="pt-carte fort"><div class="pt-lab">4 · Agir</div><h3>Holo</h3><p>L'agent de H Company, là où il n'y a pas d'API.</p></div>
+    </div>
+  </section>
+
+  <section class="pt-bloc">
+    <div class="pt-lab">Mesuré le 20 novembre</div>
+    <div class="pt-ligne">
+      <div class="pt-carte"><div class="pt-gros">28 s</div><p>Tâche web dans le cloud de H Company</p></div>
+      <div class="pt-carte"><div class="pt-gros">2 min 49</div><p>Facture saisie et transférée, sans personne devant l'écran</p></div>
+      <div class="pt-carte fort"><div class="pt-gros">0</div><p>Valeur douteuse écrite : elle est bloquée avant</p></div>
+    </div>
+  </section>
+
+  <section class="pt-bloc">
+    <div class="pt-lab">Partout</div>
+    <div class="pt-ligne">
+      <div class="pt-carte"><h3>Interface</h3></div>
+      <div class="pt-carte"><h3>Extension Chrome</h3></div>
+      <div class="pt-carte"><h3>App Mac</h3></div>
+      <div class="pt-carte"><h3>Depuis le téléphone</h3></div>
+    </div>
+  </section>
+
+  <details class="pt-bloc pt-details">
+    <summary><span class="pt-lab" style="display:inline">La stack en détail</span> <span class="pt-plus">pour les questions</span></summary>
+    <table class="pt-table">
+      <tr><th>Brique</th><th>Technologie</th><th>Ce qu'elle fait, et pourquoi</th></tr>
+      <tr><td>Agir</td><td><b>Holo (holo4-35b)</b> par l'Agents API de H Company, SDK hai-agents</td><td>Voit l'écran et décide du prochain clic. <b>Cloud H Company</b> pour le web (navigateur distant), <b>pont local</b> (« holo local desktop ») pour les logiciels du Mac. Commandes et fichiers bloqués, double Échap pour tout arrêter.</td></tr>
+      <tr><td>Comprendre</td><td><b>Qwen 3.8 (27B)</b>, vision-langage open source, via le routeur Hugging Face (API compatible OpenAI)</td><td>Lit le texte de l'écran et quelques images, découpe la tâche en étapes, écrit les valeurs attendues et les vérifications. Changeable en une ligne, hébergeable chez le client.</td></tr>
+      <tr><td>Orchestrer</td><td><b>n8n</b>, installé sur le poste</td><td>Le plan est compilé en workflow : un bloc par étape, une branche par entreprise suivie (une cible qui échoue n'arrête pas les autres), un bloc « Vérifier les valeurs » avant chaque écriture. Rejoué et testé avant d'être activé.</td></tr>
+      <tr><td>Observer</td><td>Enregistreur Node + workers Python, <b>OCR du Mac</b> (Vision)</td><td>Captures et journal de clics, sans touches du clavier. Texte lu en local, e-mails et jetons masqués avant tout envoi.</td></tr>
+      <tr><td>App Mac</td><td><b>Electron</b>, serveur Node + Express</td><td>Barre de menus, notifications, jumeaux guides affichés sur l'écran où se passe la tâche (Mac ou moniteur externe), invisible dans ses propres captures.</td></tr>
+      <tr><td>Extension</td><td><b>Chrome, Manifest V3</b></td><td>Bulle sur chaque page, panneau latéral : enregistrer, lancer, voir les automatisations du site.</td></tr>
+      <tr><td>Téléphone</td><td>Page mobile + <b>relais sur Vercel</b></td><td>Le téléphone n'a jamais d'accès direct au Mac : il dépose une demande chiffrée, le Mac l'exécute, l'accès se coupe en un geste.</td></tr>
+      <tr><td>Données</td><td><b>Supabase</b> : Postgres, Auth, règles RLS</td><td>Comptes, tâches, automatisations, exécutions. Chaque entreprise ne voit que ses lignes ; les captures et vidéos restent sur le poste.</td></tr>
+      <tr><td>Vidéos</td><td><b>ElevenLabs</b> (voix), <b>Remotion</b> (montage en React)</td><td>Chaque tâche devient une vidéo de formation, aux couleurs de l'entreprise.</td></tr>
+      <tr><td>Sécurité</td><td>Clés sur le poste uniquement</td><td>Aucune clé dans l'installeur ni dans le dépôt GitHub public ; le mode démo du jury est en lecture seule pour tout ce qui touche au Mac.</td></tr>
+    </table>
+    <p class="pt-note">Coût mesuré : Holo 0,30 $ / million de tokens en entrée, 2 $ en sortie · 0,01 $ une tâche web, 0,15 $ une tâche sur le Mac · Qwen ≈ 0,002 $ par analyse.</p>
+  </details>
+
+  <section class="pt-bloc">
+    <div class="pt-lab">Et ensuite</div>
+    <p class="pt-phrase">Plusieurs postes reliés, Windows, Microsoft 365, <em>un modèle hébergé chez le client.</em></p>
+  </section>
+  <p class="pt-pied">Twiin · powered by H Company… and not a lot of sleep</p>
+
+<script src="shell.js" defer></script>
+<script src="common.js"></script>
+</body>
+</html>

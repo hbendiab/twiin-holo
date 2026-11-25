@@ -13,6 +13,9 @@
     sun: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>',
     chevron: '<path d="M15 6l-6 6 6 6"/>',
     marque: '<path d="M4 20V9l8-5 8 5v11"/><path d="M9 20v-6h6v6"/>',
+    archi: '<rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="8.5" y="14" width="7" height="7" rx="1.5"/><path d="M6.5 10v2h11v-2M12 12v2"/>',
+    cadenas: '<rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/>',
+    euro: '<path d="M17.5 6.5A6.5 6.5 0 1 0 17.5 17.5"/><path d="M4 10.5h9M4 13.5h9"/>',
   };
   const svg = (k) => `<svg viewBox="0 0 24 24" aria-hidden="true">${I[k]}</svg>`;
   const path = location.pathname;
@@ -26,9 +29,10 @@
     ['Mes résultats', [['/enregistrements.html', 'rec', 'Mes enregistrements'], ['/videos.html', 'video', 'Mes vidéos'], ['/automatisations.html', 'auto', 'Mes automatisations']]],
     ['À distance', [['/telecommande.html', 'phone', 'Télécommande']]],
     ['Entreprise', [['/mise-en-service.html', 'marque', 'Mise en service']]],
+    ['Pitch H Company', [['/pitch-architecture.html', 'archi', 'Architecture'], ['/pitch-business.html', 'euro', 'Business'], ['/pitch-rgpd.html', 'cadenas', 'RGPD']]],
   ];
   // Chaque étape du parcours a sa couleur (fond de page, repère du menu, sur-titre) : on voit tout de suite où l'on est
-  const ETAPES = [['analyser', 'Analyser'], ['resultats', 'Résultats'], ['distance', 'À distance'], ['entreprise', 'Entreprise']];
+  const ETAPES = [['analyser', 'Analyser'], ['resultats', 'Résultats'], ['distance', 'À distance'], ['entreprise', 'Entreprise'], ['pitch', 'Pitch H Company']];
 
   // Repliée ou dépliée : mémorisé sur ce navigateur ; appliqué tout de suite, sans animation au chargement
   const root = document.documentElement;

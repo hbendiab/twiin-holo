@@ -13,6 +13,9 @@ const INCLUDE = ['recorder', 'audit', 'automation', 'discovery', 'extension', 's
 const EXCLUDE = [
   /(^|\/)\.env$/, /(^|\/)\.env\.(?!example)/, /(^|\/)\.DS_Store$/, /(^|\/)__pycache__(\/|$)/, /\.pyc$/, /\.egg-info(\/|$)/,
   /^automation\/workflows(\/|$)/,       // automatisations générées : contiennent le jeton du pont n8n → Holo
+  /^tuto\/video\/public\/(pub|film|demo|demo2)(\/|$)/, // médias des vidéos de présentation de l'équipe (musiques sous licence) : pas l'app
+  /^tuto\/video\/out(\/|$)/,            // vidéos déjà rendues sur le poste de l'équipe
+  / 2(\.[^/]+)?$/,                       // doublons créés par la synchronisation iCloud (« fichier 2.js »)
   /^automation\/n8n-runtime(\/|$)/,     // n8n : installé au premier lancement
   /^automation\/n8n-cli\/n8n\/(workflows|config\/cache)(\/|$)/, /^automation\/n8n-cli\/n8n\/config\/sync-state\.json$/, // copies locales de n8n (ids de tes documents)
   /^recorder\/ui\/node_modules(\/|$)/,  // sources du composant React (déjà compilé dans recorder/public/ui)

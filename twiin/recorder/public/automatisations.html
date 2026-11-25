@@ -486,13 +486,29 @@ function brancherSuppression(a) {
   };
 }
 
+// Fin d'une automatisation lancée depuis ce navigateur : notification ici (bandeau dans la page, et notification du système si autorisée)
+function prevenir(a) {
+  const ex = (a.executions || [])[0] || {};
+  const ok = ex.status === 'success';
+  const titre = ok ? `« ${a.name} » terminée` : `« ${a.name} » n'a pas abouti`;
+  const texte = ok ? 'Résultat disponible dans Mes automatisations.' : 'Détails dans l\'historique de l\'automatisation.';
+  try { if (window.Notification && Notification.permission === 'granted') new Notification('Twiin', { body: `${titre}. ${texte}`, icon: '/img/iris.png' }); } catch { /* pas de notification système */ }
+  const b = document.createElement('div');
+  b.setAttribute('role', 'status');
+  b.style.cssText = 'position:fixed;right:24px;top:24px;z-index:9999;max-width:380px;padding:16px 20px;border-radius:16px;background:rgba(255,255,255,.96);border:1px solid #dce2f0;box-shadow:0 24px 50px -24px rgba(56,66,110,.55);font:14px/1.4 inherit;display:flex;gap:12px;align-items:flex-start';
+  b.innerHTML = `<span style="display:flex"><img src="/img/iris.png" alt="" style="width:30px;height:30px"><img src="/img/ilo.png" alt="" style="width:30px;height:30px;margin-left:-6px"></span><span><b style="display:block;margin-bottom:2px">${titre.replace(/</g, '&lt;')}</b>${texte}</span>`;
+  document.body.append(b);
+  setTimeout(() => b.remove(), 9000);
+}
+
 function watch(id) {
+  try { if (window.Notification && Notification.permission === 'default') Notification.requestPermission(); } catch { /* rien */ }
   clearInterval(poll);
   poll = setInterval(async () => {
     const a = await (await fetch(`/api/automations/${encodeURIComponent(id)}`)).json().catch(() => null);
     if (!a || a.error) return;
     Object.assign(items.find((x) => x.id === id), a);
-    if (!a.running) { clearInterval(poll); renderList(); if (current === id) select(id); }
+    if (!a.running) { clearInterval(poll); renderList(); if (current === id) select(id); prevenir(a); }
   }, 4000);
   const a = items.find((x) => x.id === id);
   if (a) { a.running = true; renderList(); if (current === id) select(id); }

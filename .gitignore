@@ -32,3 +32,9 @@ archives/premier-test-holo/screenshots/
 # Il reste sur le Mac de Hanine pour la démo ; Twiin n'en a pas besoin pour fonctionner.
 comptarex/
 testbench/dico_out/
+
+# Médias des vidéos de présentation de l'équipe (musiques sous licence, rushes) : jamais dans le dépôt
+twiin/tuto/video/public/pub/
+twiin/tuto/video/public/film/
+twiin/tuto/video/public/demo2/
+twiin/tuto/video/out/

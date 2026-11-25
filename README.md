@@ -13,17 +13,74 @@
   OCR, journal)        automatiser)                  🙋 « Fais-le à ma place » (à venir)
 ```
 
-## Tester Twiin (jury)
+## Tester Twiin (H Company)
 
-| Comment | Ce que vous voyez | Durée |
-|---|---|---|
-| **Lien web de démo** : https://dimensions-ordered-criteria-withdrawal.trycloudflare.com · code d'accès **`twiin-holo-708`** | Le vrai Twiin de l'équipe, en lecture seule : ouverture avec Iris et Ilo, *Mon travail* (audit), *Mes enregistrements*, *Mes vidéos* (tutos générés), *Mes automatisations* (workflows n8n, cibles personnalisables), *Mise en service* (charte de l'entreprise, connexions). Les automatisations qui tournent dans le cloud de H Company se lancent depuis la page. | 5 min |
-| **Vidéos** (dans la release v0.2.0) | Démo de 5 min, stack technique, cas d'usage filmés de bout en bout | 5 à 15 min |
-| **Installeur Mac** (Apple Silicon) : [release v0.2.0](https://github.com/hbendiab/twiin-holo/releases/tag/v0.2.0) | L'app Mac, l'extension Chrome et le lien mobile sur **votre** poste : enregistrer une tâche, l'analyser, l'automatiser. Non signé par Apple : clic droit sur l'app → *Ouvrir*. Demandez-nous le fichier d'accès (crédits de l'équipe). | 10 min |
+**Twiin · Montrez une fois. Twiin le fait partout.** Vous montrez une tâche une fois ; Twiin la refait grâce à Holo,
+puis l'automatise, avec ou sans API. Projet lauréat du hackathon Build The Future (Eugenia × H Company × Vercel × Hugging Face).
 
-Le lien web est servi depuis le Mac de l'équipe par un tunnel Cloudflare, en **mode démo** : code d'accès, lecture seule,
-rien qui touche ce Mac (pas de capture, pas de télécommande, pas d'images d'enregistrements), seulement les automatisations
-qui tournent dans le cloud. Le code et les détails de ce mode : `twiin/recorder/server.js` (« Mode démo »).
+Trois façons de le découvrir, de la plus simple à la plus complète :
+
+### 1. En ligne, en 2 minutes (rien à installer)
+
+**Lien : https://beliefs-charges-while-lucas.trycloudflare.com · code d'accès : `twiin-holo-708`**
+
+1. Ouvrez le lien et entrez le code. L'accueil d'Iris et Ilo se lance (pour le revoir : ajoutez `/?bienvenue` au lien).
+2. **Mon travail** : l'audit du poste et les heures à gagner.
+3. **Mes automatisations** → « Relève taux euro-dollar BCE » → **Lancer maintenant** : Holo lit le taux sur le site de la
+   BCE, dans le cloud de H Company, en 30 secondes environ, et une notification s'affiche dans votre navigateur.
+4. **Mes vidéos** : les vidéos de formation générées par Twiin. **Mise en service** : appliquez la marque d'une entreprise
+   (BNP Paribas, Meetic…) à toute l'interface.
+5. **Pitch H Company** (dans le menu) : architecture, business et RGPD.
+
+Ce lien est servi depuis le Mac de l'équipe par un tunnel Cloudflare, en mode démo : tout ce qui touche à ce Mac est bloqué
+(enregistrement, pilotage, télécommande, suppressions). **L'adresse change si le Mac redémarre** : si le lien ne répond pas,
+prévenez-nous et nous vous envoyons la nouvelle.
+
+### 2. Les vidéos (sans rien installer)
+
+Dans la [release v0.2.0](https://github.com/hbendiab/twiin-holo/releases/tag/v0.2.0) :
+[vidéo démo](https://github.com/hbendiab/twiin-holo/releases/download/v0.2.0/twiin-demo.mp4),
+[fonctionnalités](https://github.com/hbendiab/twiin-holo/releases/download/v0.2.0/twiin-fonctionnalites.mp4),
+[stack technique](https://github.com/hbendiab/twiin-holo/releases/download/v0.2.0/twiin-stack.mp4),
+[cas d'usage : facture](https://github.com/hbendiab/twiin-holo/releases/download/v0.2.0/cas-facture-fournisseur.mp4),
+[cas d'usage : veille](https://github.com/hbendiab/twiin-holo/releases/download/v0.2.0/cas-veille-concurrence.mp4).
+
+### 3. Sur votre Mac (app + extension Chrome, 15 minutes)
+
+Il faut un Mac Apple Silicon et Chrome.
+
+**L'app Mac**
+1. Téléchargez [Twiin-0.2.1-arm64.dmg](https://github.com/hbendiab/twiin-holo/releases/download/v0.2.1/Twiin-0.2.1-arm64.dmg)
+   et glissez Twiin dans Applications.
+2. L'app n'est pas encore signée par Apple : **clic droit sur Twiin → Ouvrir**, puis confirmez.
+3. L'assistant installe le reste (Python, dépendances, navigateur de l'agent, autorisations macOS).
+4. À l'étape **Configuration**, importez un fichier texte `twiin.env` avec **vos** accès :
+   ```
+   HF_TOKEN=hf_…          # obligatoire : votre jeton Hugging Face (analyse des tâches)
+   HAI_API_KEY=…          # votre clé H Company (Holo)
+   ELEVENLABS_API_KEY=    # facultatif : sans clé, les voix des vidéos utilisent les voix gratuites du Mac
+   ```
+   Le fichier reste sur votre Mac ; aucune clé n'est incluse dans l'installeur ni dans ce dépôt.
+
+**L'extension Chrome**
+1. Téléchargez ce dépôt (bouton **Code → Download ZIP**) et décompressez-le.
+2. Dans Chrome : `chrome://extensions` → activez le **Mode développeur** → **Charger l'extension non empaquetée** →
+   choisissez le dossier `twiin/extension`.
+3. Épinglez l'icône Twiin. L'extension parle uniquement à l'app Twiin de votre Mac : gardez l'app ouverte.
+
+### Ce qui tourne en local, et que nous vous présenterons sur place
+
+Twiin est conçu pour tourner **sur le poste de l'employé** : les écrans ne quittent pas l'ordinateur, et l'agent pilote les
+logiciels installés. Plusieurs briques de notre démo tournent donc sur le Mac de l'équipe, avec nos comptes déjà connectés :
+
+- **n8n**, avec les connexions Gmail et Google Sheets, pour créer et rejouer les automatisations ;
+- **le pont Holo** (`holo local desktop`), pour que l'agent pilote les logiciels du Mac ;
+- **la télécommande du téléphone**, appairée à ce Mac par le relais Vercel ;
+- **Supabase** (comptes et historique) et les voix des jumeaux.
+
+Le lien en ligne et l'app installée chez vous montrent l'interface, l'audit, les vidéos et les tâches web dans le cloud de
+H Company. **Le parcours complet** (une tâche demandée depuis le téléphone, faite par Holo sur le Mac, automatisée dans n8n,
+puis transformée en vidéo de formation) **nous vous le présenterons en direct, sur notre Mac, lors de notre venue dans vos locaux.**
 
 ## Démarrage rapide (équipe) : lancer Twiin sur ton Mac
 
@@ -72,7 +129,9 @@ Pour le retirer : `scripts/install_hotkey.sh --remove`.
 clics reste vide. Relance le serveur après les avoir accordées.
 
 Seul `HF_TOKEN` est obligatoire. `HAI_API_KEY` (Holo, ton propre compte H) sert à l'outil « Tester et casser » du Back
-(test par Holo) ; `ELEVENLABS_API_KEY` sert aux tutos vidéo ; n8n n'est utile que pour « Créer l'automatisation ».
+(test par Holo) et aux blocs Holo des automatisations ; `ELEVENLABS_API_KEY` est facultative : sans clé (ou si elle est
+refusée), les voix des tutos et des jumeaux utilisent les voix françaises gratuites du Mac (Amélie et Thomas) ; n8n n'est
+utile que pour « Créer l'automatisation ».
 
 ## Les briques (dossier par dossier)
 
